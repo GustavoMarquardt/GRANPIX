@@ -1,0 +1,1848 @@
+async function abrirQualificacao(etapaId) {
+    try {
+        // Primeiro, verificar se a etapa já possui um evento em andamento
+        try {
+            const eventoResp = await fetch(`/api/etapas/${etapaId}/evento`);
+            const eventoData = await eventoResp.json();
+            if (eventoData.sucesso && eventoData.evento && eventoData.evento.etapa && (eventoData.evento.etapa.status === 'em_andamento' || eventoData.evento.etapa.status === 'batalhas')) {
+                mostrarToast('ℹ️ Etapa já em andamento — abrindo interface de qualificação...', 'info');
+
+                // Garantir aba e carregar tabela sem tentar iniciar novamente
+                setTimeout(() => {
+                    try {
+                        const abaFazerEtapa = document.querySelector('a[href="#fazer-etapa"]');
+                        if (abaFazerEtapa) {
+                            if (window.bootstrap && bootstrap.Tab) {
+                                new bootstrap.Tab(abaFazerEtapa).show();
+                            } else {
+                                abaFazerEtapa.click();
+                            }
+                        }
+
+                        const pane = document.getElementById('fazer-etapa');
+                        if (pane) { pane.classList.add('show', 'active'); pane.style.display = ''; }
+                        if (typeof carregarEtapaHoje === 'function') carregarEtapaHoje().catch(() => {});
+                    } catch (e) { console.error('[QUALIFICACAO] Fallback ativar aba:', e); }
+                }, 120);
+
+                // Carregar a tabela de qualificação no painel admin
+                setTimeout(() => { carregarTabelaVoltasAdmin(etapaId); }, 300);
+                return;
+            }
+        } catch (e) {
+            console.warn('[QUALIFICACAO] Não foi possível verificar status do evento, prosseguindo para iniciar:', e);
+        }
+
+        // Se não estiver em andamento, solicitar início ao servidor
+        const resp = await fetch('/api/admin/fazer-etapa', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ etapa: etapaId })
+        });
+        const resultado = await resp.json();
+        if (resultado.sucesso) {
+            mostrarToast('✓ Etapa iniciada! Carregando interface de qualificação...', 'success');
+
+            // Aguardar um pouco e ativar a aba "Fazer Etapa" de forma robusta
+            setTimeout(() => {
+                try {
+                    const abaFazerEtapa = document.querySelector('a[href="#fazer-etapa"]');
+                    if (abaFazerEtapa) {
+                        if (window.bootstrap && bootstrap.Tab) {
+                            new bootstrap.Tab(abaFazerEtapa).show();
+                            console.log('[QUALIFICACAO] Aba "Fazer Etapa" ativada via bootstrap.Tab.show()');
+                        } else {
+                            abaFazerEtapa.click();
+                            console.log('[QUALIFICACAO] Aba "Fazer Etapa" ativada via click()');
+                        }
+
+                        const pane = document.getElementById('fazer-etapa');
+                        if (pane) { pane.classList.add('show', 'active'); pane.style.display = ''; }
+                        if (typeof carregarEtapaHoje === 'function') carregarEtapaHoje().catch(e => console.error('Erro carregarEtapaHoje (abrirQualificacao):', e));
+                    }
+                } catch (e) {
+                    console.error('[QUALIFICACAO] Erro ao ativar aba Fazer Etapa:', e);
+                }
+            }, 200);
+
+            // Carregar a tabela de qualificação no painel admin
+            setTimeout(() => { carregarTabelaVoltasAdmin(etapaId); }, 800);
+        } else {
+            mostrarToast('Erro: ' + resultado.erro, 'error');
+        }
+    } catch (e) {
+        mostrarToast('Erro ao abrir etapa', 'error');
+    }
+}
+
+async function carregarAndMostrarEquipes(etapaId) {
+    try {
+        const resp = await fetch(`/api/admin/etapas/${etapaId}/equipes-pilotos`);
+        const data = await resp.json();
+        
+        if (data.sucesso && data.equipes) {
+            mostrarEquipesQualificacao(data.equipes, etapaId);
+        } else {
+            mostrarToast('Erro ao carregar equipes', 'error');
+            setTimeout(() => location.reload(), 1500);
+        }
+    } catch (e) {
+        console.error('Erro:', e);
+        mostrarToast('Erro ao carregar equipes', 'error');
+        setTimeout(() => location.reload(), 1500);
+    }
+}
+
+function mostrarEquipesQualificacao(equipes, etapaId) {
+    // Criar um modal com as equipes
+    const modalElement = document.createElement('div');
+    modalElement.className = 'modal fade';
+    modalElement.id = 'modalEquipesQualificacao';
+    modalElement.tabIndex = '-1';
+    modalElement.setAttribute('aria-hidden', 'true');
+    modalElement.setAttribute('data-bs-backdrop', 'static');
+    modalElement.setAttribute('data-bs-keyboard', 'false');
+    
+    let equipesHtml = '<div class="row">';
+    equipes.forEach(eq => {
+        const pilotoInfo = eq.piloto_nome ? `<strong>${eq.piloto_nome}</strong>` : '<span class="text-danger">⚠️ SEM PILOTO</span>';
+        const carroInfo = eq.carro_modelo ? `(${eq.carro_modelo})` : '';
+        
+        equipesHtml += `
+            <div class="col-md-6 mb-3">
+                <div class="card ${eq.piloto_nome ? 'border-success' : 'border-danger'}">
+                    <div class="card-header ${eq.piloto_nome ? 'bg-success' : 'bg-danger'} text-white">
+                        <h6 class="mb-0">🏁 ${eq.equipe_nome}</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <strong>Piloto:</strong> ${pilotoInfo}
+                        </div>
+                        ${eq.carro_modelo ? `<div><strong>Carro:</strong> ${carroInfo}</div>` : ''}
+                        <div class="mt-2">
+                            <small class="text-muted">Tipo: ${eq.tipo_participacao} | Status: ${eq.status}</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    equipesHtml += '</div>';
+    
+    modalElement.innerHTML = `
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title">📋 Equipes na Qualificação</h5>
+                </div>
+                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                    <div class="alert alert-info">
+                        <strong>QUALIFICAÇÃO INICIADA!</strong><br>
+                        Total de equipes: <strong>${equipes.length}</strong><br>
+                        Equipes com piloto: <strong>${equipes.filter(e => e.piloto_nome).length}</strong>
+                    </div>
+                    ${equipesHtml}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" onclick="confirmarQualificacao()">
+                        ✓ Confirmar e Continuar
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modalElement);
+    const modal = new bootstrap.Modal(modalElement, {
+        backdrop: 'static',
+        keyboard: false
+    });
+    
+    modal.show();
+    
+    // Remover modal do DOM após fechado
+    modalElement.addEventListener('hidden.bs.modal', () => {
+        modalElement.remove();
+    });
+}
+
+function confirmarQualificacao() {
+    const modal = bootstrap.Modal.getInstance(document.getElementById('modalEquipesQualificacao'));
+    if (modal) {
+        modal.hide();
+        setTimeout(() => location.reload(), 300);
+    }
+}
+
+async function finalizarQualificacao(etapaId) {
+    if (!confirm('Tem certeza? Vai finalizar a qualificacao e calcular pontos!')) {
+        return;
+    }
+    try {
+        const resp = await fetch(`/api/admin/finalizar-qualificacao/${etapaId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const resultado = await resp.json();
+        if (resultado.sucesso) {
+            mostrarToast('Qualificacao finalizada! Etapa agora esta ATIVA.', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            mostrarToast('Erro: ' + resultado.erro, 'error');
+        }
+    } catch (e) {
+        mostrarToast('Erro ao finalizar qualificacao', 'error');
+    }
+}
+
+async function entrarQualificacao(etapaId, botao) {
+    try {
+        botao.disabled = true;
+        botao.innerHTML = 'Processando...';
+        
+        const resp = await fetch(`/api/etapas/${etapaId}/entrar-qualificacao`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const resultado = await resp.json();
+        
+        if (resultado.sucesso) {
+            // Verificar se evento está em andamento
+            const eventoResp = await fetch(`/api/etapas/${etapaId}/evento`);
+            const eventoData = await eventoResp.json();
+            
+            if (eventoData.sucesso && eventoData.evento && eventoData.evento.etapa.status === 'em_andamento') {
+                mostrarAlerta('Bem-vindo! Abrindo evento ao vivo...', 'sucesso');
+                setTimeout(() => mostrarEventoAoVivo(etapaId), 500);
+            } else {
+                mostrarAlerta('Bem-vindo a qualificacao! Boa sorte!', 'sucesso');
+                botao.innerHTML = 'Participando';
+                botao.className = 'btn btn-success w-100 mt-2';
+            }
+        } else {
+            mostrarAlerta('Erro: ' + resultado.erro, 'erro');
+            botao.disabled = false;
+            botao.innerHTML = 'ENTRAR NA QUALIFICACAO';
+        }
+    } catch (e) {
+        mostrarAlerta('Erro ao entrar na qualificacao', 'erro');
+        botao.disabled = false;
+        botao.innerHTML = 'ENTRAR NA QUALIFICACAO';
+    }
+}
+
+// ==================== ENTRAR NAS BATALHAS ====================
+
+async function entrarBatalhas(etapaId, botao) {
+    try {
+        botao.disabled = true;
+        botao.innerHTML = 'Processando...';
+        
+        const resp = await fetch(`/api/etapas/${etapaId}/entrar-batalhas`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const resultado = await resp.json();
+        
+        if (resultado.sucesso) {
+            // Verificar se evento está em batalhas
+            const eventoResp = await fetch(`/api/etapas/${etapaId}/evento`);
+            const eventoData = await eventoResp.json();
+            
+            if (eventoData.sucesso && eventoData.evento && (eventoData.evento.etapa.status === 'em_andamento' || eventoData.evento.etapa.status === 'batalhas')) {
+                mostrarAlerta('Bem-vindo! Abrindo batalhas ao vivo...', 'sucesso');
+                setTimeout(() => mostrarEventoAoVivo(etapaId), 500);
+            } else {
+                mostrarAlerta('Bem-vindo as batalhas! Boa sorte!', 'sucesso');
+                botao.innerHTML = 'Participando';
+                botao.className = 'btn btn-success w-100 mt-2';
+            }
+        } else {
+            mostrarAlerta('Erro: ' + resultado.erro, 'erro');
+            botao.disabled = false;
+            botao.innerHTML = '⚔️ ENTRAR NAS BATALHAS';
+        }
+    } catch (e) {
+        mostrarAlerta('Erro ao entrar nas batalhas', 'erro');
+        botao.disabled = false;
+        botao.innerHTML = '⚔️ ENTRAR NAS BATALHAS';
+    }
+}
+
+// ==================== CARREGAR ETAPA DO DIA ====================
+
+async function carregarEtapaHoje() {
+    try {
+        console.log('[ETAPA HOJE] Iniciando carregamento...');
+        const resp = await fetch('/api/admin/etapa-hoje');
+        const data = await resp.json();
+        
+        console.log('[ETAPA HOJE] Resposta recebida:', data);
+        
+        if (data.sucesso && data.etapa) {
+            console.log('[ETAPA HOJE] Preenchendo informações...');
+            preencherEtapaHoje(data.etapa);
+        } else {
+            console.log('[ETAPA HOJE] Nenhuma etapa encontrada. Erro:', data.mensagem);
+            exibirSemEtapaHoje();
+        }
+    } catch (e) {
+        console.error('[ETAPA HOJE] Erro ao carregar etapa de hoje:', e);
+        exibirSemEtapaHoje();
+    }
+}
+
+// Tornar função global para acesso do HTML
+window.carregarEtapaHoje = carregarEtapaHoje;
+
+function preencherEtapaHoje(etapa) {
+    console.log('[ETAPA HOJE] preencherEtapaHoje chamado com:', etapa);
+    
+    // Verificar se os elementos existem (podem não existir em outras páginas)
+    const infoElement = document.getElementById('infoEtapaHoje');
+    const semEtapaElement = document.getElementById('semEtapaHoje');
+    const grupoEtapaElement = document.getElementById('grupoEtapa');
+    const botaoElement = document.getElementById('botaoIniciarQualificacao');
+    
+    // Se nenhum elemento foi encontrado, sair silenciosamente (estamos em outra página)
+    if (!infoElement && !semEtapaElement && !grupoEtapaElement && !botaoElement) {
+        console.log('[ETAPA HOJE] Elementos não encontrados - script rodando em página diferente');
+        return;
+    }
+    
+    console.log('[ETAPA HOJE] Elementos encontrados:', {
+        infoElement: !!infoElement,
+        semEtapaElement: !!semEtapaElement,
+        grupoEtapaElement: !!grupoEtapaElement,
+        botaoElement: !!botaoElement
+    });
+    
+    if (infoElement) infoElement.style.display = 'block';
+    if (semEtapaElement) semEtapaElement.style.display = 'none';
+    
+    // Verificar se a etapa já está em andamento
+    verificarStatusEtapa(etapa.id);
+    
+    // Preencher dados
+    console.log('[ETAPA HOJE] Preenchendo dados do campeonato e etapa...');
+    if (document.getElementById('etapaHojeCampeonatoNome')) document.getElementById('etapaHojeCampeonatoNome').textContent = etapa.campeonato_nome;
+    if (document.getElementById('etapaHojeCampeonatoSerie')) document.getElementById('etapaHojeCampeonatoSerie').textContent = etapa.serie;
+    if (document.getElementById('etapaHojeNumero')) document.getElementById('etapaHojeNumero').textContent = etapa.numero;
+    if (document.getElementById('etapaHojeNome')) document.getElementById('etapaHojeNome').textContent = etapa.nome;
+    if (document.getElementById('etapaHojeHora')) document.getElementById('etapaHojeHora').textContent = etapa.hora_etapa ? etapa.hora_etapa.substring(0, 5) : '-';
+    
+    if (document.getElementById('etapaIdAtual')) document.getElementById('etapaIdAtual').value = etapa.id;
+    
+    // Carregar equipes e pilotos
+    console.log('[ETAPA HOJE] Carregando equipes para etapa:', etapa.id);
+    carregarEquipesETapaHoje(etapa.id);
+    
+    console.log('[ETAPA HOJE] Etapa carregada:', etapa.nome, '- ID:', etapa.id);
+}
+
+async function carregarEquipesETapaHoje(etapaId) {
+    try {
+        console.log('[EQUIPES] Carregando equipes da etapa:', etapaId);
+        const resp = await fetch(`/api/admin/etapas/${etapaId}/equipes-pilotos`);
+        const data = await resp.json();
+        
+        console.log('[EQUIPES] Resposta recebida:', data);
+        
+        if (data.sucesso && data.equipes) {
+            console.log('[EQUIPES] Preenchendo tabela com', data.equipes.length, 'equipes');
+            preencherTabelaEquipes(data.equipes);
+        } else {
+            console.error('[EQUIPES] Erro na resposta:', data.erro);
+        }
+    } catch (e) {
+        console.error('[EQUIPES] Erro ao carregar equipes:', e);
+    }
+}
+
+async function verificarStatusEtapa(etapaId) {
+    try {
+        console.log('[STATUS ETAPA] Verificando status da etapa:', etapaId);
+        const resp = await fetch(`/api/etapas/${etapaId}/evento`);
+        const data = await resp.json();
+        
+        const grupoEtapaElement = document.getElementById('grupoEtapa');
+        const botaoElement = document.getElementById('botaoIniciarQualificacao');
+        const containerVoltas = document.getElementById('containerVoltasAdmin');
+        
+        if (data.sucesso && data.evento && data.evento.etapa && data.evento.etapa.status === 'em_andamento') {
+            console.log('[STATUS ETAPA] Etapa já em andamento - mostrando tabela diretamente');
+            // Etapa já em andamento - esconder botão e mostrar tabela
+            if (grupoEtapaElement) grupoEtapaElement.style.display = 'none';
+            if (botaoElement) botaoElement.style.display = 'none';
+            if (containerVoltas) containerVoltas.style.display = 'block';
+            
+            // Carregar a tabela de qualificação
+            carregarTabelaVoltasAdmin(etapaId);
+        } else {
+            console.log('[STATUS ETAPA] Etapa não iniciada - mostrando botão');
+            // Etapa não iniciada - mostrar botão e esconder tabela
+            if (grupoEtapaElement) grupoEtapaElement.style.display = 'block';
+            if (botaoElement) botaoElement.style.display = 'block';
+            if (containerVoltas) containerVoltas.style.display = 'none';
+        }
+    } catch (e) {
+        console.warn('[STATUS ETAPA] Erro ao verificar status, assumindo etapa não iniciada:', e);
+        // Em caso de erro, mostrar botão por padrão
+        const grupoEtapaElement = document.getElementById('grupoEtapa');
+        const botaoElement = document.getElementById('botaoIniciarQualificacao');
+        const containerVoltas = document.getElementById('containerVoltasAdmin');
+        
+        if (grupoEtapaElement) grupoEtapaElement.style.display = 'block';
+        if (botaoElement) botaoElement.style.display = 'block';
+        if (containerVoltas) containerVoltas.style.display = 'none';
+    }
+}
+
+function preencherTabelaEquipes(equipes) {
+    console.log('[TABELA] preencherTabelaEquipes chamado com', equipes.length, 'equipes');
+    
+    const gridContainer = document.getElementById('gridEquipesPits');
+    const container = document.getElementById('containerEquipesPilotos');
+    
+    // Se o elemento grid não existe, é normal - foi removido da interface
+    if (!gridContainer) {
+        console.log('[TABELA] Grid de pits não existe (foi removido da interface)');
+        return;
+    }
+    
+    gridContainer.innerHTML = '';
+    
+    equipes.forEach((eq, idx) => {
+        console.log(`[TABELA] Adicionando equipe ${idx + 1}:`, eq.equipe_nome);
+        
+        // Determinar cores baseadas no status do piloto (vermelho, preto e branco)
+        const temPiloto = !!eq.piloto_nome;
+        const borderColor = temPiloto ? '#ff0000' : '#cc0000';
+        const piloIcon = temPiloto ? '🏎️' : '⚠️';
+        const piloColor = temPiloto ? '#00ff00' : '#ff6666';
+        
+        const pitCard = document.createElement('div');
+        pitCard.className = 'pit-card-admin';
+        pitCard.style.cssText = `
+            background: linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 100%);
+            border: 3px solid ${borderColor};
+            border-radius: 0px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 8px 24px rgba(255,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        `;
+        
+        pitCard.onmouseover = () => {
+            pitCard.style.transform = 'translateY(-4px)';
+            pitCard.style.boxShadow = '0 12px 36px rgba(255,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2)';
+            pitCard.style.borderColor = '#ff3333';
+        };
+        
+        pitCard.onmouseout = () => {
+            pitCard.style.transform = 'translateY(0)';
+            pitCard.style.boxShadow = '0 8px 24px rgba(255,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)';
+            pitCard.style.borderColor = borderColor;
+        };
+        
+        // Número do pit grande no topo
+        pitCard.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid rgba(255,0,0,0.3); padding-bottom: 12px;">
+                <div>
+                    <div style="font-size: 11px; color: #ff0000; font-weight: bold; letter-spacing: 2px;">PIT</div>
+                    <div style="font-size: 32px; font-weight: bold; color: rgba(255,255,255,0.3); font-family: 'Courier New'; line-height: 1;">
+                        ${String(idx + 1).padStart(2, '0')}
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 10px; color: #ff0000; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px;">QUAL</div>
+                    <div style="font-size: 28px; font-weight: bold; color: #ff0000; font-family: 'Courier New';">
+                        ${eq.ordem_qualificacao ? String(eq.ordem_qualificacao).padStart(2, '0') : '—'}
+                    </div>
+                </div>
+            </div>
+            
+            <div style="padding: 8px 0;">
+                <div style="font-size: 11px; color: #ff0000; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px; text-transform: uppercase;">EQUIPE</div>
+                <div style="font-size: 22px; font-weight: bold; color: #fff; text-shadow: 0 0 15px rgba(255,0,0,0.4); line-height: 1.2;">
+                    ${eq.equipe_nome}
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div style="background: rgba(255,0,0,0.1); padding: 10px; border-left: 3px solid ${borderColor}; border-radius: 0;">
+                    <div style="font-size: 10px; color: #ff0000; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px;">PILOTO</div>
+                    <div style="font-size: 18px; font-weight: bold; color: ${piloColor};">${piloIcon}</div>
+                    <div style="font-size: 12px; color: ${piloColor}; margin-top: 4px; word-break: break-word;">
+                        ${eq.piloto_nome ? eq.piloto_nome.split(' ')[0] : 'VAZIO'}
+                    </div>
+                </div>
+                
+                <div style="background: rgba(255,0,0,0.1); padding: 10px; border-left: 3px solid ${borderColor}; border-radius: 0;">
+                    <div style="font-size: 10px; color: #ff0000; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px;">STATUS</div>
+                    <div style="font-size: 12px; font-weight: bold; color: #fff; background: rgba(255,0,0,0.3); padding: 6px 8px; border-radius: 2px; text-align: center;">
+                        ${eq.status.toUpperCase()}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        gridContainer.appendChild(pitCard);
+    });
+    
+    if (container) {
+        console.log('[TABELA] Mostrando container');
+        container.style.display = 'block';
+    } else {
+        console.error('[TABELA] Elemento containerEquipesPilotos não encontrado!');
+    }
+}
+
+// Função para mostrar pits em um modal (para pilotos e equipes)
+async function mostrarPitsEtapa(etapaId) {
+    console.log('[PITS MODAL] Carregando pits para etapa:', etapaId);
+    
+    try {
+        // Primeiro, obter info da etapa para saber o status
+        const eventoResp = await fetch(`/api/etapas/${etapaId}/evento`);
+        const eventoData = await eventoResp.json();
+        
+        if (eventoData.sucesso && eventoData.evento) {
+            const etapaStatus = eventoData.evento.etapa.status;
+            
+            if (etapaStatus === 'em_andamento' || etapaStatus === 'batalhas') {
+                console.log('[PITS MODAL] Etapa em andamento, mostrando evento ao vivo');
+                mostrarEventoAoVivo(etapaId);
+                return;
+            } else if (etapaStatus === 'agendada') {
+                console.log('[PITS MODAL] Etapa agendada, mostrando equipes procurando piloto');
+                mostrarEquipesProcurandoPiloto(etapaId, eventoData.evento.etapa);
+                return;
+            }
+        }
+        
+        // Caso contrário, carregar view estática de qualificação
+        const resp = await fetch(`/api/admin/etapas/${etapaId}/equipes-pilotos`);
+        const data = await resp.json();
+        
+        if (!data.sucesso || !data.equipes) {
+            console.error('[PITS MODAL] Erro ao carregar pits');
+            return;
+        }
+        
+        // Criar modal
+        const modalDiv = document.createElement('div');
+        modalDiv.className = 'modal fade';
+        modalDiv.id = 'modalPitsEtapa';
+        modalDiv.tabIndex = '-1';
+        modalDiv.setAttribute('data-bs-backdrop', 'static');
+        modalDiv.setAttribute('data-bs-keyboard', 'false');
+        modalDiv.style.zIndex = '100000';
+        
+        // Grid de pits com tema vermelho, preto e branco
+        let pitsHtml = '<div style="max-height: 70vh; overflow-y: auto; padding: 10px 0;">';
+        
+        data.equipes.forEach((eq, idx) => {
+            const temPiloto = !!eq.piloto_nome;
+            const borderColor = temPiloto ? '#ff0000' : '#cc0000';
+            const piloIcon = temPiloto ? '🏎️' : '⚠️';
+            const piloColor = temPiloto ? '#00ff00' : '#ff6666';
+            const ordemQualif = eq.ordem_qualificacao ? String(eq.ordem_qualificacao).padStart(2, '0') : '—';
+            
+            pitsHtml += `
+                <div style="
+                    background: linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 100%);
+                    border: 3px solid ${borderColor};
+                    border-radius: 0px;
+                    padding: 18px;
+                    margin-bottom: 15px;
+                    position: relative;
+                    box-shadow: 0 8px 24px rgba(255,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 2px solid rgba(255,0,0,0.3);">
+                        <div>
+                            <div style="font-size: 10px; color: #ff0000; font-weight: bold; letter-spacing: 2px;">PIT</div>
+                            <div style="font-size: 28px; font-weight: bold; color: rgba(255,255,255,0.3); font-family: 'Courier New';">
+                                ${String(idx + 1).padStart(2, '0')}
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 10px; color: #ff0000; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px;">QUAL</div>
+                            <div style="font-size: 26px; font-weight: bold; color: #ff0000; font-family: 'Courier New';">
+                                ${ordemQualif}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="padding: 8px 0; margin-bottom: 12px;">
+                        <div style="font-size: 10px; color: #ff0000; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px; text-transform: uppercase;">EQUIPE</div>
+                        <div style="font-size: 20px; font-weight: bold; color: #fff; text-shadow: 0 0 15px rgba(255,0,0,0.4);">
+                            ${eq.equipe_nome}
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div style="background: rgba(255,0,0,0.1); padding: 10px; border-left: 3px solid ${borderColor}; border-radius: 0;">
+                            <div style="font-size: 10px; color: #ff0000; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px;">PILOTO</div>
+                            <div style="font-size: 18px; font-weight: bold; color: ${piloColor};">${piloIcon}</div>
+                            <div style="font-size: 12px; color: ${piloColor}; margin-top: 4px; word-break: break-word;">
+                                ${eq.piloto_nome || 'VAZIO'}
+                            </div>
+                        </div>
+                        
+                        <div style="background: rgba(255,0,0,0.1); padding: 10px; border-left: 3px solid ${borderColor}; border-radius: 0;">
+                            <div style="font-size: 10px; color: #ff0000; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px;">STATUS</div>
+                            <div style="font-size: 12px; font-weight: bold; color: #fff; background: rgba(255,0,0,0.3); padding: 6px 8px; border-radius: 2px; text-align: center;">
+                                ${eq.status.toUpperCase()}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        pitsHtml += '</div>';
+        
+        modalDiv.innerHTML = `
+            <div class="modal-dialog modal-fullscreen" style="z-index: 100000;">
+                <div class="modal-content" style="background: #000; border: 2px solid #ff0000; z-index: 100000;">
+                    <div class="modal-header" style="background: linear-gradient(90deg, #1a0000 0%, #330000 100%); border-bottom: 2px solid #ff0000;">
+                        <h5 class="modal-title" style="color: #ff0000; font-weight: bold; letter-spacing: 2px; font-size: 24px;">
+                            🏁 PITS - ETAPA
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" style="padding: 30px; background: #0a0a0a;">
+                        ${pitsHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modalDiv);
+        const modal = new bootstrap.Modal(modalDiv);
+        modal.show();
+        
+        // Ajustar z-index do backdrop
+        const backdrop = document.querySelector('.modal-backdrop');
+        if (backdrop) {
+            backdrop.style.zIndex = '99999';
+        }
+        
+        // Remover do DOM ao fechar
+        modalDiv.addEventListener('hidden.bs.modal', () => {
+            modalDiv.remove();
+        });
+        
+    } catch (e) {
+        console.error('[PITS MODAL] Erro:', e);
+        mostrarToast('Erro ao carregar pits', 'error');
+    }
+}
+
+function exibirSemEtapaHoje() {
+    // Verificar se os elementos existem
+    const infoElement = document.getElementById('infoEtapaHoje');
+    const semEtapaElement = document.getElementById('semEtapaHoje');
+    const grupoEtapaElement = document.getElementById('grupoEtapa');
+    const botaoElement = document.getElementById('botaoIniciarQualificacao');
+    
+    // Se nenhum elemento foi encontrado, sair silenciosamente
+    if (!infoElement && !semEtapaElement && !grupoEtapaElement && !botaoElement) {
+        console.log('[ETAPA HOJE] Elementos não encontrados - script rodando em página diferente');
+        return;
+    }
+    
+    // Esconder informações
+    if (infoElement) infoElement.style.display = 'none';
+    if (semEtapaElement) semEtapaElement.style.display = 'block';
+    if (grupoEtapaElement) grupoEtapaElement.style.display = 'none';
+    if (botaoElement) botaoElement.style.display = 'none';
+    
+    console.log('[ETAPA HOJE] Nenhuma etapa agendada para hoje');
+}
+
+// ==================== EQUIPES PROCURANDO PILOTO - ETAPA AGENDADA ====================
+
+async function mostrarEquipesProcurandoPiloto(etapaId, etapaInfo) {
+    console.log('[EQUIPES PROCURANDO] Carregando equipes procurando piloto:', etapaId);
+    
+    try {
+        const resp = await fetch(`/api/etapas/${etapaId}/equipes-procurando-piloto`);
+        const data = await resp.json();
+        console.log('[EQUIPES PROCURANDO] Dados recebidos:', data);
+        
+        if (!data.sucesso || !Array.isArray(data.procurando_piloto) || data.procurando_piloto.length === 0) {
+            console.log('[EQUIPES PROCURANDO] Sem equipes procurando piloto');
+            return;
+        }
+        
+        // Criar modal com equipes procurando piloto
+        const modalDiv = document.createElement('div');
+        modalDiv.className = 'modal fade';
+        modalDiv.id = 'modalEquipesProcurando';
+        modalDiv.tabIndex = '-1';
+        modalDiv.setAttribute('data-bs-backdrop', 'static');
+        modalDiv.setAttribute('data-bs-keyboard', 'false');
+        modalDiv.style.zIndex = '100000';
+        
+        // Grid de equipes procurando piloto
+        let equipasHtml = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; padding: 10px 0;">';
+        
+        data.procurando_piloto.forEach((equipe, idx) => {
+            const carroInfo = equipe.carro_ativo ? `🏎️ ${equipe.carro_ativo.modelo}` : 'Sem carro ativo';
+            
+            equipasHtml += `
+                <div style="
+                    background: linear-gradient(180deg, #f0f0f0 0%, #e8e8e8 100%);
+                    border: 3px solid #dc143c;
+                    border-radius: 8px;
+                    padding: 20px;
+                    position: relative;
+                    box-shadow: 0 8px 24px rgba(220, 20, 60, 0.2);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 2px solid #dc143c;">
+                        <div>
+                            <div style="font-size: 11px; color: #dc143c; font-weight: bold; letter-spacing: 1px;">EQUIPE</div>
+                            <div style="font-size: 20px; font-weight: bold; color: #000; line-height: 1;">
+                                ${equipe.equipe_nome}
+                            </div>
+                        </div>
+                        <div style="background: #dc143c; color: white; padding: 6px 12px; border-radius: 4px; text-align: center;">
+                            <div style="font-size: 11px; font-weight: bold;">🔍 PROCURANDO</div>
+                        </div>
+                    </div>
+                    
+                    <div style="padding: 8px 0;">
+                        <div style="font-size: 10px; color: #dc143c; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px;">CARRO</div>
+                        <div style="font-size: 16px; font-weight: bold; color: #000;">
+                            ${carroInfo}
+                        </div>
+                    </div>
+                    
+                    <div style="background: rgba(220, 20, 60, 0.1); padding: 12px; border-left: 3px solid #dc143c; border-radius: 2px; margin-bottom: 12px;">
+                        <div style="font-size: 10px; color: #dc143c; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px;">TIPO</div>
+                        <div style="font-size: 13px; color: #000;">
+                            ${equipe.tipo_participacao === 'precisa_piloto' ? '🔍 Precisa de piloto' : '✓ Completa'}
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-danger" onclick="inscreverPilotoEmEquipe('${etapaId}', '${equipe.equipe_id}', '${equipe.equipe_nome}')" style="font-weight: bold; width: 100%;">
+                        ✓ ME INSCREVER
+                    </button>
+                </div>
+            `;
+        });
+        
+        equipasHtml += '</div>';
+        
+        modalDiv.innerHTML = `
+            <div class="modal-dialog modal-fullscreen" style="z-index: 100000;">
+                <div class="modal-content" style="background: #fff; border: 2px solid #dc143c; z-index: 100000;">
+                    <div class="modal-header" style="background: linear-gradient(90deg, #1a1a1a 0%, #333 100%); border-bottom: 3px solid #dc143c;">
+                        <div>
+                            <h5 class="modal-title" style="color: #dc143c; font-weight: bold; letter-spacing: 2px; font-size: 24px; margin: 0;">
+                                🏁 EQUIPES PROCURANDO PILOTO
+                            </h5>
+                            <small style="color: #ccc; display: block; margin-top: 5px;">
+                                ${etapaInfo.nome} • ${etapaInfo.data} • ${etapaInfo.hora}
+                            </small>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" style="filter: brightness(0) invert(1);"></button>
+                    </div>
+                    <div class="modal-body" style="padding: 30px; background: #fafafa;">
+                        <div style="margin-bottom: 20px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                            <strong style="color: #856404;">🔍 ${data.procurando_piloto.length} EQUIPE(S) PROCURANDO PILOTO</strong> - Clique em ME INSCREVER para participar
+                        </div>
+                        ${equipasHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modalDiv);
+        const modal = new bootstrap.Modal(modalDiv);
+        modal.show();
+        
+        // Ajustar z-index do backdrop
+        const backdrop = document.querySelector('.modal-backdrop');
+        if (backdrop) {
+            backdrop.style.zIndex = '99999';
+        }
+        
+        // Remover do DOM ao fechar
+        modalDiv.addEventListener('hidden.bs.modal', () => {
+            modalDiv.remove();
+        });
+        
+    } catch (e) {
+        console.error('[EQUIPES PROCURANDO] Erro:', e);
+    }
+}
+
+// ==================== PILOTOS CONFIRMADOS - ETAPA AGENDADA ====================
+
+async function mostrarPilotosConfirmadosEtapa(etapaId, etapaInfo) {
+    console.log('[PILOTOS CONFIRMADOS] Carregando pilotos confirmados para etapa agendada:', etapaId);
+    
+    try {
+        const resp = await fetch(`/api/etapas/${etapaId}/pilotos-confirmacao`, {
+            credentials: 'include'
+        });
+        
+        const data = await resp.json();
+        console.log('[PILOTOS CONFIRMADOS] Dados recebidos:', data);
+        
+        if (!data.sucesso || !Array.isArray(data.pilotos) || data.pilotos.length === 0) {
+            console.log('[PILOTOS CONFIRMADOS] Sem pilotos ainda');
+            return;
+        }
+        
+        // Agrupar pilotos por equipe
+        const equipes = {};
+        data.pilotos.forEach(piloto => {
+            if (!equipes[piloto.equipe_id]) {
+                equipes[piloto.equipe_id] = {
+                    equipe_id: piloto.equipe_id,
+                    equipe_nome: piloto.equipe_nome,
+                    pilotos: []
+                };
+            }
+            equipes[piloto.equipe_id].pilotos.push(piloto);
+        });
+        
+        // Converter em array e ordenar
+        const equipesArray = Object.values(equipes).sort((a, b) => 
+            a.equipe_nome.localeCompare(b.equipe_nome)
+        );
+        
+        // Grid de equipes com pilotos
+        let equipasHtml = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px; padding: 10px 0;">';
+        
+        equipesArray.forEach((equipe, eIdx) => {
+            const pilotosCardHtml = equipe.pilotos.map((piloto, pIdx) => {
+                const nomePartes = piloto.piloto_nome ? piloto.piloto_nome.split(' ') : ['Desconhecido'];
+                const primeiroNome = nomePartes[0];
+                const sobrenome = nomePartes.length > 1 ? nomePartes[nomePartes.length - 1] : '';
+                
+                return `
+                    <div style="background: rgba(220, 20, 60, 0.05); padding: 12px; border-left: 3px solid #28a745; border-radius: 2px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-size: 12px; font-weight: bold; color: #000;">
+                                    #${String(pIdx + 1).padStart(2, '0')} ${primeiroNome} <span style="font-size: 11px;">${sobrenome}</span>
+                                </div>
+                                ${piloto.carro_modelo ? `<div style="font-size: 11px; color: #666;">🏎️ ${piloto.carro_modelo}</div>` : ''}
+                            </div>
+                            <div style="background: #28a745; color: white; padding: 4px 10px; border-radius: 3px; font-size: 11px; font-weight: bold;">
+                                ✓ CONFIRMADO
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            equipasHtml += `
+                <div style="
+                    background: linear-gradient(180deg, #f0f0f0 0%, #e8e8e8 100%);
+                    border: 3px solid #dc143c;
+                    border-radius: 8px;
+                    padding: 20px;
+                    position: relative;
+                    box-shadow: 0 8px 24px rgba(220, 20, 60, 0.2);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 2px solid #dc143c;">
+                        <div>
+                            <div style="font-size: 11px; color: #dc143c; font-weight: bold; letter-spacing: 1px;">EQUIPE</div>
+                            <div style="font-size: 20px; font-weight: bold; color: #000; line-height: 1;">
+                                ${equipe.equipe_nome}
+                            </div>
+                        </div>
+                        <div style="background: #dc143c; color: white; padding: 6px 12px; border-radius: 4px; text-align: center;">
+                            <div style="font-size: 11px; font-weight: bold;">PILOTOS</div>
+                            <div style="font-size: 22px; font-weight: bold;">${equipe.pilotos.length}</div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        ${pilotosCardHtml}
+                    </div>
+                </div>
+            `;
+        });
+        
+        equipasHtml += '</div>';
+        
+        // Criar modal com equipes e seus pilotos
+        const modalDiv = document.createElement('div');
+        modalDiv.className = 'modal fade';
+        modalDiv.id = 'modalPilotosConfirmados';
+        modalDiv.tabIndex = '-1';
+        modalDiv.setAttribute('data-bs-backdrop', 'static');
+        modalDiv.setAttribute('data-bs-keyboard', 'false');
+        modalDiv.style.zIndex = '100000';
+        
+        modalDiv.innerHTML = `
+            <div class="modal-dialog modal-fullscreen" style="z-index: 100000;">
+                <div class="modal-content" style="background: #fff; border: 2px solid #dc143c; z-index: 100000;">
+                    <div class="modal-header" style="background: linear-gradient(90deg, #1a1a1a 0%, #333 100%); border-bottom: 3px solid #dc143c;">
+                        <div>
+                            <h5 class="modal-title" style="color: #dc143c; font-weight: bold; letter-spacing: 2px; font-size: 24px; margin: 0;">
+                                🏁 PILOTOS CONFIRMADOS
+                            </h5>
+                            <small style="color: #ccc; display: block; margin-top: 5px;">
+                                ${etapaInfo.nome} • ${etapaInfo.data} • ${etapaInfo.hora}
+                            </small>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" style="filter: brightness(0) invert(1);"></button>
+                    </div>
+                    <div class="modal-body" style="padding: 30px; background: #fafafa;">
+                        <div style="margin-bottom: 20px; padding: 15px; background: #e8f5e9; border-left: 4px solid #28a745; border-radius: 4px;">
+                            <strong style="color: #28a745;">✓ ${equipesArray.length} EQUIPE(S) COM PILOTOS CONFIRMADO(S) • Total: ${data.pilotos.length} piloto(s)</strong>
+                        </div>
+                        ${equipasHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modalDiv);
+        const modal = new bootstrap.Modal(modalDiv);
+        modal.show();
+        
+        // Ajustar z-index do backdrop
+        const backdrop = document.querySelector('.modal-backdrop');
+        if (backdrop) {
+            backdrop.style.zIndex = '99999';
+        }
+        
+        // Remover do DOM ao fechar
+        modalDiv.addEventListener('hidden.bs.modal', () => {
+            modalDiv.remove();
+        });
+        
+    } catch (e) {
+        console.error('[PILOTOS CONFIRMADOS] Erro:', e);
+    }
+}
+
+// ==================== INSCRIÇÃO DE PILOTO EM EQUIPE ====================
+
+async function inscreverPilotoEmEquipe(etapaId, equipeId, equipeName) {
+    console.log('[INSCRICAO] Inscrevendo piloto na equipe:', equipeName);
+    
+    try {
+        const resp = await fetch(`/api/etapas/participar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                etapa_id: etapaId,
+                equipe_id: equipeId
+            }),
+            credentials: 'include'
+        });
+        
+        const data = await resp.json();
+        console.log('[INSCRICAO] Resposta:', data);
+        
+        if (data.sucesso) {
+            console.log('[INSCRICAO] ✓ Piloto inscrito com sucesso!');
+            // Fechar modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('modalEquipesProcurando'));
+            if (modal) modal.hide();
+            // Mostrar modal de sucesso
+            setTimeout(() => {
+                // Criar modal de sucesso
+                const successModal = document.createElement('div');
+                successModal.className = 'modal fade';
+                successModal.id = 'modalInscricaoSucesso';
+                successModal.innerHTML = `
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header bg-success text-white">
+                                <h5 class="modal-title">✓ Inscrição Realizada!</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>Você foi inscrito com sucesso na equipe <strong>${equipeName}</strong>!</p>
+                                <p>Aguarde a confirmação do administrador.</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-success" data-bs-dismiss="modal">OK</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(successModal);
+                const modalInstance = new bootstrap.Modal(successModal);
+                modalInstance.show();
+                // Remover modal do DOM ao fechar
+                successModal.addEventListener('hidden.bs.modal', () => {
+                    successModal.remove();
+                });
+            }, 300);
+        } else {
+            console.error('[INSCRICAO] ✗ Erro:', data.erro);
+            // Mostrar modal de erro
+            setTimeout(() => {
+                // Criar modal de erro
+                const errorModal = document.createElement('div');
+                errorModal.className = 'modal fade';
+                errorModal.id = 'modalInscricaoErro';
+                errorModal.innerHTML = `
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header bg-danger text-white">
+                                <h5 class="modal-title">✗ Erro na Inscrição</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>Erro: ${data.erro || 'Falha ao se inscrever'}</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">OK</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(errorModal);
+                const modalInstance = new bootstrap.Modal(errorModal);
+                modalInstance.show();
+                // Remover modal do DOM ao fechar
+                errorModal.addEventListener('hidden.bs.modal', () => {
+                    errorModal.remove();
+                });
+            }, 300);
+        }
+    } catch (e) {
+        console.error('[INSCRICAO] Erro:', e);
+        alert('Erro ao se inscrever: ' + e.message);
+    }
+}
+
+// Carregar etapa quando o admin abre a página
+console.log('[QUALIFICACAO.JS] Script carregado! Aguardando DOMContentLoaded...');
+
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('[QUALIFICACAO.JS] DOMContentLoaded disparado!');
+    
+    // Verificar se estamos na página correta (admin.html)
+    const infoElement = document.getElementById('infoEtapaHoje');
+    if (infoElement) {
+        console.log('[QUALIFICACAO.JS] Página admin detectada - Carregando etapa de hoje...');
+        carregarEtapaHoje();
+    } else {
+        console.log('[QUALIFICACAO.JS] Página diferente detectada - Pulando carregamento de etapa');
+    }
+    
+    // Também quando clicar na aba de qualificacao (se existir - está em admin.html)
+    const tab = document.querySelector('[href="#qualificacao"]');
+    if (tab) {
+        console.log('[QUALIFICACAO.JS] Aba de qualificacao encontrada');
+        tab.addEventListener('click', () => {
+            console.log('[QUALIFICACAO.JS] Clicou na aba - Recarregando etapa...');
+            setTimeout(() => carregarEtapaHoje(), 100);
+        });
+    }
+});
+
+// ==================== EVENTO EM TEMPO REAL ====================
+
+let intervaloEventoAtual = null;
+let eventos = {
+    ativo: false,
+    etapaId: null,
+    dados: null,
+    ultimaAtualizacao: null
+};
+
+async function carregarEvento(etapaId) {
+    console.log('[EVENTO] Carregando evento para etapa:', etapaId);
+    
+    try {
+        const resp = await fetch(`/api/etapas/${etapaId}/evento`);
+        const data = await resp.json();
+        
+        if (data.sucesso && data.evento) {
+            console.log('[EVENTO] Dados recebidos:', data.evento);
+            eventos.dados = data.evento;
+            eventos.ultimaAtualizacao = new Date();
+            return data.evento;
+        } else {
+            console.error('[EVENTO] Erro na resposta:', data.erro);
+            return null;
+        }
+    } catch (e) {
+        console.error('[EVENTO] Erro ao carregar evento:', e);
+        return null;
+    }
+}
+
+async function mostrarEventoAoVivo(etapaId) {
+    console.log('[EVENTO AO VIVO] Iniciando visualização do evento:', etapaId);
+    
+    // Carregar dados iniciais
+    const evento = await carregarEvento(etapaId);
+    if (!evento) {
+        mostrarToast('Erro ao carregar evento', 'error');
+        return;
+    }
+    
+    // Registrar entrada
+    let usuarioTipo = 'admin';
+    let usuarioId = 'admin';
+    let usuarioNome = 'Administrador';
+    
+    // Verificar se é equipe ou piloto
+    const equipeId = localStorage.getItem('equipe_id');
+    const pilotoId = localStorage.getItem('piloto_id');
+    
+    if (equipeId) {
+        usuarioTipo = 'equipe';
+        usuarioId = equipeId;
+        usuarioNome = 'Equipe ' + localStorage.getItem('equipe_nome');
+    } else if (pilotoId) {
+        usuarioTipo = 'piloto';
+        usuarioId = pilotoId;
+        usuarioNome = localStorage.getItem('piloto_nome');
+    }
+    
+    await fetch(`/api/etapas/${etapaId}/entrar-evento`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            tipo: usuarioTipo,
+            id: usuarioId,
+            nome: usuarioNome
+        })
+    });
+    
+    // Criar modal do evento
+    const modalDiv = document.createElement('div');
+    modalDiv.className = 'modal fade';
+    modalDiv.id = 'modalEventoAoVivo';
+    modalDiv.tabIndex = '-1';
+    modalDiv.setAttribute('data-bs-backdrop', 'static');
+    modalDiv.setAttribute('data-bs-keyboard', 'false');
+    modalDiv.style.zIndex = '100000';  // Acima do banner (9999) e botão (9998)
+    
+    modalDiv.innerHTML = `
+        <div class="modal-dialog modal-fullscreen" style="z-index: 100000;">
+            <div class="modal-content" style="background: #000; border: 2px solid #ff0000;">
+                <div class="modal-header" style="background: linear-gradient(90deg, #1a0000 0%, #330000 100%); border-bottom: 3px solid #ff0000;">
+                    <div>
+                        <h5 class="modal-title" style="color: #ff0000; font-weight: bold; letter-spacing: 2px; font-size: 24px;">
+                            🏁 ${evento.etapa.campeonato_nome} - ETAPA ${evento.etapa.numero}
+                        </h5>
+                        <small style="color: #ccc;">Série: ${evento.etapa.serie} | Status: <span style="color: #00ff00; font-weight: bold;">${evento.etapa.status.toUpperCase().replace('_', ' ')}</span></small>
+                    </div>
+                    <div style="text-align: right; margin-left: auto;">
+                        <div style="color: #999; font-size: 12px;">Atualizado: <span id="ultimaAtualizacao">agora</span></div>
+                    </div>
+                </div>
+                <div class="modal-body" style="padding: 20px; background: #0a0a0a; overflow-x: auto; max-height: 75vh; overflow-y: auto;">
+                    <div id="containerEventoPits" style="min-width: 100%;">
+                        <!-- Tabela de pits será renderizada aqui -->
+                    </div>
+                </div>
+                <div class="modal-footer" style="background: #1a0000; border-top: 2px solid #ff0000;">
+                    <small style="color: #999;">Total de equipes: ${evento.total_equipes}</small>
+                    ${evento.etapa.status === 'batalhas' && usuarioTipo !== 'admin' ? `
+                        <button type="button" class="btn btn-info me-2" onclick="verResultadoQualificacao('${etapaId}')">Ver Resultado Qualify</button>
+                        <button type="button" class="btn btn-warning" onclick="entrarBatalhas('${etapaId}')">Ir para Batalhas</button>
+                    ` : ''}
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modalDiv);
+    const modal = new bootstrap.Modal(modalDiv, { backdrop: 'static', keyboard: false });
+    modal.show();
+    
+    // Ajustar z-index do backdrop criado pelo Bootstrap
+    const backdrop = document.querySelector('.modal-backdrop');
+    if (backdrop) {
+        backdrop.style.zIndex = '99999';
+    }
+    
+    // Renderizar pits iniciais
+    renderizarPitsEvento(evento.equipes, evento.etapa);
+    
+    // Iniciar auto-refresh
+    eventos.ativo = true;
+    eventos.etapaId = etapaId;
+    
+    if (intervaloEventoAtual) clearInterval(intervaloEventoAtual);
+    
+    intervaloEventoAtual = setInterval(async () => {
+        const eventoAtualizado = await carregarEvento(etapaId);
+        if (eventoAtualizado && eventoAtualizado.equipes) {
+            renderizarPitsEvento(eventoAtualizado.equipes, eventoAtualizado.etapa);
+            atualizarTimestampEvento();
+        }
+    }, 2000); // Atualiza a cada 2 segundos
+    
+    // Limpar ao fechar modal
+    modalDiv.addEventListener('hidden.bs.modal', () => {
+        console.log('[EVENTO] Fechando evento ao vivo');
+        eventos.ativo = false;
+        if (intervaloEventoAtual) clearInterval(intervaloEventoAtual);
+        modalDiv.remove();
+        
+        // Restaurar botão flutuante de notificação
+        if (typeof mostrarBotaoFlutante === 'function') {
+            mostrarBotaoFlutante();
+        }
+    });
+}
+
+function renderizarPitsEvento(equipes, etapaInfo = null) {
+    console.log('[EVENTO RENDER] Renderizando', equipes.length, 'equipes em tabela');
+    
+    const container = document.getElementById('containerEventoPits');
+    if (!container) return;
+
+    // Determinar tipo de usuário
+    let isAdmin = true;
+    const equipeId = localStorage.getItem('equipe_id');
+    const pilotoId = localStorage.getItem('piloto_id');
+    
+    if (equipeId || pilotoId) {
+        isAdmin = false;  // Não é admin, é equipe ou piloto
+    }
+
+    // Ordenar equipes - se qualificação finalizada, ordenar por pontuação
+    let equipesOrdenadas;
+    const qualificacaoFinalizada = etapaInfo?.qualificacao_finalizada || false;
+    
+    if (qualificacaoFinalizada) {
+        // Ordenar por pontuação total (desc) + nota linha (desc)
+        equipesOrdenadas = [...equipes].sort((a, b) => {
+            const totalA = (a.nota_linha || 0) + (a.nota_angulo || 0) + (a.nota_estilo || 0);
+            const totalB = (b.nota_linha || 0) + (b.nota_angulo || 0) + (b.nota_estilo || 0);
+            
+            // Primeiro critério: total decrescente
+            if (totalB !== totalA) {
+                return totalB - totalA;
+            }
+            
+            // Segundo critério: nota linha decrescente
+            const linhaA = a.nota_linha || 0;
+            const linhaB = b.nota_linha || 0;
+            return linhaB - linhaA;
+        });
+        console.log('[EVENTO RENDER] Qualificação finalizada - ordenando por pontuação');
+    } else {
+        // Ordenar por ordem_qualificacao
+        equipesOrdenadas = [...equipes].sort((a, b) => {
+            const ordemA = a.ordem_qualificacao || Infinity;
+            const ordemB = b.ordem_qualificacao || Infinity;
+            return ordemA - ordemB;
+        });
+        console.log('[EVENTO RENDER] Qualificação em andamento - ordenando por ordem_qualificacao');
+    }
+
+    // Criar tabela com scroll horizontal se necessário
+    let html = `
+        <table style="width: 100%; border-collapse: collapse; color: #fff; font-family: Arial, sans-serif;">
+            <thead style="position: sticky; top: 0;">
+                <tr style="background: linear-gradient(90deg, #1a0000 0%, #330000 100%); border: 2px solid #ff0000;">
+                    <th style="padding: 14px 10px; text-align: center; border: 1px solid #ff0000; color: #ff0000; font-weight: bold; min-width: 60px;">${qualificacaoFinalizada ? 'POS' : 'QUAL'}</th>
+                    <th style="padding: 14px 10px; text-align: left; border: 1px solid #ff0000; color: #ff0000; font-weight: bold; min-width: 200px;">EQUIPE</th>
+                    <th style="padding: 14px 10px; text-align: left; border: 1px solid #ff0000; color: #ff0000; font-weight: bold; min-width: 150px;">PILOTO</th>
+                    <th style="padding: 14px 10px; text-align: center; border: 1px solid #ff0000; color: #ff0000; font-weight: bold; min-width: 100px;">NOTA LINHA</th>
+                    <th style="padding: 14px 10px; text-align: center; border: 1px solid #ff0000; color: #ff0000; font-weight: bold; min-width: 100px;">NOTA ÂNGULO</th>
+                    <th style="padding: 14px 10px; text-align: center; border: 1px solid #ff0000; color: #ff0000; font-weight: bold; min-width: 100px;">NOTA ESTILO</th>
+                    <th style="padding: 14px 10px; text-align: center; border: 1px solid #ff0000; color: #ff0000; font-weight: bold; min-width: 100px;">TOTAL</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    equipesOrdenadas.forEach((eq, idx) => {
+        const ordemQualif = eq.ordem_qualificacao ? String(eq.ordem_qualificacao).padStart(2, '0') : '—';
+        const pilotoNome = eq.piloto_nome ? eq.piloto_nome : '⚠️ SEM PILOTO';
+        const notaLinha = eq.nota_linha || 0;
+        const notaAngulo = eq.nota_angulo || 0;
+        const notaEstilo = eq.nota_estilo || 0;
+        const somaNotas = parseInt(notaLinha) + parseInt(notaAngulo) + parseInt(notaEstilo);
+        
+        // Se volta_status = 'em_andamento', usar background branco para destacar
+        const ehProximo = eq.volta_status === 'em_andamento';
+        const backgroundColor = ehProximo 
+            ? 'rgba(255, 255, 255, 0.1)' 
+            : (idx % 2 === 0 ? 'rgba(0,0,0,0.5)' : 'rgba(255,0,0,0.08)');
+        
+        const borderColor = ehProximo ? '2px solid #ffffff' : '1px solid rgba(255,0,0,0.2)';
+        const statusDisplay = ehProximo ? '<span style="color: #ffffff; font-weight: bold; font-size: 12px;">▶ ANDANDO</span>' : '';
+        
+        // Inputs desabilitados se não for admin
+        const disabledAttr = !isAdmin ? 'disabled' : '';
+        const inputBg = !isAdmin ? 'rgba(100,100,100,0.3)' : 'rgba(0,0,0,0.7)';
+        const inputCursor = !isAdmin ? 'not-allowed' : 'pointer';
+        
+        html += `
+            <tr style="background: ${backgroundColor}; border-bottom: ${borderColor}; transition: background 0.3s ease;" onmouseover="this.style.background='rgba(255,0,0,0.15)'" onmouseout="this.style.background='${backgroundColor}'">
+                <td style="padding: 12px 10px; border: 1px solid rgba(255,0,0,0.2); color: #ff0000; font-weight: bold; text-align: center; font-size: 18px; font-family: 'Courier New';">
+                    ${ordemQualif}
+                    ${statusDisplay}
+                </td>
+                <td style="padding: 12px 10px; border: 1px solid rgba(255,0,0,0.2); font-weight: bold; font-size: 15px;">${eq.equipe_nome}</td>
+                <td style="padding: 12px 10px; border: 1px solid rgba(255,0,0,0.2); font-size: 14px; color: #ccc;">${pilotoNome}</td>
+                <td style="padding: 12px 10px; border: 1px solid rgba(255,0,0,0.2); text-align: center;">
+                    <input type="number" value="${notaLinha || ''}" placeholder="0" min="0" max="40" 
+                        ${disabledAttr}
+                        style="width: 80px; padding: 6px 4px; border: 1px solid #ff0000; background: ${inputBg}; color: #00ff00; text-align: center; font-weight: bold; border-radius: 3px; cursor: ${inputCursor};" 
+                        onchange="salvarNotaEquipe('${eq.equipe_id}', 'linha', this.value)">
+                </td>
+                <td style="padding: 12px 10px; border: 1px solid rgba(255,0,0,0.2); text-align: center;">
+                    <input type="number" value="${notaAngulo || ''}" placeholder="0" min="0" max="30" 
+                        ${disabledAttr}
+                        style="width: 80px; padding: 6px 4px; border: 1px solid #ff0000; background: ${inputBg}; color: #00ff00; text-align: center; font-weight: bold; border-radius: 3px; cursor: ${inputCursor};" 
+                        onchange="salvarNotaEquipe('${eq.equipe_id}', 'angulo', this.value)">
+                </td>
+                <td style="padding: 12px 10px; border: 1px solid rgba(255,0,0,0.2); text-align: center;">
+                    <input type="number" value="${notaEstilo || ''}" placeholder="0" min="0" max="30" 
+                        ${disabledAttr}
+                        style="width: 80px; padding: 6px 4px; border: 1px solid #ff0000; background: ${inputBg}; color: #00ff00; text-align: center; font-weight: bold; border-radius: 3px; cursor: ${inputCursor};" 
+                        onchange="salvarNotaEquipe('${eq.equipe_id}', 'estilo', this.value)">
+                </td>
+                <td style="padding: 12px 10px; border: 1px solid rgba(255,0,0,0.2); text-align: center;">
+                    <span style="color: #00ffff; font-weight: bold; font-size: 14px;">${somaNotas}</span>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+}
+
+function salvarNotaEquipe(equipeId, tipoNota, valor) {
+    if (!eventos.etapaId) return;
+    
+    // Verificar se é admin
+    const equipeId_check = localStorage.getItem('equipe_id');
+    const pilotoId_check = localStorage.getItem('piloto_id');
+    
+    if (equipeId_check || pilotoId_check) {
+        mostrarToast('❌ Apenas admins podem salvar notas', 'error');
+        return;
+    }
+    
+    const dados = {};
+    dados[`nota_${tipoNota}`] = parseInt(valor) || 0;
+    
+    console.log(`[NOTAS] Salvando ${tipoNota}:`, valor, 'para equipe:', equipeId);
+    
+    fetch(`/api/etapas/${eventos.etapaId}/notas/${equipeId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dados)
+    })
+    .then(r => {
+        if (r.status === 403) {
+            throw new Error('Apenas admins podem salvar notas');
+        }
+        return r.json();
+    })
+    .then(data => {
+        if (data.sucesso) {
+            console.log(`[NOTAS] ✓ ${tipoNota} salvo com sucesso`);
+            mostrarToast(`✓ Nota de ${tipoNota} salva`, 'success');
+        } else {
+            console.error('[NOTAS] Erro:', data.erro);
+            mostrarToast('❌ ' + data.erro, 'error');
+        }
+    })
+    .catch(e => {
+        console.error('[NOTAS] Erro na requisição:', e);
+        mostrarToast('❌ Erro ao salvar:', 'error');
+    });
+}
+
+function atualizarTimestampEvento() {
+    const el = document.getElementById('ultimaAtualizacao');
+    if (el) {
+        const agora = new Date();
+        el.textContent = agora.toLocaleTimeString('pt-BR');
+    }
+}
+
+// ===== FUNÇÕES PARA TABELA DE VOLTAS EDITÁVEL (ADMIN) =====
+
+async function atualizarTabelaVoltasAdmin() {
+    const etapaId = document.getElementById('etapaIdAtual').value;
+    if (!etapaId) {
+        mostrarToast('❌ Nenhuma etapa selecionada', 'error');
+        return;
+    }
+    
+    try {
+        console.log('[VOLTA ADMIN] Carregando dados da etapa:', etapaId);
+        const resp = await fetch(`/api/etapas/${etapaId}/evento`);
+        const data = await resp.json();
+        
+        if (data.sucesso && data.evento) {
+            renderizarVoltasAdmin(data.evento.equipes, data.evento.etapa);
+            mostrarToast('✓ Tabela atualizada', 'success');
+        } else {
+            mostrarToast('❌ Erro ao carregar dados', 'error');
+        }
+    } catch (e) {
+        console.error('[VOLTA ADMIN] Erro:', e);
+        mostrarToast('❌ Erro de conexão', 'error');
+    }
+}
+
+// Tornar função global para acesso do HTML
+window.atualizarTabelaVoltasAdmin = atualizarTabelaVoltasAdmin;
+
+async function carregarTabelaVoltasAdmin(etapaId) {
+    if (!etapaId) {
+        mostrarToast('❌ ID da etapa não fornecido', 'error');
+        return;
+    }
+    
+    try {
+        console.log('[VOLTA ADMIN] Carregando dados da etapa:', etapaId);
+        const resp = await fetch(`/api/etapas/${etapaId}/evento`);
+        const data = await resp.json();
+        
+        if (data.sucesso && data.evento) {
+            renderizarVoltasAdmin(data.evento.equipes, data.evento.etapa);
+            
+            // Mostrar o container da tabela
+            const containerVoltas = document.getElementById('containerVoltasAdmin');
+            if (containerVoltas) {
+                containerVoltas.style.display = 'block';
+            }
+            
+            // Garantir que a aba "Fazer Etapa" esteja ativa
+            const abaFazerEtapa = document.querySelector('a[href="#fazer-etapa"]');
+            if (abaFazerEtapa) {
+                abaFazerEtapa.click();
+                console.log('[VOLTA ADMIN] Aba "Fazer Etapa" garantida como ativa');
+            }
+            
+            const mensagem = data.evento.etapa.qualificacao_finalizada 
+                ? '✓ Qualificação finalizada! A tabela mostra os resultados.' 
+                : '✓ Interface de qualificação pronta! Você pode editar as notas das equipes.';
+            mostrarToast(mensagem, data.evento.etapa.qualificacao_finalizada ? 'info' : 'success');
+        } else {
+            mostrarToast('❌ Erro ao carregar dados', 'error');
+        }
+    } catch (e) {
+        console.error('[VOLTA ADMIN] Erro:', e);
+        mostrarToast('❌ Erro de conexão', 'error');
+    }
+}
+
+function renderizarVoltasAdmin(equipes, etapaInfo) {
+    console.log('[VOLTA ADMIN] Renderizando', equipes.length, 'equipes');
+    console.log('[VOLTA ADMIN] Ordem recebida:', equipes.map(e => ({ qual: e.ordem_qualificacao, equipe: e.equipe_nome })));
+    console.log('[VOLTA ADMIN] etapaInfo:', etapaInfo);
+    console.log('[VOLTA ADMIN] Qualificação finalizada:', etapaInfo?.qualificacao_finalizada);
+    
+    const container = document.getElementById('tabelaVoltasAdmin');
+    if (!container) return;
+
+    const qualificacaoFinalizada = etapaInfo?.qualificacao_finalizada || false;
+
+    // Se qualificação finalizada, ordenar por pontuação (total desc, linha desc)
+    let equipesOrdenadas = [...equipes];
+    if (qualificacaoFinalizada) {
+        equipesOrdenadas.sort((a, b) => {
+            const totalA = (a.nota_linha || 0) + (a.nota_angulo || 0) + (a.nota_estilo || 0);
+            const totalB = (b.nota_linha || 0) + (b.nota_angulo || 0) + (b.nota_estilo || 0);
+            
+            // Primeiro critério: total decrescente
+            if (totalB !== totalA) {
+                return totalB - totalA;
+            }
+            
+            // Segundo critério: nota linha decrescente
+            const linhaA = a.nota_linha || 0;
+            const linhaB = b.nota_linha || 0;
+            return linhaB - linhaA;
+        });
+        console.log('[VOLTA ADMIN] Equipes reordenadas por pontuação:', equipesOrdenadas.map(e => ({ 
+            equipe: e.equipe_nome, 
+            total: (e.nota_linha || 0) + (e.nota_angulo || 0) + (e.nota_estilo || 0),
+            linha: e.nota_linha || 0
+        })));
+    }
+
+    // Criar tabela com scroll - Tema Branco e Vermelho
+    let html = `
+        <table style="width: 100%; border-collapse: collapse; color: #333; font-family: Arial, sans-serif; background: #fff; border: 3px solid #dc3545;">
+            <thead style="position: sticky; top: 0;">
+                <tr style="background: linear-gradient(90deg, #dc3545 0%, #b02a37 100%); border: 3px solid #dc3545;">
+                    <th style="padding: 12px 10px; text-align: center; border: 2px solid #dc3545; color: #fff; font-weight: bold; min-width: 60px; font-size: 14px;">QUAL</th>
+                    <th style="padding: 12px 10px; text-align: left; border: 2px solid #dc3545; color: #fff; font-weight: bold; min-width: 200px; font-size: 14px;">EQUIPE</th>
+                    <th style="padding: 12px 10px; text-align: left; border: 2px solid #dc3545; color: #fff; font-weight: bold; min-width: 150px; font-size: 14px;">PILOTO</th>
+                    <th style="padding: 12px 10px; text-align: center; border: 2px solid #dc3545; color: #fff; font-weight: bold; min-width: 120px; font-size: 14px;">NOTA LINHA</th>
+                    <th style="padding: 12px 10px; text-align: center; border: 2px solid #dc3545; color: #fff; font-weight: bold; min-width: 120px; font-size: 14px;">NOTA ÂNGULO</th>
+                    <th style="padding: 12px 10px; text-align: center; border: 2px solid #dc3545; color: #fff; font-weight: bold; min-width: 120px; font-size: 14px;">NOTA ESTILO</th>
+                    <th style="padding: 12px 10px; text-align: center; border: 2px solid #dc3545; color: #fff; font-weight: bold; min-width: 100px; font-size: 14px;">TOTAL</th>
+                    <th style="padding: 12px 10px; text-align: center; border: 2px solid #dc3545; color: #fff; font-weight: bold; min-width: 100px; font-size: 14px;">STATUS</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    equipesOrdenadas.forEach((eq, idx) => {
+        const ordemQualif = eq.ordem_qualificacao ? String(eq.ordem_qualificacao).padStart(2, '0') : '—';
+        const pilotoNome = eq.piloto_nome ? eq.piloto_nome : '⚠️ SEM PILOTO';
+        const notaLinha = eq.nota_linha || 0;
+        const notaAngulo = eq.nota_angulo || 0;
+        const notaEstilo = eq.nota_estilo || 0;
+        const somaNotas = parseInt(notaLinha) + parseInt(notaAngulo) + parseInt(notaEstilo);
+        const voltaStatus = eq.volta_status || 'aguardando';
+        
+        // Lógica para determinar status baseado em quem ainda não foi avaliado
+        let statusColor = '#666';  // cinza/aguardando
+        let statusText = '○ AGUARDANDO';
+        let isCurrentDriver = false;
+        let isNextDriver = false;
+        
+        // Variáveis para estilo da linha
+        let backgroundColor = '#fff';  // branco padrão
+        let borderStyle = '';
+        let fontWeight = 'normal';
+        
+        // Encontrar primeiro piloto que ainda não foi avaliado (soma = 0)
+        let primeiroNaoAvaliado = -1;
+        let proximoNaoAvaliado = -1;
+        
+        for (let i = 0; i < equipesOrdenadas.length; i++) {
+            const eqCheck = equipesOrdenadas[i];
+            const nl = eqCheck.nota_linha || 0;
+            const na = eqCheck.nota_angulo || 0;
+            const ne = eqCheck.nota_estilo || 0;
+            const somaCheck = parseInt(nl) + parseInt(na) + parseInt(ne);
+            
+            if (somaCheck === 0) {
+                if (primeiroNaoAvaliado === -1) {
+                    primeiroNaoAvaliado = i;
+                } else if (proximoNaoAvaliado === -1) {
+                    proximoNaoAvaliado = i;
+                    break;
+                }
+            }
+        }
+        
+        // Verificar se este é o piloto atual ou próximo
+        if (idx === primeiroNaoAvaliado) {
+            isCurrentDriver = true;
+            statusColor = '#007bff';  // azul
+            statusText = '🎯 SUA VEZ';
+        } else if (idx === proximoNaoAvaliado) {
+            isNextDriver = true;
+            statusColor = '#ffc107';  // amarelo
+            statusText = '⏭️ PRÓXIMO';
+        } else if (somaNotas > 0) {
+            // Piloto já foi avaliado
+            statusColor = '#28a745';  // verde
+            statusText = '✓ AVALIADO';
+        } else {
+            // Manter status original se não for o atual ou próximo
+            if (voltaStatus === 'andando') {
+                statusColor = '#28a745';  // verde
+                statusText = '▶ ANDANDO';
+            } else if (voltaStatus === 'proximo') {
+                statusColor = '#ffc107';  // amarelo
+                statusText = '→ PRÓXIMO';
+            } else if (voltaStatus === 'finalizado') {
+                statusColor = '#dc3545';  // vermelho
+                statusText = '✓ FINALIZADO';
+            }
+        }
+        
+        // Quando qualificação finalizada, mostrar posição baseada na ordenação
+        const posicaoExibida = qualificacaoFinalizada ? String(idx + 1).padStart(2, '0') : ordemQualif;
+        
+        if (isCurrentDriver) {
+            backgroundColor = '#e3f2fd';  // azul claro
+            borderStyle = 'border-left: 4px solid #007bff;';
+            fontWeight = 'bold';
+        } else if (isNextDriver) {
+            backgroundColor = '#fff3cd';  // amarelo claro
+            borderStyle = 'border-left: 4px solid #ffc107;';
+        }
+        
+        html += `
+            <tr style="background: ${backgroundColor}; border-bottom: 1px solid #dee2e6; transition: background 0.3s ease; ${borderStyle}" onmouseover="this.style.background='#e9ecef'" onmouseout="this.style.background='${backgroundColor}'">
+                <td style="padding: 12px 10px; border: 1px solid #dee2e6; color: #dc3545; font-weight: ${isCurrentDriver ? 'bold' : 'bold'}; text-align: center; font-size: 18px; font-family: 'Courier New';">${posicaoExibida}</td>
+                <td style="padding: 12px 10px; border: 1px solid #dee2e6; font-weight: ${fontWeight}; font-size: 15px; color: #333;">${eq.equipe_nome}</td>
+                <td style="padding: 12px 10px; border: 1px solid #dee2e6; font-size: 14px; color: #666; font-weight: ${fontWeight};">${pilotoNome}</td>
+                <td style="padding: 12px 10px; border: 1px solid #dee2e6; text-align: center;">
+                    ${qualificacaoFinalizada ? 
+                        `<span style="color: #dc3545; font-weight: bold; font-size: 16px;">${notaLinha}</span>` :
+                        `<input type="number" value="${notaLinha}" placeholder="0" min="0" max="40" 
+                            style="width: 90px; padding: 6px 4px; border: 2px solid #dc3545; background: #fff; color: #333; text-align: center; font-weight: bold; border-radius: 3px;" 
+                            onchange="salvarNotaEquipeAdmin('${eq.equipe_id}', 'linha', this.value)">`
+                    }
+                </td>
+                <td style="padding: 12px 10px; border: 1px solid #dee2e6; text-align: center;">
+                    ${qualificacaoFinalizada ? 
+                        `<span style="color: #dc3545; font-weight: bold; font-size: 16px;">${notaAngulo}</span>` :
+                        `<input type="number" value="${notaAngulo}" placeholder="0" min="0" max="30" 
+                            style="width: 90px; padding: 6px 4px; border: 2px solid #dc3545; background: #fff; color: #333; text-align: center; font-weight: bold; border-radius: 3px;" 
+                            onchange="salvarNotaEquipeAdmin('${eq.equipe_id}', 'angulo', this.value)">`
+                    }
+                </td>
+                <td style="padding: 12px 10px; border: 1px solid #dee2e6; text-align: center;">
+                    ${qualificacaoFinalizada ? 
+                        `<span style="color: #dc3545; font-weight: bold; font-size: 16px;">${notaEstilo}</span>` :
+                        `<input type="number" value="${notaEstilo}" placeholder="0" min="0" max="30" 
+                            style="width: 90px; padding: 6px 4px; border: 2px solid #dc3545; background: #fff; color: #333; text-align: center; font-weight: bold; border-radius: 3px;" 
+                            onchange="salvarNotaEquipeAdmin('${eq.equipe_id}', 'estilo', this.value)">`
+                    }
+                </td>
+                <td style="padding: 12px 10px; border: 1px solid #dee2e6; text-align: center;">
+                    <span style="color: #dc3545; font-weight: bold; font-size: 14px;">${somaNotas}</span>
+                </td>
+                <td style="padding: 12px 10px; border: 1px solid #dee2e6; text-align: center;">
+                    <span style="color: ${statusColor}; font-weight: bold; font-size: 12px;">${statusText}</span>
+                </td>
+            </tr>
+        `;
+    });
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+    
+    // Verificar se deve mostrar o botão de finalizar qualificação
+    const temAvaliacoes = equipes.some(eq => {
+        const nl = eq.nota_linha || 0;
+        const na = eq.nota_angulo || 0;
+        const ne = eq.nota_estilo || 0;
+        return (nl + na + ne) > 0;
+    });
+    
+    const botaoFinalizar = document.getElementById('botaoFinalizarQualificacao');
+    if (botaoFinalizar) {
+        if (qualificacaoFinalizada) {
+            botaoFinalizar.style.display = 'none';
+        } else {
+            botaoFinalizar.style.display = temAvaliacoes ? 'block' : 'none';
+        }
+    }
+    
+    // Se qualificação finalizada, mostrar mensagem
+    if (qualificacaoFinalizada) {
+        const mensagemFinalizada = document.createElement('div');
+        mensagemFinalizada.id = 'mensagemQualificacaoFinalizada';
+        mensagemFinalizada.style.cssText = `
+            background: #d4edda; 
+            color: #155724; 
+            padding: 15px; 
+            border: 1px solid #c3e6cb; 
+            border-radius: 5px; 
+            margin: 20px 0; 
+            text-align: center;
+            font-weight: bold;
+        `;
+        mensagemFinalizada.innerHTML = '🏁 Qualificação Finalizada! As notas não podem mais ser alteradas. A etapa continua para as batalhas.';
+        
+        // Inserir após a tabela
+        const tabela = document.getElementById('tabelaVoltasAdmin');
+        if (tabela && tabela.parentNode) {
+            // Remover mensagem anterior se existir
+            const mensagemAnterior = document.getElementById('mensagemQualificacaoFinalizada');
+            if (mensagemAnterior) {
+                mensagemAnterior.remove();
+            }
+            tabela.parentNode.insertBefore(mensagemFinalizada, tabela.nextSibling);
+        }
+    } else {
+        // Remover mensagem se existir
+        const mensagemAnterior = document.getElementById('mensagemQualificacaoFinalizada');
+        if (mensagemAnterior) {
+            mensagemAnterior.remove();
+        }
+    }
+}
+
+async function salvarNotaEquipeAdmin(equipeId, tipoNota, valor) {
+    const etapaId = document.getElementById('etapaIdAtual').value;
+    if (!etapaId) return;
+    
+    const dados = {};
+    dados[`nota_${tipoNota}`] = parseInt(valor) || 0;
+    
+    console.log(`[VOLTA ADMIN] Salvando ${tipoNota}:`, valor, 'para equipe:', equipeId);
+    
+    try {
+        const resp = await fetch(`/api/etapas/${etapaId}/notas/${equipeId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dados)
+        });
+        
+        const data = await resp.json();
+        
+        if (data.sucesso) {
+            console.log(`[VOLTA ADMIN] ✓ ${tipoNota} salvo com sucesso`);
+            mostrarToast(`✓ ${tipoNota} salva`, 'success');
+            // Atualizar tabela com novo status
+            setTimeout(() => atualizarTabelaVoltasAdmin(), 500);
+        } else {
+            console.error('[VOLTA ADMIN] Erro:', data.erro);
+            mostrarToast('❌ ' + data.erro, 'error');
+        }
+    } catch (e) {
+        console.error('[VOLTA ADMIN] Erro na requisição:', e);
+        mostrarToast('❌ Erro ao salvar', 'error');
+    }
+}
+
+// Tornar função global para acesso do HTML
+window.salvarNotaEquipeAdmin = salvarNotaEquipeAdmin;
+
+async function finalizarQualificacao() {
+    const etapaId = document.getElementById('etapaIdAtual').value;
+    if (!etapaId) {
+        mostrarToast('❌ Nenhuma etapa selecionada', 'error');
+        return;
+    }
+    
+    if (!confirm('Tem certeza que deseja finalizar a qualificação? Esta ação não pode ser desfeita!')) {
+        return;
+    }
+    
+    try {
+        console.log('[VOLTA ADMIN] Finalizando qualificação para etapa:', etapaId);
+        const resp = await fetch(`/api/admin/finalizar-qualificacao/${etapaId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await resp.json();
+        
+        if (data.sucesso) {
+            mostrarToast('✓ Qualificação finalizada!', 'success');
+            // Recarregar apenas a tabela para mostrar o estado finalizado
+            setTimeout(() => {
+                atualizarTabelaVoltasAdmin();
+            }, 1000);
+        } else {
+            mostrarToast('❌ ' + data.erro, 'error');
+        }
+    } catch (e) {
+        console.error('[VOLTA ADMIN] Erro:', e);
+        mostrarToast('❌ Erro ao finalizar', 'error');
+    }
+}
+
+// Tornar função global para acesso do HTML
+window.finalizarQualificacao = finalizarQualificacao;
+
+async function verResultadoQualificacao(etapaId) {
+    try {
+        const resp = await fetch(`/api/etapas/${etapaId}/classificacao-final`);
+        const data = await resp.json();
+        
+        if (data.sucesso && data.classificacao) {
+            // Criar modal com a classificação
+            const modalDiv = document.createElement('div');
+            modalDiv.className = 'modal fade';
+            modalDiv.id = 'modalClassificacaoQualificacao';
+            modalDiv.tabIndex = '-1';
+            
+            let html = '<table class="table table-dark table-striped">';
+            html += '<thead><tr><th>#</th><th>Equipe</th><th>Piloto</th><th>Linha</th><th>Ângulo</th><th>Estilo</th><th>Total</th></tr></thead><tbody>';
+            
+            data.classificacao.forEach((item, index) => {
+                html += `<tr>
+                    <td>${index + 1}</td>
+                    <td>${item.equipe_nome}</td>
+                    <td>${item.piloto_nome || '-'}</td>
+                    <td>${item.nota_linha}</td>
+                    <td>${item.nota_angulo}</td>
+                    <td>${item.nota_estilo}</td>
+                    <td><strong>${item.total_notas}</strong></td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table>';
+            
+            modalDiv.innerHTML = `
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content bg-dark text-white">
+                        <div class="modal-header">
+                            <h5 class="modal-title">🏆 Classificação Final da Qualificação</h5>
+                        </div>
+                        <div class="modal-body">
+                            ${html}
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modalDiv);
+            const modal = new bootstrap.Modal(modalDiv);
+            modal.show();
+            
+            modalDiv.addEventListener('hidden.bs.modal', () => modalDiv.remove());
+        } else {
+            mostrarToast('Erro ao carregar classificação', 'error');
+        }
+    } catch (e) {
+        console.error('Erro:', e);
+        mostrarToast('Erro ao carregar classificação', 'error');
+    }
+}
+
+async function entrarBatalhas(etapaId) {
+    try {
+        const resp = await fetch(`/api/etapas/${etapaId}/entrar-batalhas`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await resp.json();
+        
+        if (data.sucesso) {
+            mostrarToast('✅ Bem-vindo às batalhas!', 'success');
+            // Talvez recarregar ou redirecionar
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            mostrarToast('❌ ' + data.erro, 'error');
+        }
+    } catch (e) {
+        console.error('Erro:', e);
+        mostrarToast('Erro ao entrar nas batalhas', 'error');
+    }
+}
+
+// Tornar globais
+window.verResultadoQualificacao = verResultadoQualificacao;
+window.entrarBatalhas = entrarBatalhas;

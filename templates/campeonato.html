@@ -1,0 +1,1999 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campeonato - GRANPIX</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* TEMA GLOBAL: Branco, Preto e Vermelho */
+        body {
+            background: #f5f5f5;
+            color: #000;
+            min-height: 100vh;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Navbar */
+        .navbar-custom {
+            background: #1a1a1a;
+            border-bottom: 3px solid #dc143c;
+            padding: 15px 0;
+        }
+
+        .navbar-custom h1 {
+            color: #fff;
+        }
+
+        /* Header Info */
+        .header-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .piloto-info {
+            background: #fff;
+            padding: 15px 20px;
+            border-radius: 8px;
+            border-left: 4px solid #dc143c;
+            font-size: 18px;
+            color: #000;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            font-weight: bold;
+        }
+
+        .btn-logout {
+            background: #dc143c;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            color: white;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .btn-logout:hover {
+            background: #b91c1c;
+            transform: scale(1.02);
+        }
+
+        /* Container Principal */
+        .container-main {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Grid de Etapas */
+        .etapas-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        /* Card de Etapa */
+        .etapa-card {
+            background: #fff;
+            border: 2px solid #000;
+            border-radius: 10px;
+            padding: 20px;
+            transition: all 0.3s;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .etapa-card:hover {
+            border-color: #dc143c;
+            background: #fff;
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(220, 20, 60, 0.3);
+        }
+
+        .etapa-card.hoje {
+            border: 3px solid #dc143c;
+            background: #fff;
+        }
+
+        .etapa-badge-hoje {
+            display: inline-block;
+            background: #dc143c;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            width: fit-content;
+        }
+
+        .etapa-numero {
+            font-size: 24px;
+            font-weight: bold;
+            color: #dc143c;
+            margin-bottom: 10px;
+        }
+
+        .etapa-nome {
+            font-size: 20px;
+            font-weight: bold;
+            color: #000;
+            margin-bottom: 10px;
+        }
+
+        .etapa-info {
+            font-size: 14px;
+            color: #333;
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .etapa-info strong {
+            color: #dc143c;
+        }
+
+        .etapa-serie {
+            background: #1a1a1a;
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #fff;
+            border: 1px solid #dc143c;
+        }
+
+        .etapa-status {
+            margin-top: 10px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .status-agendada {
+            background: #fff;
+            color: #000;
+            border: 2px solid #000;
+        }
+
+        .status-em-andamento {
+            background: #dc143c;
+            color: #fff;
+        }
+
+        .status-concluida {
+            background: #1a1a1a;
+            color: #fff;
+            border: 1px solid #dc143c;
+        }
+
+        /* Botões */
+        .btn-participar {
+            background: #000;
+            border: 2px solid #000;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: auto;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        .btn-participar:hover {
+            background: #dc143c;
+            border-color: #dc143c;
+            transform: scale(1.02);
+        }
+
+        .btn-participar:disabled {
+            background: #999;
+            border-color: #999;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .btn-participar.inscrito {
+            background: #1a1a1a;
+            border-color: #1a1a1a;
+        }
+
+        .btn-participar.inscrito:hover {
+            background: #dc143c;
+            border-color: #dc143c;
+        }
+
+        /* Aviso */
+        .aviso {
+            background: #fff;
+            border-left: 4px solid #dc143c;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            color: #000;
+            border: 2px solid #dc143c;
+        }
+
+        .aviso strong {
+            color: #dc143c;
+        }
+
+        /* Nenhuma Etapa */
+        .nenhuma-etapa {
+            text-align: center;
+            padding: 40px;
+            background: #fff;
+            border: 2px dashed #000;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .nenhuma-etapa h3 {
+            color: #dc143c;
+            margin-bottom: 10px;
+        }
+
+        .nenhuma-etapa p {
+            color: #000;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 4px solid #ddd;
+            border-top: 4px solid #dc143c;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Alertas */
+        .alerta {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 1000;
+            max-width: 400px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .alerta.sucesso {
+            background: #1a1a1a;
+            border: 2px solid #22c55e;
+        }
+
+        .alerta.erro {
+            background: #dc143c;
+            border: 2px solid #fff;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* Equipes Section */
+        .equipes-section {
+            background: #fff;
+            border: 2px solid #000;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .equipes-section h3 {
+            color: #dc143c;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 2px solid #dc143c;
+            padding-bottom: 10px;
+        }
+
+        .equipes-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .equipes-card {
+            background: #f9f9f9;
+            border-left: 4px solid #dc143c;
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #eee;
+        }
+
+        .equipes-card h5 {
+            color: #dc143c;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+
+        /* Input de Código */
+        .codigo-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .codigo-input input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #000;
+            border-radius: 6px;
+            background: #fff;
+            color: #000;
+            font-size: 14px;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .codigo-input input::placeholder {
+            color: #999;
+        }
+
+        .codigo-input button {
+            padding: 10px 20px;
+            background: #000;
+            border: 2px solid #000;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .codigo-input button:hover {
+            background: #dc143c;
+            border-color: #dc143c;
+        }
+
+        /* Lista de Equipes */
+        .equipes-lista {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .equipe-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #fff;
+            border: 1px solid #000;
+            border-radius: 6px;
+        }
+
+        .equipe-item-info h6 {
+            color: #000;
+            margin: 0;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .equipe-item-info small {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .equipe-item-btn {
+            padding: 5px 12px;
+            background: #dc143c;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .equipe-item-btn:hover {
+            background: #b91c1c;
+        }
+
+        .equipes-vazio {
+            color: #666;
+            font-size: 14px;
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* Modal de Equipes */
+        .modal-equipes-etapa {
+            background: #fff;
+            border: 2px solid #000;
+            border-radius: 10px;
+        }
+
+        .modal-equipes-etapa .modal-header {
+            background: #000;
+            color: white;
+            border-bottom: 3px solid #dc143c;
+        }
+
+        .modal-equipes-etapa .modal-body {
+            background: #fff;
+            color: #000;
+        }
+
+        .equipes-secao {
+            margin-bottom: 30px;
+        }
+
+        .equipes-secao h5 {
+            color: #dc143c;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: bold;
+            border-bottom: 2px solid #dc143c;
+            padding-bottom: 10px;
+        }
+
+        .equipe-opcao {
+            background: #fff;
+            border: 2px solid #000;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .equipe-opcao:hover {
+            border-color: #dc143c;
+            background: #fff;
+            transform: translateX(5px);
+            box-shadow: 0 4px 12px rgba(220, 20, 60, 0.3);
+        }
+
+        .equipe-opcao-info {
+            flex: 1;
+        }
+
+        .equipe-opcao-nome {
+            color: #000;
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+
+        .equipe-opcao-id {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .equipe-opcao-btn {
+            padding: 8px 16px;
+            background: #000;
+            border: 2px solid #000;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .equipe-opcao-btn:hover {
+            background: #dc143c;
+            border-color: #dc143c;
+        }
+
+        .equipes-vazio-msg {
+            color: #666;
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+        }
+
+        .equipe-carro {
+            color: #dc143c;
+            font-size: 13px;
+            margin-top: 8px;
+            font-weight: bold;
+        }
+
+        /* ========== CONFIRMAÇÃO - TEMA VERMELHO E PRETO ========== */
+        
+        /* Alerta de Confirmação Pendente */
+        .confirmacao-alerta {
+            background: linear-gradient(135deg, #dc143c 0%, #1a1a1a 100%);
+            border: 3px solid #dc143c;
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 12px;
+            box-shadow: 0 6px 20px rgba(220, 20, 60, 0.4);
+        }
+
+        .confirmacao-alerta strong {
+            color: #fff;
+            font-size: 16px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .confirmacao-alerta small {
+            color: #fff;
+        }
+
+        /* Estado Confirmado - Verde */
+        .confirmacao-concluida {
+            background: linear-gradient(135deg, #1a5f3e 0%, #0f3d2a 100%);
+            border: 3px solid #22c55e;
+            border-radius: 10px;
+            padding: 16px;
+            margin-top: 12px;
+            box-shadow: 0 6px 20px rgba(34, 197, 94, 0.3);
+        }
+
+        .confirmacao-concluida strong {
+            color: #22c55e;
+            font-size: 16px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .confirmacao-concluida small {
+            color: #a7f3d0;
+        }
+
+        .btn-entrar-etapa {
+            display: block;
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #22c55e;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 14px;
+            color: #22c55e;
+            background: transparent;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        .btn-confirmar-participacao,
+        .btn-desistir-participacao {
+            display: block;
+            width: 100%;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 8px;
+            color: white;
+        }
+
+        .btn-confirmar-participacao {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        }
+
+        .btn-confirmar-participacao:hover {
+            background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+        }
+
+        .btn-desistir-participacao {
+            background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+        }
+
+        .btn-desistir-participacao:hover {
+            background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%);
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+        }
+
+        .confirmacao-info {
+            background: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #dc143c;
+            border: 2px solid #dc143c;
+        }
+
+        .confirmacao-info p {
+            margin: 8px 0;
+            font-size: 15px;
+            color: #000;
+            font-weight: bold;
+        }
+
+        .confirmacao-botoes {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .confirmacao-botoes .btn {
+            flex: 1;
+            font-weight: 600;
+            padding: 10px 15px;
+        }
+
+        .equipe-pecas {
+            color: #000;
+            font-size: 12px;
+            margin-top: 10px;
+            padding: 8px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            border: 1px solid #000;
+        }
+
+        .equipe-pecas strong {
+            display: block;
+            margin-bottom: 6px;
+            color: #dc143c;
+        }
+
+        /* Modais */
+        .modal-content {
+            background: #fff;
+            border: 2px solid #000;
+        }
+
+        .modal-content .modal-header {
+            background: #000;
+            color: #fff;
+            border-bottom: 3px solid #dc143c;
+        }
+
+        .modal-content .modal-header .btn-close {
+            filter: brightness(0) invert(1);
+        }
+
+        .modal-content .modal-body {
+            background: #fff;
+            color: #000;
+        }
+
+        .modal-content .modal-footer {
+            background: #f5f5f5;
+            border-top: 2px solid #000;
+        }
+
+        /* Bootstrap Overrides */
+        .btn-primary {
+            background: #000 !important;
+            border-color: #000 !important;
+        }
+
+        .btn-primary:hover {
+            background: #dc143c !important;
+            border-color: #dc143c !important;
+        }
+
+        .btn-secondary {
+            background: #999 !important;
+            border-color: #999 !important;
+        }
+
+        .btn-secondary:hover {
+            background: #666 !important;
+            border-color: #666 !important;
+        }
+
+        .btn-danger {
+            background: #dc143c !important;
+            border-color: #dc143c !important;
+        }
+
+        .btn-danger:hover {
+            background: #b91c1c !important;
+            border-color: #b91c1c !important;
+        }
+
+        .form-control {
+            background: #fff !important;
+            color: #000 !important;
+            border: 2px solid #000 !important;
+        }
+
+        .form-control:focus {
+            background: #fff !important;
+            color: #000 !important;
+            border-color: #dc143c !important;
+            box-shadow: 0 0 0 0.2rem rgba(220, 20, 60, 0.25) !important;
+        }
+
+        .form-control::placeholder {
+            color: #999 !important;
+        }
+
+        table {
+            color: #000;
+        }
+
+        table thead {
+            background: #1a1a1a;
+            color: #fff;
+        }
+
+        table tbody tr {
+            border-color: #000;
+        }
+
+        table tbody tr:hover {
+            background: #f0f0f0;
+        }
+
+        .badge {
+            background: #dc143c;
+            color: white;
+        }
+
+        .text-muted {
+            color: #666 !important;
+        }
+
+        .text-danger {
+            color: #dc143c !important;
+        }
+
+        .text-success {
+            color: #22c55e !important;
+        }
+
+        .border {
+            border-color: #000 !important;
+        }
+
+        .pecas-lista {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .peca-badge {
+            display: inline-block;
+            background: rgba(59, 130, 246, 0.2);
+            border: 1px solid #3b82f6;
+            color: #93c5fd;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 768px) {
+            .etapas-container {
+                grid-template-columns: 1fr;
+            }
+
+            .header-info {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .equipes-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .equipe-opcao {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .equipe-opcao-btn {
+                width: 100%;
+                margin-top: 10px;
+            }
+        }
+
+        /* Botão Flutuante para Resultados da Qualificação */
+        .btn-resultados-qualificacao {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #fff;
+            color: #000;
+            border: 3px solid #dc143c;
+            border-radius: 50px;
+            padding: 15px 25px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+            z-index: 1000;
+            display: none; /* Inicialmente oculto */
+        }
+
+        .btn-resultados-qualificacao:hover {
+            background: #dc143c;
+            color: #fff;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+        }
+
+        .btn-resultados-qualificacao:active {
+            transform: translateY(0);
+        }
+
+        @media (max-width: 768px) {
+            .btn-resultados-qualificacao {
+                bottom: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                font-size: 14px;
+            }
+        }
+    </style>
+    </style>
+    <!-- Carregar script.js primeiro para definir funções globais -->
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <!-- Depois carregar qualificacao.js que usa funções de script.js -->
+    <script src="{{ url_for('static', filename='qualificacao.js') }}"></script>
+    <!-- Por fim, sistema_notificacao que usa funções de qualificacao.js -->
+    <script src="{{ url_for('static', filename='sistema_notificacao.js') }}"></script>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark navbar-custom">
+        <div class="container-fluid">
+            <span class="navbar-brand">🏁 GRANPIX - Campeonato</span>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <button class="btn btn-logout" onclick="logout()">Sair</button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-main">
+        <div class="header-info">
+            <div class="piloto-info">
+                👤 Piloto: <strong id="nomePiloto">Carregando...</strong>
+            </div>
+            <div class="piloto-info">
+                📅 Hoje: <strong id="dataHoje">--/--/--</strong>
+            </div>
+        </div>
+
+        <!-- Seção de Gerenciar Equipes -->
+        <div class="equipes-section">
+            <h3>🏎️ Minhas Equipes</h3>
+            <div class="equipes-grid">
+                <!-- Card: Vincular à Equipe -->
+                <div class="equipes-card">
+                    <h5>🤝 Vincular-se a uma Equipe</h5>
+                    <p style="color: #cbd5e1; font-size: 14px; margin-bottom: 15px;">Digite o código de convite para se vincular a uma equipe:</p>
+                    <div class="codigo-input">
+                        <input type="text" id="inputCodigoConvite" placeholder="Ex: ABC12345" maxlength="8">
+                        <button onclick="vincularAEquipe()">Vincular</button>
+                    </div>
+                </div>
+
+                <!-- Card: Equipes Vinculadas -->
+                <div class="equipes-card">
+                    <h5>✅ Equipes Vinculadas</h5>
+                    <div id="equipesCampeonatoLista" class="equipes-lista">
+                        <div class="equipes-vazio">Nenhuma equipe vinculada</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="containerEtapas" class="etapas-container">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Carregando etapas...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Seleção de Equipe para Piloto -->
+    <div class="modal fade" id="modalSelecionarEquipe" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+            <div class="modal-content modal-equipes-etapa">
+                <div class="modal-header border-info">
+                    <h5 class="modal-title">🏎️ Equipes Procurando Piloto - Etapa <span id="etapaNumModal">-</span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Contratantes -->
+                    <div class="equipes-secao">
+                        <h5>💼 Contratantes (Tenho Piloto Particular)</h5>
+                        <div id="listaContratantes">
+                            <div class="equipes-vazio-msg">Nenhuma equipe contratante nesta etapa</div>
+                        </div>
+                    </div>
+
+                    <!-- Procurando Piloto -->
+                    <div class="equipes-secao">
+                        <h5>🔍 Procurando Piloto (Necessitam de Piloto)</h5>
+                        <div id="listaProcurando">
+                            <div class="equipes-vazio-msg">Nenhuma equipe procurando piloto nesta etapa</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Status de Candidatura -->
+    <div class="modal fade" id="modalStatusCandidato" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title">📋 Status da Candidatura</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="modalStatusContent"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-danger" id="btnCancelarDoCandidato" onclick="cancelarCandidaturaDoModal()">✕ Cancelar Candidatura</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação de Participação -->
+    <div class="modal fade" id="modalConfirmacaoParticipacao" tabindex="-1" role="dialog" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title">⏰ Confirmação de Participação</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="confirmacaoParticipacaoContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let pilotos_inscritos = new Set();
+        let etapa_hoje = null;
+
+        window.addEventListener('load', () => {
+            const nomePiloto = localStorage.getItem('piloto_nome');
+            const pilotoId = localStorage.getItem('piloto_id');
+
+            if (!nomePiloto || !pilotoId) {
+                window.location.href = '/login';
+                return;
+            }
+
+            document.getElementById('nomePiloto').textContent = nomePiloto;
+            atualizarDataHoje();
+            carregarEquipesCampeonato();
+            carregarEtapas();
+        });
+
+        async function carregarEquipesCampeonato() {
+            try {
+                const response = await fetch('/api/pilotos/minhas-equipes', { credentials: 'include' });
+                const data = await response.json();
+                
+                if (data.sucesso) {
+                    renderizarEquipesCampeonato(data.equipes || []);
+                } else {
+                    console.error('Erro ao carregar equipes:', data.erro);
+                }
+            } catch (error) {
+                console.error('Erro ao carregar equipes:', error);
+            }
+        }
+
+        function renderizarEquipesCampeonato(equipes) {
+            const container = document.getElementById('equipesCampeonatoLista');
+            
+            if (!equipes || equipes.length === 0) {
+                container.innerHTML = '<div class="equipes-vazio">Nenhuma equipe vinculada</div>';
+                return;
+            }
+            
+            container.innerHTML = equipes.map(equipe => `
+                <div class="equipe-item">
+                    <div class="equipe-item-info">
+                        <h6>${equipe.nome}</h6>
+                        <small>${equipe.id}</small>
+                    </div>
+                    <button class="equipe-item-btn" onclick="desvincularDeEquipeCampeonato('${equipe.id}')">
+                        ✕ Sair
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        async function vincularAEquipe() {
+            const codigo = document.getElementById('inputCodigoConvite').value.trim().toUpperCase();
+            
+            if (!codigo) {
+                mostrarAlerta('Digite o código de convite', 'erro');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/pilotos/vincular-equipe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ codigo })
+                });
+
+                const data = await response.json();
+                
+                if (data.sucesso) {
+                    document.getElementById('inputCodigoConvite').value = '';
+                    mostrarAlerta('✓ ' + (data.mensagem || 'Vinculado com sucesso!'), 'sucesso');
+                    carregarEquipesCampeonato();
+                } else {
+                    mostrarAlerta('Erro: ' + (data.erro || 'Falha ao vincular'), 'erro');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                mostrarAlerta('Erro ao vincular à equipe', 'erro');
+            }
+        }
+
+        async function desvincularDeEquipeCampeonato(equipeId) {
+            if (!confirm('Tem certeza que deseja sair desta equipe?')) return;
+            
+            try {
+                const pilotoId = localStorage.getItem('piloto_id');
+                const response = await fetch(`/api/pilotos/${pilotoId}/desvincular-equipe/${equipeId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+                
+                if (data.sucesso) {
+                    mostrarAlerta('✓ Você saiu da equipe', 'sucesso');
+                    carregarEquipesCampeonato();
+                } else {
+                    mostrarAlerta('Erro: ' + (data.erro || 'Falha ao sair'), 'erro');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                mostrarAlerta('Erro ao sair da equipe', 'erro');
+            }
+        }
+
+        function atualizarDataHoje() {
+            const hoje = new Date();
+            const dia = String(hoje.getDate()).padStart(2, '0');
+            const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+            const ano = hoje.getFullYear();
+            document.getElementById('dataHoje').textContent = `${dia}/${mes}/${ano}`;
+        }
+
+        async function carregarEtapas() {
+            try {
+                const resp = await fetch('/api/loja/etapas');
+                const etapas = await resp.json();
+
+                if (!Array.isArray(etapas) || etapas.length === 0) {
+                    document.getElementById('containerEtapas').innerHTML = `
+                        <div style="grid-column: 1 / -1;">
+                            <div class="nenhuma-etapa">
+                                <h3>Nenhuma etapa disponível</h3>
+                                <p>Volte mais tarde para ver as etapas do campeonato</p>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Verificar inscrições do piloto
+                const pilotoId = localStorage.getItem('piloto_id');
+                await verificarInscricoes(pilotoId);
+                
+                // Verificar confirmações necessárias
+                const confirmacoesPendentes = await obterConfirmacoesPendentes();
+
+                // Renderizar etapas
+                const hoje = new Date();
+                hoje.setHours(0, 0, 0, 0);
+
+                let html = '';
+                etapas.forEach((etapa, idx) => {
+                    const dataEtapa = new Date(etapa.data_etapa + 'T00:00:00');
+                    const ehHoje = dataEtapa.getTime() === hoje.getTime();
+                    const estaInscrito = pilotos_inscritos.has(etapa.id);
+                    const confirmacaoEsta = confirmacoesPendentes.find(c => c.etapa_id === etapa.id);
+
+                    if (ehHoje) etapa_hoje = etapa;
+
+                    // Adicionar hint visual para etapas agendadas
+                    let hintAgendada = '';
+                    if (etapa.status === 'agendada') {
+                        hintAgendada = '<div style="background: rgba(220, 20, 60, 0.1); border: 1px solid #dc143c; border-radius: 4px; padding: 8px; margin-top: 10px; text-align: center; font-size: 12px;"><strong style="color: #dc143c;">👥 Clique para ver pilotos confirmados</strong></div>';
+                    }
+
+                    html += `
+                        <div class="etapa-card ${ehHoje ? 'hoje' : ''}" data-etapa-id="${etapa.id}" style="cursor: pointer;" onclick="mostrarPitsEtapa('${etapa.id}')">
+                            ${ehHoje ? '<div class="etapa-badge-hoje">🎯 HOJE</div>' : ''}
+                            <div class="etapa-numero">Etapa ${etapa.numero}</div>
+                            <div class="etapa-nome">${etapa.nome}</div>
+                            <div class="etapa-info">
+                                <strong>📅</strong> ${formatarData(etapa.data_etapa)}
+                            </div>
+                            <div class="etapa-info">
+                                <strong>⏰</strong> ${etapa.hora_etapa}
+                            </div>
+                            <div class="etapa-info">
+                                <strong>🏆</strong> Série: <span class="etapa-serie">${etapa.serie}</span>
+                            </div>
+                            ${etapa.descricao ? `<div class="etapa-info"><strong>📝</strong> ${etapa.descricao}</div>` : ''}
+                            <div class="etapa-status status-${etapa.status}">
+                                ${etapa.status.toUpperCase()}
+                            </div>
+                            ${hintAgendada}
+                            ${etapa.status === 'qualificacao' ? `
+                                <button class="btn btn-warning w-100 mt-2" onclick="entrarQualificacao('${etapa.id}', this)" style="font-weight: bold;">
+                                    Entrar na Qualificacao
+                                </button>
+                            ` : etapa.status === 'batalhas' ? `
+                                <button class="btn btn-danger w-100 mt-2" onclick="entrarBatalhas('${etapa.id}', this)" style="font-weight: bold;">
+                                    ⚔️ Entrar nas Batalhas
+                                </button>
+                            ` : etapa.qualificacao_finalizada ? `
+                                <button class="btn btn-success w-100 mt-2" onclick="mostrarClassificacaoFinal('${etapa.id}', ${etapa.numero})" style="font-weight: bold;">
+                                    🏆 Ver Classificação Final
+                                </button>
+                            ` : confirmacaoEsta?.confirmado ? `
+                                <div class="confirmacao-concluida">
+                                    <div style="color: white; margin-bottom: 10px; text-align: center;">
+                                        <strong>✓ Confirmado!</strong><br>
+                                        <small>${confirmacaoEsta.equipe_nome}</small>
+                                    </div>
+                                    <button class="btn-entrar-etapa" disabled>
+                                        🎯 Entrar na Etapa
+                                    </button>
+                                </div>
+                            ` : confirmacaoEsta ? `
+                                <div class="confirmacao-alerta">
+                                    <div style="color: white; margin-bottom: 10px; text-align: center;">
+                                        <strong>⏰ Aguarde no discord</strong>
+                                    </div>
+                                </div>
+                            ` : `
+                                <button class="btn-participar ${estaInscrito ? 'inscrito' : ''}" 
+                                        onclick="participarEtapa('${etapa.id}', this)"
+                                        ${etapa.status !== 'agendada' ? 'disabled' : ''}>
+                                    ${estaInscrito ? 'Inscrito' : 'Participar'}
+                                </button>
+                            `}
+                        </div>
+                    `;
+                });
+
+                document.getElementById('containerEtapas').innerHTML = html;
+
+                // Verificar se deve mostrar botão de resultados da qualificação
+                const temEtapaBatalhas = etapas.some(etapa => etapa.status === 'batalhas');
+                const btnResultados = document.getElementById('btnResultadosQualificacao');
+                if (btnResultados) {
+                    btnResultados.style.display = temEtapaBatalhas ? 'block' : 'none';
+                    if (temEtapaBatalhas) {
+                        // Guardar ID da etapa em batalhas para usar na função
+                        const etapaBatalhas = etapas.find(etapa => etapa.status === 'batalhas');
+                        btnResultados.setAttribute('data-etapa-id', etapaBatalhas.id);
+                    }
+                }
+            } catch (e) {
+                console.error('Erro ao carregar etapas:', e);
+                mostrarAlerta('Erro ao carregar etapas: ' + e.message, 'erro');
+                document.getElementById('containerEtapas').innerHTML = `
+                    <div style="grid-column: 1 / -1;">
+                        <div class="nenhuma-etapa">
+                            <h3>Erro ao carregar</h3>
+                            <p>${e.message}</p>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Verificações não mais necessárias - agora tudo é no card
+        }
+
+        async function obterConfirmacoesPendentes() {
+            // Retorna lista de confirmações pendentes ou confirmadas para este piloto
+            try {
+                const pilotoId = localStorage.getItem('piloto_id');
+                const resp = await fetch('/api/loja/etapas');
+                const etapas = await resp.json();
+                
+                if (!Array.isArray(etapas)) return [];
+                
+                const confirmacoes = [];
+                
+                for (const etapa of etapas) {
+                    try {
+                        const respConfirm = await fetch(`/api/etapas/${etapa.id}/pilotos-confirmacao`, {
+                            credentials: 'include'
+                        });
+                        
+                        if (!respConfirm.ok) continue;
+                        
+                        const dados = await respConfirm.json();
+                        
+                        if (!dados.sucesso || !dados.pilotos) continue;
+                        
+                        const meuRegistro = dados.pilotos.find(p => p.piloto_id === pilotoId);
+                        
+                        if (meuRegistro) {
+                            confirmacoes.push({
+                                etapa_id: etapa.id,
+                                participacao_id: meuRegistro.participacao_id || meuRegistro.candidato_id,
+                                equipe_nome: meuRegistro.equipe_nome,
+                                tipo: meuRegistro.participacao_id ? 'alocado' : 'candidato',
+                                confirmado: meuRegistro.status === 'confirmado'
+                            });
+                        }
+                    } catch (e) {
+                        console.error(`Erro ao verificar confirmação da etapa ${etapa.id}:`, e);
+                    }
+                }
+                
+                return confirmacoes;
+            } catch (e) {
+                console.error('Erro ao obter confirmações pendentes:', e);
+                return [];
+            }
+        }
+
+        async function confirmarParticipacaoDirect(participacaoId, tipo) {
+            // Confirma participação direto do card
+            try {
+                const resp = await fetch(`/api/participacoes-etapas/${participacaoId}/confirmar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include'
+                });
+                
+                const resultado = await resp.json();
+                
+                if (resultado.sucesso) {
+                    mostrarAlerta('✓ Participação confirmada! Boa sorte!', 'sucesso');
+                    // Recarregar etapas
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    carregarEtapas();
+                } else {
+                    mostrarAlerta('Erro: ' + resultado.erro, 'erro');
+                }
+            } catch (e) {
+                mostrarAlerta('Erro ao confirmar: ' + e.message, 'erro');
+            }
+        }
+
+        async function desistirParticipacaoDirect(participacaoId, tipo) {
+            // Desiste direto do card
+            if (!confirm('Tem certeza que quer desistir? Outro piloto será alocado.')) {
+                return;
+            }
+            
+            try {
+                const resp = await fetch(`/api/participacoes-etapas/${participacaoId}/desistir`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include'
+                });
+                
+                const resultado = await resp.json();
+                
+                if (resultado.sucesso) {
+                    mostrarAlerta('✓ Desistência registrada', 'sucesso');
+                    // Recarregar etapas
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    carregarEtapas();
+                } else {
+                    mostrarAlerta('Erro: ' + resultado.erro, 'erro');
+                }
+            } catch (e) {
+                mostrarAlerta('Erro ao desistir: ' + e.message, 'erro');
+            }
+        }
+
+        async function verificarConfirmacaoPilotoEtapa(etapaId) {
+            // Verifica se o piloto precisa confirmar participação nesta etapa
+            try {
+                const pilotoId = localStorage.getItem('piloto_id');
+                const resp = await fetch(`/api/etapas/${etapaId}/pilotos-confirmacao`, { 
+                    credentials: 'include' 
+                });
+                
+                console.log(`[DEBUG] Checando etapa ${etapaId} para piloto ${pilotoId}`, resp.status);
+                
+                if (!resp.ok) {
+                    console.log(`[DEBUG] Resposta não ok:`, resp.status);
+                    return;
+                }
+                
+                const dados = await resp.json();
+                console.log(`[DEBUG] Dados recebidos:`, dados);
+                
+                if (!dados.sucesso || !dados.pilotos || dados.pilotos.length === 0) {
+                    console.log(`[DEBUG] Nenhum piloto em confirmação nesta etapa`);
+                    return;
+                }
+                
+                // Procurar participação deste piloto (pode ser candidato ou alocado)
+                const meuRegistro = dados.pilotos.find(p => p.piloto_id === pilotoId);
+                console.log(`[DEBUG] Meu registro:`, meuRegistro);
+                
+                if (meuRegistro) {
+                    console.log(`[DEBUG] ✓ Mostrando modal de confirmação`);
+                    // Mostrar modal de confirmação
+                    mostrarModalConfirmacaoParticipacao(meuRegistro);
+                } else {
+                    console.log(`[DEBUG] Nenhum registro encontrado`);
+                }
+            } catch (e) {
+                console.error('Erro ao verificar confirmação:', e);
+            }
+        }
+
+        function mostrarModalConfirmacaoParticipacao(registro) {
+            // Mostra modal pedindo confirmação de participação
+            const modalElement = document.getElementById('modalConfirmacaoParticipacao');
+            if (!modalElement) return;
+            
+            // Armazenar dados no dataset
+            modalElement.dataset.participacaoId = registro.participacao_id;
+            modalElement.dataset.equipeName = registro.equipe_nome;
+            
+            // Preencher conteúdo
+            const contentElement = document.getElementById('confirmacaoParticipacaoContent');
+            if (contentElement) {
+                contentElement.innerHTML = `
+                    <div class="alert alert-warning">
+                        <h5>⏰ Confirmação de Participação</h5>
+                        <p>A etapa está começando em menos de 1 hora!</p>
+                    </div>
+                    <div class="confirmacao-info">
+                        <p><strong>Equipe:</strong> ${registro.equipe_nome}</p>
+                        <p><strong>Você vai andar?</strong></p>
+                    </div>
+                    <div class="confirmacao-botoes">
+                        <button class="btn btn-success" onclick="confirmarParticipacao()">
+                            ✓ Vou Andar!
+                        </button>
+                        <button class="btn btn-danger" onclick="desistirParticipacao()">
+                            ✕ Desistir
+                        </button>
+                    </div>
+                `;
+            }
+            
+            // Abrir modal
+            new bootstrap.Modal(modalElement).show();
+        }
+
+        async function confirmarParticipacao() {
+            // Piloto confirma que vai andar
+            const modalElement = document.getElementById('modalConfirmacaoParticipacao');
+            const participacaoId = modalElement.dataset.participacaoId;
+            
+            if (!participacaoId) {
+                mostrarAlerta('Erro: ID da participação não encontrado', 'erro');
+                return;
+            }
+            
+            try {
+                const resp = await fetch(`/api/participacoes-etapas/${participacaoId}/confirmar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include'
+                });
+                
+                const resultado = await resp.json();
+                
+                if (resultado.sucesso) {
+                    mostrarAlerta('✓ Participação confirmada! Boa sorte na etapa!', 'sucesso');
+                    // Fechar modal
+                    bootstrap.Modal.getInstance(modalElement).hide();
+                } else {
+                    mostrarAlerta('Erro: ' + resultado.erro, 'erro');
+                }
+            } catch (e) {
+                mostrarAlerta('Erro ao confirmar: ' + e.message, 'erro');
+            }
+        }
+
+        async function desistirParticipacao() {
+            // Piloto desiste da participação
+            if (!confirm('Tem certeza que quer desistir? Outro piloto será alocado.')) {
+                return;
+            }
+            
+            const modalElement = document.getElementById('modalConfirmacaoParticipacao');
+            const participacaoId = modalElement.dataset.participacaoId;
+            
+            if (!participacaoId) {
+                mostrarAlerta('Erro: ID da participação não encontrado', 'erro');
+                return;
+            }
+            
+            try {
+                const resp = await fetch(`/api/participacoes-etapas/${participacaoId}/desistir`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include'
+                });
+                
+                const resultado = await resp.json();
+                
+                if (resultado.sucesso) {
+                    mostrarAlerta('✓ Desistência registrada. Admin vai alocar outro piloto.', 'sucesso');
+                    // Fechar modal
+                    bootstrap.Modal.getInstance(modalElement).hide();
+                } else {
+                    mostrarAlerta('Erro: ' + resultado.erro, 'erro');
+                }
+            } catch (e) {
+                mostrarAlerta('Erro ao desistir: ' + e.message, 'erro');
+            }
+        }
+
+        async function verificarInscricoes(pilotoId) {
+            try {
+                const resp = await fetch(`/api/pilotos/${pilotoId}/etapas`);
+                const data = await resp.json();
+                if (data.etapas) {
+                    pilotos_inscritos = new Set(data.etapas.map(e => e.etapa_id));
+                }
+            } catch (e) {
+                console.log('Erro ao verificar inscrições:', e);
+            }
+        }
+
+        async function obterCandidaturaAtual(etapaId, pilotoId) {
+            /**Verifica se piloto já é candidato para alguma equipe nesta etapa*/
+            try {
+                const resp = await fetch(`/api/pilotos/${pilotoId}/candidatura-etapa/${etapaId}`);
+                const dados = await resp.json();
+                return dados.candidatura || null; // retorna {candidato_id, equipe_id, equipe_nome} ou null
+            } catch (e) {
+                console.error('Erro ao verificar candidatura:', e);
+                return null;
+            }
+        }
+
+        async function participarEtapa(etapaId, botao) {
+            const pilotoId = localStorage.getItem('piloto_id');
+            const pilotoNome = localStorage.getItem('piloto_nome');
+
+            if (!pilotoId) {
+                mostrarAlerta('Piloto não identificado', 'erro');
+                return;
+            }
+
+            // Se já está inscrito, fazer nada
+            if (pilotos_inscritos.has(etapaId)) {
+                mostrarAlerta('Você já está inscrito nesta etapa', 'erro');
+                return;
+            }
+
+            try {
+                // Carregar equipes da etapa, candidatos E equipes do piloto
+                const [respEquipes, respCandidatos, respMinhasEquipes] = await Promise.all([
+                    fetch(`/api/etapas/${etapaId}/equipes-procurando-piloto`),
+                    fetch(`/api/etapas/${etapaId}/candidatos-pilotos`),
+                    fetch('/api/pilotos/minhas-equipes', { credentials: 'include' })
+                ]);
+                
+                const dados = await respEquipes.json();
+                const candidatosData = await respCandidatos.json();
+                const minhasEquipesData = await respMinhasEquipes.json();
+
+                if (!dados.sucesso) {
+                    mostrarAlerta('Erro ao carregar equipes', 'erro');
+                    return;
+                }
+
+                let contratantes = dados.contratantes || [];
+                const procurando = dados.procurando_piloto || [];
+                const candidatosPorEquipe = {};
+                
+                // Obter lista de IDs de equipes do piloto
+                const meusEquipeIds = new Set();
+                if (minhasEquipesData && minhasEquipesData.sucesso && minhasEquipesData.equipes) {
+                    minhasEquipesData.equipes.forEach(eq => {
+                        meusEquipeIds.add(eq.id);
+                    });
+                }
+                
+                // FILTRAR: Mostrar apenas equipes "tenho_piloto" com as quais o piloto está vinculado
+                // Equipes "precisa_piloto" aparecem para TODOS
+                contratantes = contratantes.filter(e => meusEquipeIds.has(e.equipe_id));
+
+                // Organizar candidatos por equipe
+                if (candidatosData && candidatosData.sucesso && candidatosData.candidatos) {
+                    candidatosData.candidatos.forEach(grupo => {
+                        candidatosPorEquipe[grupo.equipe_id] = grupo.candidatos || [];
+                    });
+                }
+
+                // Se nenhuma equipe disponível
+                if (contratantes.length === 0 && procurando.length === 0) {
+                    mostrarAlerta('Nenhuma equipe disponível nesta etapa', 'erro');
+                    return;
+                }
+
+                // Verificar se piloto já é candidato para alguma equipe nesta etapa
+                const candidaturaExistente = await obterCandidaturaAtual(etapaId, pilotoId);
+
+                // Armazenar dados no elemento do modal usando atributos data
+                const modalElement = document.getElementById('modalSelecionarEquipe');
+                modalElement.dataset.etapaId = etapaId;
+                modalElement.dataset.pilotoId = pilotoId;
+                modalElement.dataset.pilotoNome = pilotoNome;
+                modalElement.dataset.candidaturaExistente = JSON.stringify(candidaturaExistente);
+
+                // Obter número da etapa
+                const etapaNumero = etapa_hoje && etapa_hoje.id === etapaId ? etapa_hoje.numero : etapaId;
+                document.getElementById('etapaNumModal').textContent = etapaNumero;
+
+                // Função auxiliar para renderizar cards de equipe
+                const renderEquipeCard = (e) => {
+                    const carroNome = e.carro ? (e.carro.apelido || e.carro.modelo || 'Carro') : 'Sem carro ativo';
+                    const pecasHtml = e.pecas && e.pecas.length > 0 
+                        ? `<div class="equipe-pecas">
+                            <strong>🔧 Peças (${e.pecas.length}):</strong>
+                            <div class="pecas-lista">
+                                ${e.pecas.slice(0, 5).map(p => `<span class="peca-badge">${p.nome || p.peca_nome}</span>`).join('')}
+                                ${e.pecas.length > 5 ? `<span class="peca-badge">+${e.pecas.length - 5}</span>` : ''}
+                            </div>
+                        </div>`
+                        : '<div class="equipe-pecas"><strong>🔧 Peças:</strong> <span class="text-muted">Nenhuma</span></div>';
+                    
+                    // Verificar candidatura usando dados locais (não global)
+                    const modalElement = document.getElementById('modalSelecionarEquipe');
+                    const candidaturaExistenteLocal = JSON.parse(modalElement.dataset.candidaturaExistente || 'null');
+                    
+                    // Mostrar outros candidatos para esta equipe
+                    const outrosCandidatos = candidatosPorEquipe[e.equipe_id] || [];
+                    const candidatosHtml = outrosCandidatos.length > 0
+                        ? `<div class="equipe-candidatos" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0;">
+                            <strong style="font-size: 12px; color: #666;">👥 Candidatos (${outrosCandidatos.length}):</strong>
+                            <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px;">
+                                ${outrosCandidatos.map(c => {
+                                    const statusBadge = c.status === 'pendente' ? '⏳' : c.status === 'designado' ? '✓' : '✗';
+                                    return `<span class="peca-badge" title="${c.piloto_nome} - ${c.status}" style="background: #f0f0f0; color: #333; font-size: 11px;">
+                                        ${statusBadge} ${c.piloto_nome}
+                                    </span>`;
+                                }).join('')}
+                            </div>
+                        </div>`
+                        : '';
+                    
+                    const jaPertenceAEsta = candidaturaExistenteLocal && candidaturaExistenteLocal.equipe_id === e.equipe_id;
+                    const jaEhCandidato = candidaturaExistenteLocal !== null;
+                    const btnDesabilitado = jaEhCandidato && !jaPertenceAEsta;
+
+                    let btnHtml = '';
+                    if (jaPertenceAEsta) {
+                        // Já é candidato para esta equipe - abrir modal com opção de cancelar
+                        btnHtml = `<button class="equipe-opcao-btn" style="background: #10b981;" 
+                                    onclick="abrirModalCandidatoStatus('${candidaturaExistenteLocal.candidato_id}', '${e.equipe_nome}')">
+                                    ✓ Você é Candidato →
+                                  </button>`;
+                    } else if (btnDesabilitado) {
+                        // Já é candidato para OUTRA equipe
+                        btnHtml = `<button class="equipe-opcao-btn" disabled style="background: #6b7280; cursor: not-allowed;" title="Você já se inscreveu para outra equipe nesta etapa">
+                            ✗ Permitido apenas 1 candidatura por etapa
+                        </button>`;
+                    } else {
+                        // Pode se inscrever
+                        btnHtml = `<button class="equipe-opcao-btn" onclick="participarComEquipe('${e.equipe_id}', '${e.equipe_nome}')">Juntar</button>`;
+                    }
+
+                    return `
+                        <div class="equipe-opcao">
+                            <div class="equipe-opcao-info">
+                                <div class="equipe-opcao-nome">${e.equipe_nome}</div>
+                                <div class="equipe-opcao-id">ID: ${e.equipe_id}</div>
+                                <div class="equipe-carro">
+                                    🚗 ${carroNome}
+                                </div>
+                                ${pecasHtml}
+                                ${candidatosHtml}
+                            </div>
+                            ${btnHtml}
+                        </div>
+                    `;
+                };
+
+                // Renderizar contratantes
+                const containerContratantes = document.getElementById('listaContratantes');
+                if (contratantes.length === 0) {
+                    containerContratantes.innerHTML = '<div class="equipes-vazio-msg">Nenhuma equipe contratante nesta etapa</div>';
+                } else {
+                    containerContratantes.innerHTML = contratantes.map(renderEquipeCard).join('');
+                }
+
+                // Renderizar procurando
+                const containerProcurando = document.getElementById('listaProcurando');
+                if (procurando.length === 0) {
+                    containerProcurando.innerHTML = '<div class="equipes-vazio-msg">Nenhuma equipe procurando piloto nesta etapa</div>';
+                } else {
+                    containerProcurando.innerHTML = procurando.map(renderEquipeCard).join('');
+                }
+
+                // Mostrar modal
+                new bootstrap.Modal(document.getElementById('modalSelecionarEquipe')).show();
+            } catch (e) {
+                mostrarAlerta('Erro ao carregar equipes: ' + e.message, 'erro');
+            }
+        }
+
+        async function participarComEquipe(equipeId, equipeName) {
+            try {
+                const modalElement = document.getElementById('modalSelecionarEquipe');
+                const pilotoId = modalElement.dataset.pilotoId;
+                const pilotoNome = modalElement.dataset.pilotoNome;
+                const etapaId = modalElement.dataset.etapaId;
+
+                // Fechar modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('modalSelecionarEquipe'));
+                if (modal) {
+                    modal.hide();
+                }
+
+                // Inscrever piloto como candidato para a equipe na etapa
+                const resp = await fetch('/api/etapas/participar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        etapa_id: etapaId,
+                        equipe_id: equipeId,
+                        piloto_id: pilotoId,
+                        piloto_nome: pilotoNome
+                    })
+                });
+
+                const resultado = await resp.json();
+
+                if (resultado.sucesso) {
+                    pilotos_inscritos.add(etapaId);
+                    mostrarAlerta(`✓ Você se juntou à equipe ${equipeName}! 🎉`, 'sucesso');
+                    carregarEtapas();
+                } else {
+                    mostrarAlerta('Erro: ' + resultado.erro, 'erro');
+                }
+            } catch (e) {
+                mostrarAlerta('Erro ao participar: ' + e.message, 'erro');
+            }
+        }
+
+        function formatarData(data) {
+            const d = new Date(data + 'T00:00:00');
+            const dia = String(d.getDate()).padStart(2, '0');
+            const mes = String(d.getMonth() + 1).padStart(2, '0');
+            const ano = d.getFullYear();
+            return `${dia}/${mes}/${ano}`;
+        }
+
+        function abrirModalCandidatoStatus(candidatoId, equipeName) {
+            // Armazenar ID no modal para usar no cancelamento
+            const modalElement = document.getElementById('modalStatusCandidato');
+            modalElement.dataset.candidatoId = candidatoId;
+
+            // Preencher conteúdo do modal
+            const statusContent = `
+                <div class="alert alert-success">
+                    <strong>✓ Você é candidato!</strong><br>
+                    Equipe: <strong>${equipeName}</strong><br>
+                    <small class="text-muted">Aguardando aprovação do administrador</small>
+                </div>
+                <div class="mb-3">
+                    <p class="text-muted">Se desejar cancelar sua candidatura e se inscrever em outra equipe, clique no botão "Cancelar Candidatura" abaixo.</p>
+                </div>
+            `;
+
+            document.getElementById('modalStatusContent').innerHTML = statusContent;
+            
+            // Abrir modal
+            new bootstrap.Modal(document.getElementById('modalStatusCandidato')).show();
+        }
+
+        async function cancelarCandidaturaDoModal() {
+            if (!confirm('Deseja cancelar sua candidatura? Esta ação não pode ser desfeita.')) {
+                return;
+            }
+
+            // Recuperar ID do modal ao invés de variável global
+            const modalElement = document.getElementById('modalStatusCandidato');
+            const candidatoId = modalElement.dataset.candidatoId;
+            
+            // Aguardar o cancelamento
+            await cancelarCandidatura(candidatoId);
+            
+            // Fechar modal DEPOIS que o cancelamento foi concluído
+            const modal = bootstrap.Modal.getInstance(document.getElementById('modalStatusCandidato'));
+            if (modal) {
+                modal.hide();
+            }
+        }
+
+        async function cancelarCandidatura(candidatoId) {
+            if (!candidatoId) {
+                mostrarAlerta('Erro: ID da candidatura não encontrado', 'erro');
+                return false;
+            }
+
+            try {
+                const resp = await fetch('/api/candidatos-piloto-etapa/cancelar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ candidato_id: candidatoId })
+                });
+
+                const resultado = await resp.json();
+
+                if (resultado.sucesso) {
+                    mostrarAlerta('✓ Candidatura cancelada com sucesso!', 'sucesso');
+                    // Aguardar um pouco antes de recarregar para garantir que tudo foi processado
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    await carregarEtapas();
+                    return true;
+                } else {
+                    mostrarAlerta('Erro: ' + resultado.erro, 'erro');
+                    return false;
+                }
+            } catch (e) {
+                mostrarAlerta('Erro ao cancelar: ' + e.message, 'erro');
+                return false;
+            }
+        }
+
+        function mostrarAlerta(msg, tipo) {
+            const alerta = document.createElement('div');
+            alerta.className = `alerta ${tipo}`;
+            alerta.textContent = msg;
+            document.body.appendChild(alerta);
+
+            setTimeout(() => {
+                alerta.remove();
+            }, 4000);
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = '/login';
+        }
+    </script>
+
+    <!-- Modal de Classificação Final da Qualificação -->
+    <div class="modal fade" id="modalClassificacaoFinal" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">🏆 Classificação Final da Qualificação - Etapa <span id="etapaNumClassificacao">-</span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="classificacaoContent">
+                        <div class="text-center">
+                            <div class="spinner-border text-success" role="status">
+                                <span class="sr-only">Carregando...</span>
+                            </div>
+                            <p>Carregando classificação...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    </div>
+
+    <!-- Verificar URL para abrir evento automaticamente após login -->
+    <script>
+        async function mostrarClassificacaoFinal(etapaId, etapaNum) {
+            try {
+                // Atualizar título do modal
+                document.getElementById('etapaNumClassificacao').textContent = etapaNum;
+                
+                // Mostrar loading
+                document.getElementById('classificacaoContent').innerHTML = `
+                    <div class="text-center">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="sr-only">Carregando...</span>
+                        </div>
+                        <p>Carregando classificação...</p>
+                    </div>
+                `;
+                
+                // Abrir modal
+                const modal = new bootstrap.Modal(document.getElementById('modalClassificacaoFinal'));
+                modal.show();
+                
+                // Buscar classificação
+                const response = await fetch(`/api/etapas/${etapaId}/classificacao-final`);
+                const data = await response.json();
+                
+                if (data.sucesso) {
+                    renderizarClassificacao(data.classificacao);
+                } else {
+                    document.getElementById('classificacaoContent').innerHTML = `
+                        <div class="alert alert-danger">
+                            <h5>Erro ao carregar classificação</h5>
+                            <p>${data.erro || 'Erro desconhecido'}</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Erro ao mostrar classificação:', error);
+                document.getElementById('classificacaoContent').innerHTML = `
+                    <div class="alert alert-danger">
+                        <h5>Erro ao carregar classificação</h5>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function mostrarResultadosQualificacao() {
+            const btn = document.getElementById('btnResultadosQualificacao');
+            const etapaId = btn.getAttribute('data-etapa-id');
+            
+            if (!etapaId) {
+                mostrarAlerta('Nenhuma etapa em batalhas encontrada', 'erro');
+                return;
+            }
+            
+            mostrarClassificacaoFinal(etapaId, null);
+        }
+            if (!classificacao || classificacao.length === 0) {
+                document.getElementById('classificacaoContent').innerHTML = `
+                    <div class="alert alert-info">
+                        <h5>Nenhuma classificação disponível</h5>
+                        <p>A qualificação ainda não foi finalizada ou não possui avaliações.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th style="width: 80px;">Posição</th>
+                                <th>Equipe</th>
+                                <th>Piloto</th>
+                                <th style="width: 100px;">Linha</th>
+                                <th style="width: 100px;">Ângulo</th>
+                                <th style="width: 100px;">Estilo</th>
+                                <th style="width: 120px;">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            classificacao.forEach((equipe, index) => {
+                const posicao = equipe.posicao;
+                let medalha = '';
+                
+                if (posicao === 1) medalha = '🥇';
+                else if (posicao === 2) medalha = '🥈';
+                else if (posicao === 3) medalha = '🥉';
+                
+                html += `
+                    <tr class="${posicao <= 3 ? 'table-warning' : ''}">
+                        <td class="text-center">
+                            <strong style="font-size: 18px;">${medalha} ${posicao}º</strong>
+                        </td>
+                        <td>
+                            <strong>${equipe.equipe_nome}</strong>
+                        </td>
+                        <td>${equipe.piloto_nome}</td>
+                        <td class="text-center"><strong>${equipe.nota_linha}</strong></td>
+                        <td class="text-center"><strong>${equipe.nota_angulo}</strong></td>
+                        <td class="text-center"><strong>${equipe.nota_estilo}</strong></td>
+                        <td class="text-center">
+                            <strong style="color: #dc143c; font-size: 16px;">${equipe.total_notas}</strong>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="mt-3 text-center">
+                    <small class="text-muted">
+                        Classificação baseada na soma das notas de linha, ângulo e estilo
+                    </small>
+                </div>
+            `;
+
+            document.getElementById('classificacaoContent').innerHTML = html;
+        }
+
+        window.addEventListener('load', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const etapaId = urlParams.get('etapa');
+            
+            if (etapaId) {
+                console.log('[AUTO-EVENTO] Abrindo evento para etapa:', etapaId);
+                
+                // Aguardar um pouco para garantir que tudo está carregado
+                setTimeout(() => {
+                    // Tentar chamar a função mostrarEventoAoVivo
+                    if (typeof mostrarEventoAoVivo === 'function') {
+                        console.log('[AUTO-EVENTO] Função disponível, abrindo modal...');
+                        mostrarEventoAoVivo(etapaId);
+                    } else {
+                        console.warn('[AUTO-EVENTO] Função mostrarEventoAoVivo ainda não está disponível');
+                    }
+                }, 500);
+                
+                // Limpar URL para não reabrir o modal ao atualizar
+                window.history.replaceState({}, document.title, '/campeonato');
+            }
+        });
+    </script>
+
+    <!-- Botão Flutuante para Resultados da Qualificação -->
+    <button id="btnResultadosQualificacao" class="btn-resultados-qualificacao" onclick="mostrarResultadosQualificacao()">
+        🏆 Ver Resultados Qualify
+    </button>
+</body>
+</html>

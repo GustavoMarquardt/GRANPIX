@@ -1,0 +1,840 @@
+/* TEMA GLOBAL: Branco, Preto e Vermelho */
+body {
+    background-color: #f5f5f5;
+    font-family: Arial, sans-serif;
+    color: #000;
+}
+
+.navbar {
+    background-color: #1a1a1a !important;
+    border-bottom: 3px solid #dc143c;
+    box-shadow: 0 2px 8px rgba(220, 20, 60, 0.3);
+}
+
+.navbar-brand {
+    color: #dc143c !important;
+    font-weight: bold;
+    font-size: 1.3rem;
+}
+
+.nav-link {
+    color: #000 !important;
+    transition: all 0.3s ease;
+}
+
+.nav-link:hover {
+    color: #dc143c !important;
+}
+
+.card {
+    border: 2px solid #000;
+    background-color: #fff;
+    color: #000;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+}
+
+.card-header {
+    background-color: #1a1a1a;
+    border-bottom: 2px solid #dc143c;
+    border-radius: 8px 8px 0 0;
+    color: #dc143c;
+}
+
+.card-body {
+    background-color: #fff;
+    color: #000;
+}
+
+.btn-danger {
+    background-color: #dc143c;
+    border-color: #dc143c;
+    color: white;
+}
+
+.btn-danger:hover {
+    background-color: #b91c1c;
+    border-color: #b91c1c;
+    box-shadow: 0 0 10px rgba(220, 20, 60, 0.5);
+}
+
+.btn-dark {
+    background-color: #000;
+    border-color: #000;
+    color: #fff;
+}
+
+.btn-dark:hover {
+    background-color: #dc143c;
+    border-color: #dc143c;
+    box-shadow: 0 0 10px rgba(220, 20, 60, 0.5);
+}
+
+.btn-primary {
+    background-color: #000 !important;
+    border-color: #000 !important;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #dc143c !important;
+    border-color: #dc143c !important;
+}
+
+.form-control {
+    background-color: #fff;
+    border: 2px solid #000;
+    color: #000;
+}
+
+.form-control:focus {
+    background-color: #fff;
+    border-color: #dc143c;
+    color: #000;
+    box-shadow: 0 0 10px rgba(220, 20, 60, 0.3);
+}
+
+.form-control::placeholder {
+    color: #999;
+}
+
+.form-label {
+    color: #000;
+    font-weight: 500;
+}
+
+.table {
+    color: #000;
+    border-color: #000;
+    background: #fff;
+}
+
+.table thead th {
+    background-color: #1a1a1a;
+    border-color: #000;
+    color: #fff;
+}
+
+.table tbody tr:hover {
+    background-color: #f0f0f0;
+}
+
+.alert {
+    border-color: #000;
+}
+
+.alert-info {
+    background-color: #fff;
+    border-color: #000;
+    color: #000;
+    border: 2px solid #000;
+}
+
+.alert-success {
+    background-color: #fff;
+    border-color: #22c55e;
+    color: #000;
+    border: 2px solid #22c55e;
+}
+
+.alert-danger {
+    background-color: #fff;
+    border-color: #dc143c;
+    color: #000;
+    border: 2px solid #dc143c;
+}
+
+.modal-content {
+    background-color: #fff;
+    border: 2px solid #000;
+}
+
+.modal-header {
+    background-color: #1a1a1a;
+    border-bottom: 2px solid #dc143c;
+}
+
+.modal-title {
+    color: #dc143c;
+}
+
+.badge {
+    background-color: #dc143c;
+}
+
+.badge.bg-info {
+    background-color: #000 !important;
+}
+
+.badge.bg-success {
+    background-color: #22c55e !important;
+}
+
+/* Tags de Compatibilidade */
+.compatibilidade-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background-color: #000;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 500;
+    animation: slideIn 0.2s ease-out;
+    border: 1px solid #dc143c;
+}
+
+.compatibilidade-tag:hover {
+    background-color: #dc143c;
+    box-shadow: 0 0 10px rgba(220, 20, 60, 0.5);
+}
+
+.compatibilidade-tag .remove-tag {
+    cursor: pointer;
+    font-weight: bold;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.compatibilidade-tag .remove-tag:hover {
+    opacity: 1;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Dropdown de compatibilidades */
+.dropdown-menu.compatibilidade-menu {
+    background-color: #fff;
+    border: 2px solid #000;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.dropdown-menu.compatibilidade-menu .dropdown-item {
+    padding: 10px 15px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    color: #000;
+}
+
+.dropdown-menu.compatibilidade-menu .dropdown-item:hover {
+    background-color: #f0f0f0;
+    color: #dc143c;
+}
+
+.dropdown-menu.compatibilidade-menu .dropdown-item.selected {
+    background-color: #f0f0f0;
+    color: #dc143c;
+    font-weight: 500;
+}
+
+/* Lista de Equipes */
+.list-group-item {
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 4px solid transparent;
+    background: #fff;
+    color: #000;
+    border-color: #000;
+}
+
+.list-group-item:hover {
+    background-color: #f0f0f0;
+    border-left-color: #dc143c;
+}
+
+.list-group-item.active {
+    background-color: #1a1a1a;
+    border-color: #dc143c;
+    border-left-color: #dc143c;
+    color: #dc143c;
+}
+
+/* Cards de Produto */
+.produto-card {
+    transition: all 0.3s;
+    border: 2px solid #000;
+    border-radius: 8px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    min-height: 650px;
+}
+
+.produto-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(220, 20, 60, 0.3);
+    border-color: #dc143c;
+}
+
+.produto-card-inativo {
+    opacity: 0.5;
+    filter: grayscale(0.7);
+    pointer-events: none;
+}
+
+.produto-header {
+    background: linear-gradient(135deg, #1a1a1a 0%, #000 100%);
+    color: #dc143c;
+    padding: 12px;
+    border-radius: 8px 8px 0 0;
+    font-weight: bold;
+    border-bottom: 2px solid #dc143c;
+}
+
+.produto-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    color: #000;
+}
+
+.preco {
+    font-size: 24px;
+    font-weight: bold;
+    color: #dc143c;
+    margin: 10px 0;
+    margin-top: auto;
+}
+
+.btn-comprar {
+    width: 100%;
+    background: #000;
+    border: 2px solid #000;
+    color: white;
+    font-weight: bold;
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-comprar:hover {
+    background: #dc143c;
+    border-color: #dc143c;
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(220, 20, 60, 0.3);
+}
+
+.btn-comprar:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Detalhes da Equipe */
+.stat-card {
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    margin-bottom: 15px;
+    border: 2px solid #000;
+}
+
+.stat-label {
+    color: #666;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #dc143c;
+    margin-top: 8px;
+}
+
+/* Histórico */
+.historico-item {
+    background: #fff;
+    padding: 12px 16px;
+    border-left: 4px solid #dc143c;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border: 2px solid #000;
+}
+
+.historico-item .valor {
+    font-weight: bold;
+    color: #dc143c;
+    font-size: 16px;
+}
+
+.historico-item .tempo {
+    color: #666;
+    font-size: 12px;
+}
+
+/* Tab */
+.nav-tabs {
+    border-bottom: 2px solid #000;
+}
+
+.nav-tabs .nav-link {
+    color: #000;
+    border: none;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.3s;
+}
+
+.nav-tabs .nav-link:hover {
+    color: #dc143c;
+    border-color: #dc143c;
+}
+
+.nav-tabs .nav-link.active {
+    color: #dc143c;
+    background-color: transparent;
+    border-color: #dc143c;
+    font-weight: bold;
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    .col-md-3, .col-md-9 {
+        margin-bottom: 20px;
+    }
+    
+    .produto-card {
+        margin-bottom: 15px;
+        min-height: 600px;
+    }
+}
+
+/* Loading */
+.spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Toast */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+}
+
+.toast {
+    background: #fff;
+    padding: 16px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    margin-bottom: 10px;
+    min-width: 300px;
+    border: 2px solid #000;
+}
+
+.toast.success {
+    border-left: 4px solid #22c55e;
+}
+
+.toast.error {
+    border-left: 4px solid #dc143c;
+}
+
+/* Garantir que apenas uma aba está visível por vez */
+.tab-pane {
+    display: none !important;
+    position: relative;
+    z-index: 1;
+}
+
+.tab-pane.active,
+.tab-pane.show {
+    display: block !important;
+    z-index: auto;
+}
+
+/* Bootstrap tab transitions */
+.tab-pane.fade {
+    opacity: 0;
+    transition: opacity 0.15s linear;
+}
+
+.tab-pane.fade.show {
+    opacity: 1;
+}
+
+/* Garantir que alocar-pilotos não fica acima das outras */
+#alocar-pilotos {
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+.table tbody tr:hover {
+    background-color: rgba(204, 0, 0, 0.1);
+}
+
+.alert {
+    border-color: #cc0000;
+}
+
+.alert-info {
+    background-color: #1a1a1a;
+    border-color: #0066cc;
+    color: #0099ff;
+}
+
+.alert-success {
+    background-color: #1a1a1a;
+    border-color: #00cc00;
+    color: #00ff00;
+}
+
+.alert-danger {
+    background-color: #1a1a1a;
+    border-color: #cc0000;
+    color: #ff6666;
+}
+
+.modal-content {
+    background-color: #222;
+    border: 2px solid #cc0000;
+}
+
+.modal-header {
+    background-color: #1a1a1a;
+    border-bottom: 2px solid #cc0000;
+}
+
+.modal-title {
+    color: #cc0000;
+}
+
+.badge {
+    background-color: #cc0000;
+}
+
+.badge.bg-info {
+    background-color: #0066cc !important;
+}
+
+.badge.bg-success {
+    background-color: #00cc00 !important;
+}
+
+/* Tags de Compatibilidade */
+.compatibilidade-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background-color: #cc0000;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 500;
+    animation: slideIn 0.2s ease-out;
+}
+
+.compatibilidade-tag:hover {
+    background-color: #990000;
+    box-shadow: 0 0 10px rgba(204, 0, 0, 0.5);
+}
+
+.compatibilidade-tag .remove-tag {
+    cursor: pointer;
+    font-weight: bold;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.compatibilidade-tag .remove-tag:hover {
+    opacity: 1;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Dropdown de compatibilidades */
+.dropdown-menu.compatibilidade-menu {
+    background-color: white;
+    border: 1px solid #dee2e6;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.dropdown-menu.compatibilidade-menu .dropdown-item {
+    padding: 10px 15px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.dropdown-menu.compatibilidade-menu .dropdown-item:hover {
+    background-color: #f8f9fa;
+}
+
+.dropdown-menu.compatibilidade-menu .dropdown-item.selected {
+    background-color: #e7f1ff;
+    color: #0d6efd;
+    font-weight: 500;
+}
+
+/* Lista de Equipes */
+.list-group-item {
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 4px solid transparent;
+}
+
+.list-group-item:hover {
+    background-color: #f8f9fa;
+    border-left-color: #0d6efd;
+}
+
+.list-group-item.active {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    border-left-color: #0d6efd;
+}
+
+/* Cards de Produto */
+.produto-card {
+    transition: all 0.3s;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: white;
+    display: flex;
+    flex-direction: column;
+    min-height: 650px;
+}
+
+.produto-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    border-color: #0d6efd;
+}
+
+.produto-card-inativo {
+    opacity: 0.5;
+    filter: grayscale(0.7);
+    pointer-events: none;
+}
+
+.produto-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 12px;
+    border-radius: 8px 8px 0 0;
+    font-weight: bold;
+}
+
+.produto-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.preco {
+    font-size: 24px;
+    font-weight: bold;
+    color: #28a745;
+    margin: 10px 0;
+    margin-top: auto;
+}
+
+.btn-comprar {
+    width: 100%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    color: white;
+    font-weight: bold;
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-comprar:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.btn-comprar:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Detalhes da Equipe */
+.stat-card {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    text-align: center;
+    margin-bottom: 15px;
+}
+
+.stat-label {
+    color: #666;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #0d6efd;
+    margin-top: 8px;
+}
+
+/* Histórico */
+.historico-item {
+    background: white;
+    padding: 12px 16px;
+    border-left: 4px solid #28a745;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.historico-item .valor {
+    font-weight: bold;
+    color: #28a745;
+    font-size: 16px;
+}
+
+.historico-item .tempo {
+    color: #999;
+    font-size: 12px;
+}
+
+/* Alert */
+.alert {
+    border-radius: 8px;
+    border: none;
+}
+
+/* Tab */
+.nav-tabs {
+    border-bottom: 2px solid #dee2e6;
+}
+
+.nav-tabs .nav-link {
+    color: #666;
+    border: none;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.3s;
+}
+
+.nav-tabs .nav-link:hover {
+    color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.nav-tabs .nav-link.active {
+    color: #0d6efd;
+    background-color: transparent;
+    border-color: #0d6efd;
+    font-weight: bold;
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    .col-md-3, .col-md-9 {
+        margin-bottom: 20px;
+    }
+    
+    .produto-card {
+        margin-bottom: 15px;
+        min-height: 600px;
+    }
+}
+
+/* Loading */
+.spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Toast */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+}
+
+.toast {
+    background: white;
+    padding: 16px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    margin-bottom: 10px;
+    min-width: 300px;
+}
+
+.toast.success {
+    border-left: 4px solid #28a745;
+}
+
+.toast.error {
+    border-left: 4px solid #dc3545;
+}
+/* Garantir que apenas uma aba está visível por vez */
+.tab-pane {
+    display: none !important;
+    position: relative;
+    z-index: 1;
+}
+
+.tab-pane.active,
+.tab-pane.show {
+    display: block !important;
+    z-index: auto;
+}
+
+/* Bootstrap tab transitions */
+.tab-pane.fade {
+    opacity: 0;
+    transition: opacity 0.15s linear;
+}
+
+.tab-pane.fade.show {
+    opacity: 1;
+}
+
+/* Garantir que alocar-pilotos não fica acima das outras */
+#alocar-pilotos {
+    position: relative !important;
+    z-index: 1 !important;
+}

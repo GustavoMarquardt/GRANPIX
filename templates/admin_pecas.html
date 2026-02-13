@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GRANPIX - Cadastrar Peças</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/imask/6.4.0/imask.min.js"></script>
+  <style>
+    .sidebar {
+      position: fixed;
+      top: 56px;
+      left: 0;
+      width: 250px;
+      height: calc(100vh - 56px);
+      background-color: #343a40;
+      padding-top: 20px;
+      overflow-y: auto;
+      z-index: 1000;
+    }
+    
+    .sidebar .nav-link {
+      color: #adb5bd;
+      padding: 10px 20px;
+      margin: 5px 10px;
+      border-radius: 5px;
+      transition: all 0.3s;
+    }
+    
+    .sidebar .nav-link:hover {
+      color: #fff;
+      background-color: #495057;
+    }
+    
+    .sidebar .nav-link.active {
+      color: #fff;
+      background-color: #dc143c;
+    }
+    
+    .main-content {
+      margin-left: 250px;
+      padding: 20px;
+    }
+    
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+        top: 0;
+      }
+      .main-content {
+        margin-left: 0;
+      }
+    }
+
+    #modalDesignarPiloto {
+      pointer-events: auto !important;
+      z-index: 9999 !important;
+    }
+    
+    #modalDesignarPiloto * {
+      pointer-events: auto !important;
+    }
+    
+    #modalDesignarPiloto .modal-dialog {
+      pointer-events: auto !important;
+    }
+    
+    #modalDesignarPiloto .modal-content {
+      pointer-events: auto !important;
+    }
+
+    #modalConfirmacaoAlocacao {
+      pointer-events: auto !important;
+      z-index: 9999 !important;
+      display: none !important;
+    }
+
+    #modalConfirmacaoAlocacao.show {
+      display: block !important;
+    }
+
+    #modalConfirmacaoAlocacao * {
+      pointer-events: auto !important;
+    }
+
+    #modalConfirmacaoAlocacao .modal-dialog {
+      pointer-events: auto !important;
+    }
+
+    #modalConfirmacaoAlocacao .modal-content {
+      pointer-events: auto !important;
+    }
+
+    #modalConfirmacaoAlocacao .btn {
+      pointer-events: auto !important;
+    }
+    
+    .modal-backdrop {
+      pointer-events: auto !important;
+      z-index: 9998 !important;
+    }
+  </style>
+  <!-- Carregar script.js primeiro para definir funções globais -->
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+  <!-- Depois carregar qualificacao.js que usa funções de script.js -->
+  <script src="{{ url_for('static', filename='qualificacao.js') }}"></script>
+  <!-- Por fim, sistema_notificacao que usa funções de qualificacao.js -->
+  <script src="{{ url_for('static', filename='sistema_notificacao.js') }}"></script>
+</head>
+<body>
+  <nav class="navbar navbar-dark" style="background-color: #1a1a1a; border-bottom: 3px solid #dc143c;">
+  <div class="container-fluid">
+  <span class="navbar-brand mb-0 h1" style="color: #dc143c; font-weight: bold;">GRANPIX - Painel Administrativo</span>
+  <a href="/" class="btn btn-sm btn-outline-light">Voltar ao Site</a>
+  </div>
+  </nav>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+  <nav class="nav flex-column">
+  <a class="nav-link" href="/admin/carros">
+  <i class="fas fa-car"></i> Cadastrar Carros
+  </a>
+  <a class="nav-link active" href="/admin/pecas">
+  <i class="fas fa-cogs"></i> Cadastrar Peças
+  </a>
+  <a class="nav-link" href="/admin/variacoes">
+  <i class="fas fa-tools"></i> Cadastrar Variações
+  </a>
+  <a class="nav-link" href="/admin/equipes">
+  <i class="fas fa-users"></i> Cadastrar Equipes
+  </a>
+  <a class="nav-link" href="/admin/etapas">
+  <i class="fas fa-calendar"></i> Gerenciar Etapas
+  </a>
+  <a class="nav-link" href="/admin/solicitacoes-pecas">
+  <i class="fas fa-clipboard-list"></i> Solicitações de Peças
+  </a>
+  <a class="nav-link" href="/admin/solicitacoes-carros">
+  <i class="fas fa-clipboard-check"></i> Solicitações de Carros
+  </a>
+  <a class="nav-link" href="/admin/fazer-etapa">
+  <i class="fas fa-play"></i> Fazer Etapa
+  </a>
+  <a class="nav-link" href="/admin/alocar-pilotos">
+  <i class="fas fa-user-check"></i> Alocar Pilotos
+  </a>
+  <a class="nav-link" href="/admin/comissoes">
+  <i class="fas fa-money-bill"></i> Comissões
+  </a>
+  <a class="nav-link" href="/admin/configuracoes">
+  <i class="fas fa-cog"></i> Configurações
+  </a>
+  <a class="nav-link" href="/admin/equipes-list">
+  <i class="fas fa-list"></i> Lista de Equipes
+  </a>
+  </nav>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+  <div class="container-fluid mt-4">
+  <div class="row mb-4">
+  <div class="col-md-3">
+  <div class="stat-card">
+  <div class="stat-label">Total de Equipes</div>
+  <div class="stat-value" id="totalEquipes">-</div>
+  </div>
+  </div>
+  <div class="col-md-3">
+  <div class="stat-card">
+  <div class="stat-label">Solicitações de Peça</div>
+  <div class="stat-value" id="solicitacoesPecasPendentes">0</div>
+  </div>
+  </div>
+  <div class="col-md-3">
+  <div class="stat-card">
+  <div class="stat-label">Solicitações de Carro</div>
+  <div class="stat-value" id="solicitacoesCarrosPendentes">0</div>
+  </div>
+  </div>
+  </div>
+  <div class="row">
+  <div class="col-md-6">
+  <div class="card">
+  <div class="card-header bg-dark text-white">
+  <h5 class="mb-0">Nova Peça</h5>
+  </div>
+  <div class="card-body">
+  <div class="form-group">
+  <label>Nome</label>
+  <input type="text" class="form-control" id="pecaNome" placeholder="Ex: Turbo">
+  </div>
+  <div class="form-group">
+  <label>Tipo</label>
+  <select class="form-control" id="pecaTipo">
+  <option value="motor">Motor</option>
+  <option value="cambio">Câmbio</option>
+  <option value="suspensao">Suspensão</option>
+  <option value="kit_angulo">Kit ângulo</option>
+  <option value="diferencial">Diferencial</option>
+  </select>
+  </div>
+  <div class="form-group">
+  <label>Preço</label>
+  <input type="number" class="form-control" id="pecaPreco" placeholder="Ex: 5000"
+  step="0.01">
+  </div>
+  <div class="form-group">
+  <label>Durabilidade Máxima</label>
+  <input type="number" class="form-control" id="pecaDurabilidade"
+  placeholder="Ex: 100" value="100" step="0.1">
+  </div>
+  <div class="form-group">
+  <label>Coeficiente de Quebra (1.0 = normal)</label>
+  <input type="number" class="form-control" id="pecaCoeficiente" placeholder="Ex: 1.0"
+  value="1.0" step="0.1">
+  </div>
+  <div class="form-group">
+  <label>Compatibilidade com Carros <small class="text-muted">(Clique para adicionar)</small></label>
+  <div class="position-relative">
+  <input type="text" class="form-control" id="pecaCompatibilidadeInput"
+  placeholder="Clique para selecionar modelos de carros..."
+  readonly style="cursor: pointer; background-color: #f8f9fa;">
+  <div class="dropdown-menu w-100" id="pecaCompatibilidadeDropdown"
+  style="position: absolute; top: 100%; left: 0; display: none; max-height: 250px; overflow-y: auto; z-index: 1000;">
+  </div>
+  </div>
+  <div id="pecaCompatibilidadeTags" class="mt-2" style="display: flex; flex-wrap: wrap; gap: 8px;">
+  </div>
+  <small class="text-muted d-block mt-2">
+  Clique no campo para ver opções. Cada carro selecionado aparecerá como um item acima.
+  </small>
+  </div>
+  <div class="form-group">
+  <label>Imagem (opcional)</label>
+  <input type="file" class="form-control" id="pecaImagem" accept="image/*">
+  <small class="text-muted d-block mt-2">Selecione uma imagem para a peça (PNG, JPG, etc)</small>
+  <div id="pecaImagemPreview" style="margin-top: 10px;">
+  <img id="pecaImagemPreviewImg" style="max-width: 100%; max-height: 150px; display: none;">
+  </div>
+  </div>
+  <button class="btn btn-primary w-100" onclick="cadastrarPeca()">
+  Cadastrar Peça
+  </button>
+  </div>
+  </div>
+  </div>
+  <div class="col-md-6">
+  <div class="card">
+  <div class="card-header bg-dark text-white">
+  <h5 class="mb-0">Peças Cadastradas</h5>
+  </div>
+  <div class="card-body" id="listaPecas" style="max-height: 500px; overflow-y: auto;">
+  <p class="text-muted">Carregando...</p>
+  </div>
+  </div>
+  </div>
+  </div>
+  <!-- Modal Editar Peça -->
+  <div class="modal fade" id="modalEditarPeca" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+  <div class="modal-content">
+  <div class="modal-header bg-dark text-white">
+  <h5 class="modal-title">Editar Peça</h5>
+  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+  </div>
+  <div class="modal-body">
+  <input type="hidden" id="editPecaId">
+  <div class="form-group">
+  <label>Nome</label>
+  <input type="text" class="form-control" id="editPecaNome">
+  </div>
+  <div class="form-group">
+  <label>Tipo</label>
+  <select class="form-control" id="editPecaTipo">
+  <option value="motor">Motor</option>
+  <option value="cambio">Câmbio</option>
+  <option value="suspensao">Suspensão</option>
+  <option value="kit_angulo">Kit ângulo</option>
+  <option value="diferencial">Diferencial</option>
+  </select>
+  </div>
+  <div class="form-group">
+  <label>Preço</label>
+  <input type="number" class="form-control" id="editPecaPreco" step="0.01">
+  </div>
+  <div class="form-group">
+  <label>Durabilidade Máxima</label>
+  <input type="number" class="form-control" id="editPecaDurabilidade" step="0.1">
+  </div>
+  <div class="form-group">
+  <label>Coeficiente de Quebra (1.0 = normal)</label>
+  <input type="number" class="form-control" id="editPecaCoeficiente" step="0.1">
+  </div>
+  <div class="form-group">
+  <label>Compatibilidade com Carros <small class="text-muted">(Clique para adicionar)</small></label>
+  <div class="position-relative">
+  <input type="text" class="form-control" id="editPecaCompatibilidadeInput"
+  placeholder="Clique para selecionar modelos de carros..."
+  readonly style="cursor: pointer; background-color: #f8f9fa;">
+  <div class="dropdown-menu w-100" id="editPecaCompatibilidadeDropdown"
+  style="position: absolute; top: 100%; left: 0; display: none; max-height: 250px; overflow-y: auto; z-index: 1000;">
+  </div>
+  </div>
+  <div id="editPecaCompatibilidadeTags" class="mt-2" style="display: flex; flex-wrap: wrap; gap: 8px;">
+  </div>
+  <small class="text-muted d-block mt-2">
+  Clique no campo para ver opções. Cada carro selecionado aparecerá como um item acima.
+  </small>
+  </div>
+  <div class="form-group">
+  <label>Imagem</label>
+  <div id="editPecaImagemAtual" style="margin-bottom: 10px;">
+  <img id="editPecaImagemAtualImg" style="max-width: 100%; max-height: 150px; display: none;" alt="Imagem atual">
+  </div>
+  <input type="file" class="form-control" id="editPecaImagem" accept="image/*">
+  <small class="text-muted d-block mt-2">Selecione uma nova imagem para substituir (opcional)</small>
+  <button type="button" class="btn btn-sm btn-danger mt-2" id="editPecaDeletarImagemBtn" style="display: none;" onclick="deletarImagemPeca()">
+   Deletar Imagem
+  </button>
+  </div>
+  </div>
+  <div class="modal-footer">
+  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+  <button type="button" class="btn btn-danger" onclick="deletarPeca()">Deletar Peça</button>
+  <button type="button" class="btn btn-primary" onclick="salvarEdicaoPeca()">Salvar</button>
+  </div>
+  </div>
+  </div>
+  </div>
+  <div class="toast-container"></div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  // Verificar autenticação de admin
+  if (!sessionStorage.getItem('admin_logado')) {
+  // Se não tem sessão de admin, redireciona para login
+  // Mas permite carregar para testar
+  }
+  // Variáveis globais para controlar auto-refresh
+  let intervaloSolicitacoesPecas = null;
+  let intervaloSolicitacoesCarros = null;
+  let intervaloContadores = null;
+  let abaSolicitacoesPecasAtiva = true;
+  let abaSolicitacoesCarrosAtiva = false;
+  // Função auxiliar para ler arquivo como Base64
+  function lerArquivoComoBase64(arquivo) {
+  return new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = reject;
+  reader.readAsDataURL(arquivo);
+  });
+  }
+  // Função para verificar se existe modal aberto
+  function temModalAbertoAdmin() {
+  return document.querySelectorAll('.modal.show').length > 0;
+  }
+  // Função para iniciar auto-refresh
+  function iniciarAutoRefreshAdmin() {
+  // Auto-refresh das solicitações de Peças
+  intervaloSolicitacoesPecas = setInterval(() => {
+  if (abaSolicitacoesPecasAtiva && !document.hidden && !temModalAbertoAdmin()) {
+  carregarSolicitacoes();
+  }
+  }, 3000);
+  // Auto-refresh das solicitações de carros
+  intervaloSolicitacoesCarros = setInterval(() => {
+  if (abaSolicitacoesCarrosAtiva && !document.hidden && !temModalAbertoAdmin()) {
+  carregarSolicitacoesCarros();
+  }
+  }, 3000);
+  // Auto-refresh dos contadores de solicitações pendentes
+  intervaloContadores = setInterval(() => {
+  if (!document.hidden && !temModalAbertoAdmin()) {
+  atualizarContadoresSolicitacoes().catch(e => {
+  console.error('Erro no intervalo de contadores:', e);
+  });
+  }
+  }, 3000);
+  }
+  // Função para parar auto-refresh
+  function pararAutoRefreshAdmin() {
+  if (intervaloSolicitacoesPecas) clearInterval(intervaloSolicitacoesPecas);
+  if (intervaloSolicitacoesCarros) clearInterval(intervaloSolicitacoesCarros);
+  if (intervaloContadores) clearInterval(intervaloContadores);
+  }
+  // Inicializar painel
+  window.addEventListener('load', () => {
+  atualizarStatusAdmin();
+  atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
+  carregarPecas();
+  // Iniciar auto-refresh
+  iniciarAutoRefreshAdmin();
+  });
+  async function atualizarStatusAdmin() {
+  try {
+  console.log('Atualizando status admin...');
+  const resp = await fetch('/api/admin/status');
+  const status = await resp.json();
+  console.log('Status recebido:', status);
+  document.getElementById('totalEquipes').textContent = status.total_equipes || 0;
+  } catch (e) {
+  console.log('Erro ao atualizar status');
+  }
+  }
+  async function atualizarContadoresSolicitacoes() {
+  try {
+  // Contar solicitações de peça pendentes
+  const respPecas = await fetch('/api/admin/solicitacoes-pecas');
+  const pecas = await respPecas.json();
+  const pecasPendentes = Array.isArray(pecas)
+  ? pecas.filter(s => s.status === 'pendente').length
+  : 0;
+  const elemPecas = document.getElementById('solicitacoesPecasPendentes');
+  if (elemPecas) {
+  elemPecas.textContent = pecasPendentes;
+  }
+  // Contar solicitações de carro pendentes
+  const respCarros = await fetch('/api/admin/solicitacoes-carros');
+  const carros = await respCarros.json();
+  const carrosPendentes = Array.isArray(carros)
+  ? carros.filter(s => s.status === 'pendente').length
+  : 0;
+  const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
+  if (elemCarros) {
+  elemCarros.textContent = carrosPendentes;
+  }
+  } catch (e) {
+  console.error('Erro ao atualizar contadores de solicitações:', e);
+  }
+  }
+  async function carregarPecas() {
+  try {
+  console.log('Carregando Peças...');
+  const resp = await fetch('/api/admin/pecas');
+  const data = await resp.json();
+  console.log('Peças recebidas:', data);
+  // Carregar carros para criar mapa de compatibilidade
+  const respCarros = await fetch('/api/admin/carros');
+  const carros = await respCarros.json();
+  const mapaCarros = {};
+  if (Array.isArray(carros)) {
+  carros.forEach(carro => {
+  mapaCarros[carro.id] = `${carro.marca} ${carro.modelo}`;
+  });
+  }
+  // Carregar modelos de carros para compatibilidades (IDs de modelos_carro_loja)
+  const mapaModelos = {};
+  try {
+  const respModelos = await fetch('/api/admin/carros'); // mesma endpoint retorna carros/modelos
+  const modelos = await respModelos.json();
+  if (Array.isArray(modelos)) {
+  modelos.forEach(modelo => {
+  // modelo.id pode ser ID do modelo ou do carro
+  mapaModelos[modelo.id] = `${modelo.marca} ${modelo.modelo}`;
+  });
+  }
+  } catch (e) {
+  console.log('[DEBUG] Erro ao carregar modelos:', e);
+  }
+  const lista = document.getElementById('listaPecas');
+  lista.innerHTML = '';
+  // Verificar se é um erro
+  if (data.erro || !Array.isArray(data)) {
+  lista.innerHTML = '<p class="text-muted">Nenhuma peça cadastrada</p>';
+  return;
+  }
+  if (data.length === 0) {
+  lista.innerHTML = '<p class="text-muted">Nenhuma peça cadastrada</p>';
+  return;
+  }
+  // Agrupar por tipo
+  const pecasPorTipo = {};
+  pecasFiltradas.forEach(peca => {
+  if (!pecasPorTipo[peca.tipo]) {
+  pecasPorTipo[peca.tipo] = [];
+  }
+  pecasPorTipo[peca.tipo].push(peca);
+  });
+  // Ordem dos tipos
+  const ordemTipos = ['motor', 'cambio', 'suspensao', 'kit_angulo', 'diferencial'];
+  const nomeTipos = {
+  'motor': 'motor',
+  'cambio': 'Câmbios',
+  'suspensao': 'Suspensões',
+  'kit_angulo': 'Kit Ângulo',
+  'diferencial': 'Diferenciais'
+  };
+  // Renderizar por tipo
+  ordemTipos.forEach(tipo => {
+  if (pecasPorTipo[tipo]) {
+  const tituloTipo = document.createElement('h6');
+  tituloTipo.className = 'mt-4 mb-2 text-primary fw-bold border-bottom pb-2';
+  tituloTipo.textContent = nomeTipos[tipo];
+  lista.appendChild(tituloTipo);
+  pecasPorTipo[tipo].forEach((peca, idx) => {
+  const div = document.createElement('div');
+  div.className = 'mb-3 p-2 border rounded bg-light d-flex justify-content-between align-items-start gap-3';
+  // Coluna de imagem (se existir)
+  if (peca.imagem) {
+  const imgCol = document.createElement('div');
+  imgCol.style.flexShrink = '0';
+  imgCol.innerHTML = `<img src="${peca.imagem}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;" alt="${peca.nome}">`;
+  div.appendChild(imgCol);
+  }
+  const pecaInfo = document.createElement('div');
+  pecaInfo.style.flex = '1';
+  // Converter compatibilidade para nome do carro
+  let nomeCompatibilidade = 'universal';
+  if (peca.compatibilidade) {
+  // Se é array, converter IDs para nomes
+  if (Array.isArray(peca.compatibilidade)) {
+  const nomes = peca.compatibilidade
+  .map(id => mapaModelos[id] || mapaCarros[id] || id)
+  .filter(nome => nome !== 'universal');
+  nomeCompatibilidade = nomes.length > 0 ? nomes.join(', ') : 'universal';
+  } else if (peca.compatibilidade !== 'universal') {
+  nomeCompatibilidade = mapaModelos[peca.compatibilidade] || mapaCarros[peca.compatibilidade] || peca.compatibilidade;
+  }
+  }
+  pecaInfo.innerHTML = `
+    <strong>[${idx + 1}] ${peca.nome}</strong>
+    <small class="d-block text-muted">Compatibilidade: ${nomeCompatibilidade}</small>
+    <small class="d-block">Durabilidade: ${peca.durabilidade} | Quebra: ${(peca.coeficiente_quebra * 100).toFixed(0)}%</small>
+    <small class="d-block text-success fw-bold">${formatarMoeda(peca.preco)}</small>
+  `;
+  const botao = document.createElement('button');
+  botao.className = 'btn btn-sm btn-warning ms-2';
+  botao.textContent = ' Editar';
+  botao.onclick = () => abrirEdicaoPeca(peca);
+  div.appendChild(pecaInfo);
+  div.appendChild(botao);
+  lista.appendChild(div);
+  });
+  }
+  });
+  } catch (e) {
+  document.getElementById('listaPecas').innerHTML = '<p class="text-danger">Erro ao carregar: ' + e.message + '</p>';
+  }
+  }
+  </script>
+  <script>
+    function deletarImagemPeca() {
+      // Function defined in script.js
+    }
+  </script>
+  <!-- Verificar URL para abrir evento automaticamente após login (apenas para não-admins) -->
+  <script>
+    window.addEventListener('load', async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const etapaId = urlParams.get('etapa');
+      
+      if (etapaId) {
+        // Verificar se é admin - admins não devem abrir evento automaticamente
+        try {
+          const adminResp = await fetch('/api/user/is-admin');
+          if (adminResp.ok) {
+            const adminData = await adminResp.json();
+            if (adminData.is_admin) {
+              console.log('[AUTO-EVENTO] Admin detectado - ignorando abertura automática de evento');
+              // Limpar URL para não reabrir o modal ao atualizar
+              window.history.replaceState({}, document.title, '/admin');
+              return;
+            }
+          }
+        } catch (e) {
+          console.log('[AUTO-EVENTO] Erro ao verificar admin:', e);
+        }
+        
+        console.log('[AUTO-EVENTO] Abrindo evento para etapa:', etapaId);
+        
+        // Aguardar um pouco para garantir que tudo está carregado
+        setTimeout(() => {
+          // Tentar chamar a função mostrarEventoAoVivo
+          if (typeof mostrarEventoAoVivo === 'function') {
+            console.log('[AUTO-EVENTO] Função disponível, abrindo modal...');
+            mostrarEventoAoVivo(etapaId);
+          } else {
+            console.warn('[AUTO-EVENTO] Função mostrarEventoAoVivo ainda não está disponível');
+          }
+        }, 500);
+        
+        // Limpar URL para não reabrir o modal ao atualizar
+        window.history.replaceState({}, document.title, '/admin');
+      }
+    });
+  </script>
+</body>
+</html>

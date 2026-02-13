@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GRANPIX - Painel Administrativo</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <nav class="navbar navbar-dark" style="background-color: #1a1a1a; border-bottom: 3px solid #dc143c;">
+  <div class="container-fluid">
+  <span class="navbar-brand mb-0 h1" style="color: #dc143c; font-weight: bold;">GRANPIX - Painel Administrativo</span>
+  <a href="/" class="btn btn-sm btn-outline-light">Voltar ao Site</a>
+  </div>
+  </nav>
+
+  <div class="container-fluid mt-5">
+  <div class="row justify-content-center">
+  <div class="col-md-8">
+  <div class="card">
+  <div class="card-header bg-dark text-white text-center">
+  <h4 class="mb-0">Selecione uma Seção Administrativa</h4>
+  </div>
+  <div class="card-body">
+  <div class="row">
+  <div class="col-md-6 mb-3">
+  <a href="/admin/carros" class="btn btn-primary w-100 p-3">
+  <h5>Cadastrar Carros</h5>
+  <small>Gerenciar modelos de carros disponíveis</small>
+  </a>
+  </div>
+  <div class="col-md-6 mb-3">
+  <a href="/admin/pecas" class="btn btn-success w-100 p-3">
+  <h5>Cadastrar Peças</h5>
+  <small>Gerenciar peças e componentes</small>
+  </a>
+  </div>
+  <div class="col-md-6 mb-3">
+  <a href="/admin/variacoes" class="btn btn-info w-100 p-3">
+  <h5>Cadastrar Variações</h5>
+  <small>Criar variações de carros com peças</small>
+  </a>
+  </div>
+  <div class="col-md-6 mb-3">
+  <a href="/admin/equipes" class="btn btn-warning w-100 p-3">
+  <h5>Cadastrar Equipes</h5>
+  <small>Gerenciar equipes e pilotos</small>
+  </a>
+  </div>
+  <div class="col-md-6 mb-3">
+  <a href="/admin/etapas" class="btn btn-secondary w-100 p-3">
+  <h5>Gerenciar Etapas</h5>
+  <small>Criar e configurar etapas do campeonato</small>
+  </a>
+  </div>
+  <div class="col-md-6 mb-3">
+  <a href="/admin/solicitacoes-pecas" class="btn btn-danger w-100 p-3">
+  <h5>Solicitações de Peças</h5>
+  <small>Aprovar/rejeitar solicitações de peças</small>
+  </a>
+  </div>
+  <div class="col-md-6 mb-3">
+  <a href="/admin/solicitacoes-carros" class="btn btn-dark w-100 p-3">
+  <h5>Solicitações de Carros</h5>
+  <small>Aprovar/rejeitar solicitações de carros</small>
+  </a>
+  </div>
+  <div class="col-md-6 mb-3">
+  <a href="/admin/fazer-etapa" class="btn btn-light w-100 p-3">
+  <h5>Fazer Etapa</h5>
+  <small>Executar e gerenciar corridas</small>
+  </a>
+  </div>
+  <div class="col-md-6 mb-3">
+  <div class="d-flex gap-2">
+    <a href="/admin/alocar-pilotos" class="btn btn-outline-primary w-100 p-3 flex-fill">
+      <h5>Alocar Pilotos</h5>
+      <small>Designar pilotos para etapas</small>
+    </a>
+    <!-- Botão rápido: abrir a interface de alocação inline (modal) -->
+    <button id="abrirAlocarInlineBtn" class="btn btn-primary px-3" title="Abrir alocação aqui">
+      Abrir aqui
+    </button>
+  </div>
+  </div>
+  <div class="col-md-6 mb-3">
+  <a href="/admin/comissoes" class="btn btn-outline-success w-100 p-3">
+  <h5>Comissões</h5>
+  <small>Gerenciar pagamentos e comissões</small>
+  </a>
+  </div>
+  <div class="col-md-6 mb-3">
+  <a href="/admin/configuracoes" class="btn btn-outline-info w-100 p-3">
+  <h5>Configurações</h5>
+  <small>Configurar sistema e parâmetros</small>
+  </a>
+  </div>
+  <div class="col-md-6 mb-3">
+  <a href="/admin/equipes-list" class="btn btn-outline-warning w-100 p-3">
+  <h5>Lista de Equipes</h5>
+  <small>Visualizar todas as equipes cadastradas</small>
+  </a>
+  </div>
+  </div>
+  </div>
+  </div>
+  </div>
+  </div>
+
+  <!-- Modal inline para Alocar Pilotos (mesma UI do painel Alocar Pilotos) -->
+  <div class="modal fade" id="modalAlocarPilotosInline" tabindex="-1" style="z-index: 1055;">
+    <div class="modal-dialog modal-fullscreen modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-dark text-white">
+          <h5 class="modal-title">Alocar Pilotos (Rápido)</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Selecione a Etapa</label>
+            <select id="selecionarEtapaAlocacaoInline" class="form-control"></select>
+          </div>
+          <div id="instrucaoDragDropInline" style="display:none; margin-bottom:10px;">
+            <div class="alert alert-info">Arraste pilotos da coluna esquerda para as equipes à direita para alocar.</div>
+          </div>
+          <div id="dragDropContainerInline"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // Pequeno wrapper que reutiliza a lógica já existente no admin_alocar_pilotos.html
+  // Funções inline: carregarEtapasParaAlocacaoInline, carregarEquipesComPilotoDragDropInline, etc.
+
+  // Delegar para funções centralizadas em static/script.js
+  async function carregarEtapasParaAlocacaoInline() {
+    return window.carregarEtapasParaAlocacao ? window.carregarEtapasParaAlocacao('selecionarEtapaAlocacaoInline', true) : null;
+  }
+
+  async function carregarEquipesComPilotoDragDropInline() {
+    return window.renderizarInterfaceDragDrop ? window.renderizarInterfaceDragDrop(await (async () => { try { const r = await (await fetch(`/api/etapas/${document.getElementById('selecionarEtapaAlocacaoInline').value}/candidatos-pilotos`)).json(); return r.candidatos || []; } catch(e){ return []; } })(), document.getElementById('selecionarEtapaAlocacaoInline').value) : cargarFallbackInline();
+  }
+
+  document.getElementById('abrirAlocarInlineBtn').addEventListener('click', (e) => {
+    e.preventDefault();
+    const modalEl = document.getElementById('modalAlocarPilotosInline');
+    const modal = new bootstrap.Modal(modalEl, { backdrop: 'static' });
+    modal.show();
+    // inicializar (usar funções centralizadas)
+    setTimeout(() => {
+      try {
+        if (window.carregarEtapasParaAlocacao) {
+          window.carregarEtapasParaAlocacao('selecionarEtapaAlocacaoInline');
+          const sel = document.getElementById('selecionarEtapaAlocacaoInline');
+          sel.addEventListener('change', () => carregarEquipesComPilotoDragDropInline());
+          if (sel.options && sel.options.length > 1) sel.dispatchEvent(new Event('change'));
+        } else {
+          carregarEtapasParaAlocacaoInline();
+        }
+      } catch (err) { console.error(err); }
+    }, 50);
+  });
+
+  // Ao fechar modal, limpar container
+  document.getElementById('modalAlocarPilotosInline').addEventListener('hidden.bs.modal', () => {
+    document.getElementById('dragDropContainerInline').innerHTML = '';
+    document.getElementById('selecionarEtapaAlocacaoInline').innerHTML = '';
+  });
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "id": "640f20fd-a5c4-42ff-9da3-082f15999b64",
+  "equipe_origem_id": "20594673-dda4-4c86-b9d7-f0f30cac83af",
+  "equipe_origem_nome": "smoked ninja",
+  "equipe_destino_id": "bbdce0db-745b-43a2-af6b-dbef3d624175",
+  "equipe_destino_nome": "hover",
+  "valor_enviado": 1000.0,
+  "taxa": 200.0,
+  "taxa_percentual": 20,
+  "valor_recebido": 800.0,
+  "timestamp": "2026-02-02T16:27:02.864771",
+  "status": "concluido"
+}
