@@ -212,7 +212,7 @@
   <img id="carroImagemPreviewImg" style="max-width: 100%; max-height: 150px; display: none;">
   </div>
   </div>
-  <button class="btn btn-primary w-100" onclick="cadastrarCarro()">
+  <button class="btn btn-primary w-100" type="button" onclick="window.cadastrarCarro()">
   Cadastrar Carro
   </button>
   </div>
@@ -266,8 +266,8 @@
   </div>
   <div class="modal-footer">
   <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-  <button type="button" class="btn btn-danger" onclick="">Deletar Carro</button>
-  <button type="button" class="btn btn-primary" onclick="salvarEdicaoCarro()">Salvar</button>
+  <button type="button" class="btn btn-danger" onclick="window.deletarCarro()">Deletar Carro</button>
+  <button type="button" class="btn btn-primary" onclick="window.salvarEdicaoCarro()">Salvar</button>
   </div>
   </div>
   </div>
@@ -295,6 +295,29 @@
   reader.readAsDataURL(arquivo);
   });
   }
+  // Cadastrar carro: definido em window no início para o onclick do botão sempre resolver
+  window.cadastrarCarro = async function() {
+  var marca = document.getElementById('carroMarca') && document.getElementById('carroMarca').value ? document.getElementById('carroMarca').value.trim() : '';
+  var modelo = document.getElementById('carroModelo') && document.getElementById('carroModelo').value ? document.getElementById('carroModelo').value.trim() : '';
+  var preco = document.getElementById('carroPreco') && document.getElementById('carroPreco').value ? document.getElementById('carroPreco').value.trim() : '';
+  var inputImagem = document.getElementById('carroImagem');
+  if (!modelo || !marca) { alert('Preencha Marca e Modelo.'); return; }
+  if (!preco || isNaN(parseFloat(preco))) { alert('Preencha um Preço válido.'); return; }
+  var payload = { marca: marca, modelo: modelo, preco: preco, classe: 'basico', descricao: marca + ' ' + modelo };
+  if (inputImagem && inputImagem.files && inputImagem.files.length) {
+  try { payload.imagem = (await lerArquivoComoBase64(inputImagem.files[0])).split(',')[1] || ''; } catch (e) { console.warn('Imagem ignorada:', e); }
+  }
+  try {
+  var r = await fetch('/api/admin/cadastrar-carro', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  var data = await r.json();
+  if (data.sucesso) {
+  document.getElementById('carroMarca').value = ''; document.getElementById('carroModelo').value = ''; document.getElementById('carroPreco').value = '';
+  if (inputImagem) inputImagem.value = '';
+  if (typeof carregarCarros === 'function') carregarCarros();
+  alert('Carro cadastrado com sucesso.');
+  } else { alert('Erro: ' + (data.erro || 'Erro ao cadastrar')); }
+  } catch (e) { alert('Erro ao cadastrar: ' + e.message); }
+  };
   // Função para verificar se existe modal aberto
   function temModalAbertoAdmin() {
   return document.querySelectorAll('.modal.show').length > 0;
@@ -418,10 +441,130 @@
   document.getElementById('listaCarros').innerHTML = '<p class="text-danger">Erro ao carregar: ' + e.message + '</p>';
   }
   }
+  async function cadastrarCarro() {
+  const marca = document.getElementById('carroMarca')?.value?.trim() || '';
+  const modelo = document.getElementById('carroModelo')?.value?.trim() || '';
+  const preco = document.getElementById('carroPreco')?.value?.trim() || '';
+  const inputImagem = document.getElementById('carroImagem');
+  if (!modelo || !marca) {
+  alert('Preencha Marca e Modelo.');
+  return;
+  }
+  if (!preco || isNaN(parseFloat(preco))) {
+  alert('Preencha um Preço válido.');
+  return;
+  }
+  const payload = { marca, modelo, preco, classe: 'basico', descricao: marca + ' ' + modelo };
+  if (inputImagem?.files?.length) {
+  try {
+  payload.imagem = (await lerArquivoComoBase64(inputImagem.files[0])).split(',')[1] || '';
+  } catch (e) {
+  console.warn('Imagem ignorada:', e);
+  }
+  }
+  try {
+  const r = await fetch('/api/admin/cadastrar-carro', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload)
+  });
+  const data = await r.json();
+  if (data.sucesso) {
+  document.getElementById('carroMarca').value = '';
+  document.getElementById('carroModelo').value = '';
+  document.getElementById('carroPreco').value = '';
+  if (inputImagem) inputImagem.value = '';
+  carregarCarros();
+  alert('Carro cadastrado com sucesso.');
+  } else {
+  alert('Erro: ' + (data.erro || 'Erro ao cadastrar'));
+  }
+  } catch (e) {
+  alert('Erro ao cadastrar: ' + e.message);
+  }
+  }
+  function abrirEdicaoCarro(carro) {
+  document.getElementById('editCarroId').value = carro.id || '';
+  document.getElementById('editCarroMarca').value = carro.marca || '';
+  document.getElementById('editCarroModelo').value = carro.modelo || '';
+  document.getElementById('editCarroPreco').value = carro.preco ?? '';
+  const imgEl = document.getElementById('editCarroImagemAtualImg');
+  if (imgEl) {
+  if (carro.imagem) {
+  imgEl.src = carro.imagem.startsWith('data:') ? carro.imagem : 'data:image/jpeg;base64,' + carro.imagem;
+  imgEl.style.display = 'block';
+  } else {
+  imgEl.src = '';
+  imgEl.style.display = 'none';
+  }
+  const btnDel = document.getElementById('editCarroDeletarImagemBtn');
+  if (btnDel) btnDel.style.display = carro.imagem ? 'inline-block' : 'none';
+  }
+  document.getElementById('editCarroImagem').value = '';
+  const modal = new bootstrap.Modal(document.getElementById('modalEditarCarro'));
+  modal.show();
+  }
+  async function salvarEdicaoCarro() {
+  const id = document.getElementById('editCarroId')?.value;
+  const marca = document.getElementById('editCarroMarca')?.value?.trim() || '';
+  const modelo = document.getElementById('editCarroModelo')?.value?.trim() || '';
+  const preco = document.getElementById('editCarroPreco')?.value?.trim() || '';
+  if (!id) { alert('ID do carro não encontrado.'); return; }
+  if (!marca || !modelo) { alert('Preencha Marca e Modelo.'); return; }
+  if (!preco || isNaN(parseFloat(preco))) { alert('Preço inválido.'); return; }
+  const payload = { id, marca, modelo, preco };
+  const inputNovaImagem = document.getElementById('editCarroImagem');
+  if (inputNovaImagem?.files?.length) {
+  try {
+  payload.imagem = (await lerArquivoComoBase64(inputNovaImagem.files[0])).split(',')[1] || '';
+  } catch (e) { console.warn('Nova imagem ignorada:', e); }
+  }
+  try {
+  const r = await fetch('/api/admin/editar-carro', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await r.json();
+  if (data.sucesso) {
+  bootstrap.Modal.getInstance(document.getElementById('modalEditarCarro'))?.hide();
+  carregarCarros();
+  alert('Carro atualizado.');
+  } else {
+  alert('Erro: ' + (data.erro || 'Erro ao salvar'));
+  }
+  } catch (e) {
+  alert('Erro ao salvar: ' + e.message);
+  }
+  }
+  async function deletarCarro() {
+  const id = document.getElementById('editCarroId')?.value;
+  if (!id) return;
+  if (!confirm('Tem certeza que deseja deletar este carro?')) return;
+  try {
+  const r = await fetch('/api/admin/deletar-carro', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+  const data = await r.json();
+  if (data.sucesso) {
+  bootstrap.Modal.getInstance(document.getElementById('modalEditarCarro'))?.hide();
+  carregarCarros();
+  alert('Carro deletado.');
+  } else {
+  alert('Erro: ' + (data.erro || ''));
+  }
+  } catch (e) {
+  alert('Erro ao deletar: ' + e.message);
+  }
+  }
+  window.cadastrarCarro = cadastrarCarro;
+  window.abrirEdicaoCarro = abrirEdicaoCarro;
+  window.salvarEdicaoCarro = salvarEdicaoCarro;
+  window.deletarCarro = deletarCarro;
   </script>
   <script>
     function deletarImagemCarro() {
-      // Function defined in script.js
+      // Opcional: chamar API para remover imagem do carro em edição
+      const id = document.getElementById('editCarroId')?.value;
+      if (id) {
+        document.getElementById('editCarroImagemAtualImg').src = '';
+        document.getElementById('editCarroImagemAtualImg').style.display = 'none';
+        document.getElementById('editCarroDeletarImagemBtn').style.display = 'none';
+      }
     }
   </script>
   <!-- Verificar URL para abrir evento automaticamente após login (apenas para não-admins) -->

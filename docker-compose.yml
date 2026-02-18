@@ -1,0 +1,48 @@
+# GRANPIX - App Flask + MariaDB em containers
+# Uso: docker compose up -d
+# Acesso: http://localhost:5000
+
+services:
+  db:
+    image: mariadb:11.2
+    container_name: granpix-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: granpix
+      MARIADB_DATABASE: granpix
+      MARIADB_USER: granpix
+      MARIADB_PASSWORD: granpix
+    volumes:
+      - granpix_mysql_data:/var/lib/mysql
+    # Porta 3307 no host para não conflitar com MySQL/MariaDB local (3306)
+    ports:
+      - "3307:3306"
+
+  app:
+    build: .
+    container_name: granpix-app
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      # Conexão com o banco do container (serviço "db")
+      MYSQL_CONFIG: "mysql://root:granpix@db:3306/granpix"
+      FLASK_RUN_HOST: "0.0.0.0"
+      FLASK_RUN_PORT: "5000"
+      # Use "true" em desenvolvimento para recarregar ao editar arquivos (com volume - .:/app)
+      FLASK_DEBUG: "true"
+      WAIT_HOST: "db"
+      WAIT_PORT: "3306"
+      # E2E: ativa endpoint /api/test/ativar-carro-direto para rodar todos os testes E2E
+      TEST_E2E: "1"
+    ports:
+      - "5000:5000"
+    volumes:
+      # Código montado: edite no host e o Flask recarrega sozinho (com FLASK_DEBUG=true)
+      - .:/app
+      # Arquivos gerados (Excel, etc.) podem ser persistidos se necessário
+      - granpix_uploads:/app/uploads
+
+volumes:
+  granpix_mysql_data:
+  granpix_uploads:

@@ -232,7 +232,7 @@
   <div id="pecaCompatibilidadeTags" class="mt-2" style="display: flex; flex-wrap: wrap; gap: 8px;">
   </div>
   <small class="text-muted d-block mt-2">
-  Clique no campo para ver opções. Cada carro selecionado aparecerá como um item acima.
+  Clique no campo para ver opções. Use <strong>Universal</strong> para a peça servir em qualquer carro, ou selecione modelos específicos.
   </small>
   </div>
   <div class="form-group">
@@ -243,7 +243,7 @@
   <img id="pecaImagemPreviewImg" style="max-width: 100%; max-height: 150px; display: none;">
   </div>
   </div>
-  <button class="btn btn-primary w-100" onclick="cadastrarPeca()">
+  <button class="btn btn-primary w-100" type="button" onclick="window.cadastrarPeca()">
   Cadastrar Peça
   </button>
   </div>
@@ -309,7 +309,7 @@
   <div id="editPecaCompatibilidadeTags" class="mt-2" style="display: flex; flex-wrap: wrap; gap: 8px;">
   </div>
   <small class="text-muted d-block mt-2">
-  Clique no campo para ver opções. Cada carro selecionado aparecerá como um item acima.
+  Clique no campo para ver opções. Use <strong>Universal</strong> para a peça servir em qualquer carro, ou selecione modelos específicos.
   </small>
   </div>
   <div class="form-group">
@@ -319,15 +319,15 @@
   </div>
   <input type="file" class="form-control" id="editPecaImagem" accept="image/*">
   <small class="text-muted d-block mt-2">Selecione uma nova imagem para substituir (opcional)</small>
-  <button type="button" class="btn btn-sm btn-danger mt-2" id="editPecaDeletarImagemBtn" style="display: none;" onclick="deletarImagemPeca()">
+  <button type="button" class="btn btn-sm btn-danger mt-2" id="editPecaDeletarImagemBtn" style="display: none;" onclick="window.deletarImagemPeca()">
    Deletar Imagem
   </button>
   </div>
   </div>
   <div class="modal-footer">
   <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-  <button type="button" class="btn btn-danger" onclick="deletarPeca()">Deletar Peça</button>
-  <button type="button" class="btn btn-primary" onclick="salvarEdicaoPeca()">Salvar</button>
+  <button type="button" class="btn btn-danger" onclick="window.deletarPeca()">Deletar Peça</button>
+  <button type="button" class="btn btn-primary" onclick="window.salvarEdicaoPeca()">Salvar</button>
   </div>
   </div>
   </div>
@@ -353,6 +353,87 @@
   reader.onload = () => resolve(reader.result);
   reader.onerror = reject;
   reader.readAsDataURL(arquivo);
+  });
+  }
+  // Cadastrar peça: definido em window para o onclick do botão sempre resolver
+  window.cadastrarPeca = async function() {
+  var nome = (document.getElementById('pecaNome') && document.getElementById('pecaNome').value) ? document.getElementById('pecaNome').value.trim() : '';
+  var tipo = (document.getElementById('pecaTipo') && document.getElementById('pecaTipo').value) ? document.getElementById('pecaTipo').value : 'motor';
+  var preco = (document.getElementById('pecaPreco') && document.getElementById('pecaPreco').value) ? document.getElementById('pecaPreco').value.trim() : '';
+  var durabilidade = (document.getElementById('pecaDurabilidade') && document.getElementById('pecaDurabilidade').value) ? document.getElementById('pecaDurabilidade').value.trim() : '100';
+  var coeficiente = (document.getElementById('pecaCoeficiente') && document.getElementById('pecaCoeficiente').value) ? document.getElementById('pecaCoeficiente').value.trim() : '1.0';
+  if (!nome) { alert('Preencha o Nome da peça.'); return; }
+  if (!preco || isNaN(parseFloat(preco))) { alert('Preencha um Preço válido.'); return; }
+  var compatibilidade = ['universal'];
+  var tagsContainer = document.getElementById('pecaCompatibilidadeTags');
+  if (tagsContainer) {
+  var spans = tagsContainer.querySelectorAll('[data-model-id]');
+  if (spans && spans.length) {
+  compatibilidade = Array.from(spans).map(function(s) { return s.getAttribute('data-model-id'); }).filter(Boolean);
+  }
+  }
+  var payload = { nome: nome, tipo: tipo, preco: preco, durabilidade: durabilidade, coeficiente_quebra: coeficiente, compatibilidade: compatibilidade };
+  var inputImagem = document.getElementById('pecaImagem');
+  if (inputImagem && inputImagem.files && inputImagem.files.length) {
+  try { payload.imagem = (await lerArquivoComoBase64(inputImagem.files[0])).split(',')[1] || ''; } catch (e) { console.warn('Imagem ignorada:', e); }
+  }
+  try {
+  var r = await fetch('/api/admin/cadastrar-peca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  var data = await r.json();
+  if (data.sucesso) {
+  document.getElementById('pecaNome').value = ''; document.getElementById('pecaPreco').value = ''; if (document.getElementById('pecaDurabilidade')) document.getElementById('pecaDurabilidade').value = '100'; if (document.getElementById('pecaCoeficiente')) document.getElementById('pecaCoeficiente').value = '1.0';
+  if (inputImagem) inputImagem.value = ''; if (tagsContainer) tagsContainer.innerHTML = '';
+  if (typeof carregarPecas === 'function') carregarPecas();
+  alert('Peça cadastrada com sucesso.');
+  } else { alert('Erro: ' + (data.erro || 'Erro ao cadastrar')); }
+  } catch (e) { alert('Erro ao cadastrar: ' + e.message); }
+  };
+  // Dropdown de compatibilidade: ao clicar no campo, busca carros e mostra opções
+  function setupCompatibilidadeDropdown(inputId, dropdownId, tagsId) {
+  var input = document.getElementById(inputId);
+  var dropdown = document.getElementById(dropdownId);
+  var tagsContainer = document.getElementById(tagsId);
+  if (!input || !dropdown || !tagsContainer) return;
+  input.addEventListener('click', async function() {
+  if (dropdown.style.display === 'block') { dropdown.style.display = 'none'; return; }
+  try {
+  var r = await fetch('/api/admin/carros');
+  var carros = await r.json();
+  if (!Array.isArray(carros)) { dropdown.innerHTML = '<div class="dropdown-item text-muted">Nenhum carro cadastrado</div>'; dropdown.style.display = 'block'; return; }
+  var opcoes = '<a class="dropdown-item" href="#" data-id="universal"><i class="fas fa-globe me-1"></i> Universal</a>';
+  opcoes += carros.map(function(c) {
+  var id = (c.id != null) ? String(c.id) : '';
+  var label = ((c.marca || '') + ' ' + (c.modelo || '')).trim();
+  return '<a class="dropdown-item" href="#" data-id="' + id.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;') + '">' + (label || id) + '</a>';
+  }).join('');
+  dropdown.innerHTML = opcoes;
+  dropdown.style.display = 'block';
+  } catch (e) { dropdown.innerHTML = '<div class="dropdown-item text-danger">Erro ao carregar carros</div>'; dropdown.style.display = 'block'; }
+  });
+  dropdown.addEventListener('click', function(e) {
+  var a = e.target.closest('a[data-id]');
+  if (!a) return;
+  e.preventDefault();
+  var id = a.getAttribute('data-id');
+  var label = (id === 'universal') ? 'Universal' : (a.textContent || '').trim().replace(/^\s*Universal\s*$/, 'Universal');
+  if (id === 'universal') label = 'Universal';
+  else if (!label) label = id;
+  var already = Array.from(tagsContainer.querySelectorAll('[data-model-id]')).some(function(s) { return s.getAttribute('data-model-id') === id; });
+  if (already) return;
+  if (id === 'universal') {
+  Array.from(tagsContainer.querySelectorAll('[data-model-id]')).forEach(function(s) { s.remove(); });
+  } else {
+  Array.from(tagsContainer.querySelectorAll('[data-model-id]')).forEach(function(s) { if (s.getAttribute('data-model-id') === 'universal') s.remove(); });
+  }
+  var span = document.createElement('span');
+  span.className = 'badge ' + (id === 'universal' ? 'bg-primary' : 'bg-secondary') + ' me-1';
+  span.setAttribute('data-model-id', id);
+  span.textContent = label;
+  tagsContainer.appendChild(span);
+  dropdown.style.display = 'none';
+  });
+  document.addEventListener('click', function(e) {
+  if (!input.contains(e.target) && !dropdown.contains(e.target)) dropdown.style.display = 'none';
   });
   }
   // Função para verificar se existe modal aberto
@@ -393,6 +474,8 @@
   atualizarStatusAdmin();
   atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
   carregarPecas();
+  setupCompatibilidadeDropdown('pecaCompatibilidadeInput', 'pecaCompatibilidadeDropdown', 'pecaCompatibilidadeTags');
+  setupCompatibilidadeDropdown('editPecaCompatibilidadeInput', 'editPecaCompatibilidadeDropdown', 'editPecaCompatibilidadeTags');
   // Iniciar auto-refresh
   iniciarAutoRefreshAdmin();
   });
@@ -475,7 +558,7 @@
   }
   // Agrupar por tipo
   const pecasPorTipo = {};
-  pecasFiltradas.forEach(peca => {
+  (Array.isArray(data) ? data : []).forEach(peca => {
   if (!pecasPorTipo[peca.tipo]) {
   pecasPorTipo[peca.tipo] = [];
   }
@@ -542,11 +625,97 @@
   document.getElementById('listaPecas').innerHTML = '<p class="text-danger">Erro ao carregar: ' + e.message + '</p>';
   }
   }
+  function abrirEdicaoPeca(peca) {
+  if (!peca) return;
+  document.getElementById('editPecaId').value = peca.id || '';
+  document.getElementById('editPecaNome').value = peca.nome || '';
+  document.getElementById('editPecaTipo').value = peca.tipo || 'motor';
+  document.getElementById('editPecaPreco').value = peca.preco ?? '';
+  document.getElementById('editPecaDurabilidade').value = peca.durabilidade ?? '100';
+  document.getElementById('editPecaCoeficiente').value = peca.coeficiente_quebra ?? '1.0';
+  var imgEl = document.getElementById('editPecaImagemAtualImg');
+  if (imgEl) {
+  if (peca.imagem) { imgEl.src = peca.imagem.startsWith('data:') ? peca.imagem : 'data:image/jpeg;base64,' + peca.imagem; imgEl.style.display = 'block'; }
+  else { imgEl.src = ''; imgEl.style.display = 'none'; }
+  var btnDel = document.getElementById('editPecaDeletarImagemBtn'); if (btnDel) btnDel.style.display = peca.imagem ? 'inline-block' : 'none';
+  }
+  document.getElementById('editPecaImagem').value = '';
+  var tagsEdit = document.getElementById('editPecaCompatibilidadeTags'); if (tagsEdit) tagsEdit.innerHTML = '';
+  var comp = peca.compatibilidade && Array.isArray(peca.compatibilidade) ? peca.compatibilidade : [];
+  var isUniversal = comp.length === 0 || (comp.length === 1 && String(comp[0]).toLowerCase() === 'universal');
+  if (isUniversal) {
+  var spanU = document.createElement('span');
+  spanU.className = 'badge bg-primary me-1';
+  spanU.setAttribute('data-model-id', 'universal');
+  spanU.textContent = 'Universal';
+  if (tagsEdit) tagsEdit.appendChild(spanU);
+  } else {
+  comp.forEach(function(id) {
+  var span = document.createElement('span');
+  span.className = 'badge bg-secondary me-1';
+  span.setAttribute('data-model-id', id);
+  span.textContent = (String(id).toLowerCase() === 'universal') ? 'Universal' : id;
+  if (tagsEdit) tagsEdit.appendChild(span);
+  });
+  }
+  var modal = new bootstrap.Modal(document.getElementById('modalEditarPeca'));
+  modal.show();
+  }
+  async function salvarEdicaoPeca() {
+  var id = document.getElementById('editPecaId') && document.getElementById('editPecaId').value;
+  var nome = document.getElementById('editPecaNome') && document.getElementById('editPecaNome').value.trim();
+  var tipo = document.getElementById('editPecaTipo') && document.getElementById('editPecaTipo').value;
+  var preco = document.getElementById('editPecaPreco') && document.getElementById('editPecaPreco').value.trim();
+  var durabilidade = document.getElementById('editPecaDurabilidade') && document.getElementById('editPecaDurabilidade').value;
+  var coeficiente = document.getElementById('editPecaCoeficiente') && document.getElementById('editPecaCoeficiente').value;
+  if (!id) { alert('ID da peça não encontrado.'); return; }
+  if (!nome) { alert('Preencha o Nome.'); return; }
+  var compatibilidade = ['universal'];
+  var tagsEdit = document.getElementById('editPecaCompatibilidadeTags');
+  if (tagsEdit) {
+  var spans = tagsEdit.querySelectorAll('[data-model-id]');
+  if (spans && spans.length) compatibilidade = Array.from(spans).map(function(s) { return s.getAttribute('data-model-id'); }).filter(Boolean);
+  }
+  var payload = { id: id, nome: nome, tipo: tipo, preco: preco, durabilidade: durabilidade, coeficiente_quebra: coeficiente, compatibilidade: compatibilidade };
+  var inputNovaImagem = document.getElementById('editPecaImagem');
+  if (inputNovaImagem && inputNovaImagem.files && inputNovaImagem.files.length) {
+  try { payload.imagem = (await lerArquivoComoBase64(inputNovaImagem.files[0])).split(',')[1] || ''; } catch (e) { console.warn('Nova imagem ignorada:', e); }
+  }
+  try {
+  var r = await fetch('/api/admin/editar-peca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  var data = await r.json();
+  if (data.sucesso) {
+  bootstrap.Modal.getInstance(document.getElementById('modalEditarPeca')).hide();
+  if (typeof carregarPecas === 'function') carregarPecas();
+  alert('Peça atualizada.');
+  } else { alert('Erro: ' + (data.erro || 'Erro ao salvar')); }
+  } catch (e) { alert('Erro ao salvar: ' + e.message); }
+  }
+  async function deletarPeca() {
+  var id = document.getElementById('editPecaId') && document.getElementById('editPecaId').value;
+  if (!id) return;
+  if (!confirm('Tem certeza que deseja deletar esta peça?')) return;
+  try {
+  var r = await fetch('/api/admin/deletar-peca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) });
+  var data = await r.json();
+  if (data.sucesso) {
+  bootstrap.Modal.getInstance(document.getElementById('modalEditarPeca')).hide();
+  if (typeof carregarPecas === 'function') carregarPecas();
+  alert('Peça deletada.');
+  } else { alert('Erro: ' + (data.erro || '')); }
+  } catch (e) { alert('Erro ao deletar: ' + e.message); }
+  }
+  window.abrirEdicaoPeca = abrirEdicaoPeca;
+  window.salvarEdicaoPeca = salvarEdicaoPeca;
+  window.deletarPeca = deletarPeca;
   </script>
   <script>
     function deletarImagemPeca() {
-      // Function defined in script.js
+      var imgEl = document.getElementById('editPecaImagemAtualImg');
+      if (imgEl) { imgEl.src = ''; imgEl.style.display = 'none'; }
+      var btn = document.getElementById('editPecaDeletarImagemBtn'); if (btn) btn.style.display = 'none';
     }
+    window.deletarImagemPeca = deletarImagemPeca;
   </script>
   <!-- Verificar URL para abrir evento automaticamente após login (apenas para não-admins) -->
   <script>

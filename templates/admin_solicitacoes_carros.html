@@ -212,11 +212,17 @@
   <div class="row">
   <div class="col-12">
   <div class="card">
-  <div class="card-header bg-dark text-white">
-  <h5 class="mb-0">Solicitações de Carros - Em Desenvolvimento</h5>
+  <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+  <h5 class="mb-0">Solicitações de Carros</h5>
+  <button type="button" class="btn btn-sm btn-outline-light" id="btnRecarregarSolicitacoesCarros" title="Recarregar"><i class="fas fa-sync-alt"></i></button>
   </div>
   <div class="card-body">
-  <p class="text-muted">Esta seção está sendo desenvolvida. Volte em breve!</p>
+  <div id="loadingSolicitacoesCarros" class="text-center py-4 text-muted"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>
+  <div id="listaSolicitacoesCarros" style="display: none;">
+  <div id="cardsPorEquipeCarros"></div>
+  <p id="nenhumaSolicitacaoCarros" class="text-muted mb-0" style="display: none;">Nenhuma solicitação de carro encontrada.</p>
+  </div>
+  <div id="erroSolicitacoesCarros" class="alert alert-danger" style="display: none;"></div>
   </div>
   </div>
   </div>
@@ -224,52 +230,140 @@
   <div class="toast-container"></div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
-  // Verificar autenticação de admin
-  if (!sessionStorage.getItem('admin_logado')) {
-  // Se não tem sessão de admin, redireciona para login
-  // Mas permite carregar para testar
+  (function() {
+  function getCookie(name) {
+  const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+  return v ? v[2] : null;
   }
-  // Inicializar painel
-  window.addEventListener('load', () => {
+  async function carregarSolicitacoesCarros() {
+  const loading = document.getElementById('loadingSolicitacoesCarros');
+  const lista = document.getElementById('listaSolicitacoesCarros');
+  const container = document.getElementById('cardsPorEquipeCarros');
+  const nenhuma = document.getElementById('nenhumaSolicitacaoCarros');
+  const erro = document.getElementById('erroSolicitacoesCarros');
+  loading.style.display = 'block';
+  lista.style.display = 'none';
+  erro.style.display = 'none';
+  try {
+  const r = await fetch('/api/admin/solicitacoes-carros', { credentials: 'include' });
+  const data = await r.json();
+  if (!r.ok) {
+  erro.textContent = data.erro || 'Erro ao carregar solicitações.';
+  erro.style.display = 'block';
+  return;
+  }
+  const solicitacoes = Array.isArray(data) ? data : [];
+  container.innerHTML = '';
+  if (solicitacoes.length === 0) {
+  nenhuma.style.display = 'block';
+  lista.style.display = 'block';
+  } else {
+  nenhuma.style.display = 'none';
+  var porEquipe = {};
+  solicitacoes.forEach(function(sol) {
+  var key = String(sol.equipe_id || '');
+  if (!porEquipe[key]) porEquipe[key] = { nome: sol.equipe_nome || 'Equipe ' + key || '—', itens: [] };
+  porEquipe[key].itens.push(sol);
+  });
+  const tipoSolLabel = function(t) { return (t === 'ativacao') ? 'Ativação de carro' : (t || '—'); };
+  Object.keys(porEquipe).forEach(function(equipeKey) {
+  const grupo = porEquipe[equipeKey];
+  const card = document.createElement('div');
+  card.className = 'card mb-3';
+  const pendentes = grupo.itens.filter(function(s) { return s.status === 'pendente'; }).length;
+  card.innerHTML = '<div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center"><span><i class="fas fa-users me-2"></i>' + (grupo.nome || '—') + '</span><span class="badge bg-light text-dark">' + grupo.itens.length + ' solicitaç' + (grupo.itens.length === 1 ? 'ão' : 'ões') + (pendentes ? ' · ' + pendentes + ' pendente(s)' : '') + '</span></div><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover table-striped mb-0"><thead class="table-light"><tr><th>Carro</th><th>Tipo</th><th>Status</th><th>Ações</th></tr></thead><tbody class="tbody-equipe-carros"></tbody></table></div></div>';
+  const tbody = card.querySelector('.tbody-equipe-carros');
+  grupo.itens.forEach(function(sol) {
+  const carroStr = (sol.marca && sol.modelo) ? (sol.marca + ' ' + sol.modelo) : (sol.tipo_carro || ('Carro #' + (sol.carro_id || '—')));
+  const statusBadge = sol.status === 'pendente' ? '<span class="badge bg-warning text-dark">Pendente</span>' : (sol.status === 'aprovado' || sol.status === 'aprovada') ? '<span class="badge bg-success">Aprovado</span>' : '<span class="badge bg-secondary">' + (sol.status || '') + '</span>';
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td>' + carroStr + '</td><td>' + tipoSolLabel(sol.tipo_solicitacao) + '</td><td class="status-cell-carro">' + statusBadge + '</td><td class="acoes-sol-carro"></td>';
+  const acoes = tr.querySelector('.acoes-sol-carro');
+  if (sol.status === 'pendente') {
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-sm btn-success';
+  btn.innerHTML = '<i class="fas fa-check"></i> Aprovar';
+  btn.type = 'button';
+  btn.addEventListener('click', function() { aprovarSolicitacaoCarro(sol, btn, tr); });
+  acoes.appendChild(btn);
+  } else {
+  acoes.textContent = '—';
+  }
+  tbody.appendChild(tr);
+  });
+  container.appendChild(card);
+  });
+  lista.style.display = 'block';
+  }
+  } catch (e) {
+  erro.textContent = 'Erro ao carregar: ' + e.message;
+  erro.style.display = 'block';
+  } finally {
+  loading.style.display = 'none';
+  }
+  }
+  async function aprovarSolicitacaoCarro(sol, btn, tr) {
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
+  try {
+  const r = await fetch('/api/admin/processar-solicitacao', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrf_token') || '' },
+  body: JSON.stringify({ solicitacao_id: sol.id, status: 'aprovado', tipo: 'carro' }),
+  credentials: 'include'
+  });
+  const data = await r.json();
+  if (r.ok && data.sucesso) {
+  const statusCell = tr.querySelector('.status-cell-carro');
+  if (statusCell) statusCell.innerHTML = '<span class="badge bg-success">Aprovado</span>';
+  const acoesCell = tr.querySelector('.acoes-sol-carro');
+  if (acoesCell) acoesCell.textContent = '—';
+  atualizarContadoresSolicitacoes();
+  if (typeof mostrarToast === 'function') mostrarToast(data.mensagem || 'Solicitação aprovada. Carro ativado.', 'success'); else alert(data.mensagem || 'Solicitação aprovada.');
+  } else {
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-check"></i> Aprovar';
+  const msg = (data && data.erro) ? data.erro : 'Erro ao processar.';
+  if (typeof mostrarToast === 'function') mostrarToast(msg, 'danger'); else alert(msg);
+  }
+  } catch (e) {
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-check"></i> Aprovar';
+  if (typeof mostrarToast === 'function') mostrarToast('Erro: ' + e.message, 'danger'); else alert('Erro: ' + e.message);
+  }
+  }
+  window.carregarSolicitacoesCarros = carregarSolicitacoesCarros;
+  })();
+  // Verificar autenticação de admin
+  if (!sessionStorage.getItem('admin_logado')) {}
+  window.addEventListener('load', function() {
   atualizarStatusAdmin();
-  atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
+  atualizarContadoresSolicitacoes().catch(function(e) { return console.error('Erro ao atualizar contadores:', e); });
+  if (window.carregarSolicitacoesCarros) carregarSolicitacoesCarros();
+  });
+  document.getElementById('btnRecarregarSolicitacoesCarros').addEventListener('click', function() {
+  if (window.carregarSolicitacoesCarros) window.carregarSolicitacoesCarros();
   });
   async function atualizarStatusAdmin() {
   try {
-  console.log('Atualizando status admin...');
   const resp = await fetch('/api/admin/status');
   const status = await resp.json();
-  console.log('Status recebido:', status);
   document.getElementById('totalEquipes').textContent = status.total_equipes || 0;
-  } catch (e) {
-  console.log('Erro ao atualizar status');
-  }
+  } catch (e) { console.log('Erro ao atualizar status'); }
   }
   async function atualizarContadoresSolicitacoes() {
   try {
-  // Contar solicitações de peça pendentes
   const respPecas = await fetch('/api/admin/solicitacoes-pecas');
   const pecas = await respPecas.json();
-  const pecasPendentes = Array.isArray(pecas)
-  ? pecas.filter(s => s.status === 'pendente').length
-  : 0;
+  const pecasPendentes = Array.isArray(pecas) ? pecas.filter(function(s) { return s.status === 'pendente'; }).length : 0;
   const elemPecas = document.getElementById('solicitacoesPecasPendentes');
-  if (elemPecas) {
-  elemPecas.textContent = pecasPendentes;
-  }
-  // Contar solicitações de carro pendentes
+  if (elemPecas) elemPecas.textContent = pecasPendentes;
   const respCarros = await fetch('/api/admin/solicitacoes-carros');
   const carros = await respCarros.json();
-  const carrosPendentes = Array.isArray(carros)
-  ? carros.filter(s => s.status === 'pendente').length
-  : 0;
+  const carrosPendentes = Array.isArray(carros) ? carros.filter(function(s) { return s.status === 'pendente'; }).length : 0;
   const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
-  if (elemCarros) {
-  elemCarros.textContent = carrosPendentes;
-  }
-  } catch (e) {
-  console.error('Erro ao atualizar contadores de solicitações:', e);
-  }
+  if (elemCarros) elemCarros.textContent = carrosPendentes;
+  } catch (e) { console.error('Erro ao atualizar contadores:', e); }
   }
   </script>
 </body>

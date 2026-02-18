@@ -218,7 +218,7 @@
   <div class="card-body">
   <div class="form-group">
   <label>Modelo de Carro</label>
-  <select class="form-control" id="variacaoModelo" onchange="carregarPecasParaVariacao()">
+  <select class="form-control" id="variacaoModelo" onchange="window.carregarPecasParaVariacao()">
   <option value="">Selecione um modelo...</option>
   <optgroup label="Modelos Disponíveis" id="variacaoModelosGroup"></optgroup>
   </select>
@@ -262,7 +262,7 @@
   <label>Valor da Variação (R$)</label>
   <input type="number" class="form-control" id="variacaoValor" placeholder="0.00" step="0.01" min="0" value="0.00">
   </div>
-  <button class="btn btn-success w-100" onclick="cadastrarVariacao()">
+  <button class="btn btn-success w-100" type="button" onclick="window.cadastrarVariacao()">
   Cadastrar Variação
   </button>
   </div>
@@ -272,7 +272,7 @@
   <div class="card">
   <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
   <h5 class="mb-0">Variações Cadastradas</h5>
-  <button class="btn btn-sm btn-light" onclick="carregarVariacoes()">Atualizar</button>
+  <button class="btn btn-sm btn-light" type="button" onclick="window.carregarVariacoes()">Atualizar</button>
   </div>
   <div class="card-body" id="listaVariacoes" style="max-height: 500px; overflow-y: auto;">
   <p class="text-muted">Carregando variações...</p>
@@ -383,6 +383,85 @@
   console.error('Erro ao atualizar contadores de solicitações:', e);
   }
   }
+  async function carregarPecasParaVariacao() {
+  try {
+  const resp = await fetch('/api/admin/pecas');
+  const pecas = await resp.json();
+  if (!pecas || !Array.isArray(pecas)) return;
+  const byTipo = { motor: [], cambio: [], suspensao: [], kit_angulo: [], diferencial: [] };
+  pecas.forEach(p => {
+  const t = (p.tipo || '').toLowerCase();
+  if (byTipo[t]) byTipo[t].push(p);
+  });
+  const setOptgroup = (id, list) => {
+  const g = document.getElementById(id);
+  if (!g) return;
+  g.innerHTML = (list || []).map(p => `<option value="${p.id}">${p.nome || p.id} - ${typeof formatarMoeda === 'function' ? formatarMoeda(p.preco) : p.preco}</option>`).join('');
+  };
+  setOptgroup('variacaoMotoresGroup', byTipo.motor);
+  setOptgroup('variacaoCambiosGroup', byTipo.cambio);
+  setOptgroup('variacaoSuspensoesGroup', byTipo.suspensao);
+  setOptgroup('variacaoKitsAnguloGroup', byTipo.kit_angulo);
+  setOptgroup('variacaoDiferenciaisGroup', byTipo.diferencial);
+  } catch (e) { console.error('carregarPecasParaVariacao:', e); }
+  }
+  async function carregarVariacoes() {
+  try {
+  const resp = await fetch('/api/admin/carros');
+  const modelos = await resp.json();
+  const lista = document.getElementById('listaVariacoes');
+  if (!lista) return;
+  if (!modelos || !Array.isArray(modelos)) {
+  lista.innerHTML = '<p class="text-muted">Nenhuma variação cadastrada</p>';
+  return;
+  }
+  const partRow = (iconClass, label, nome) => {
+  if (nome) return `<span class="me-2" title="${label}: ${nome}"><i class="fas ${iconClass} me-1 text-secondary"></i><small>${nome}</small></span>`;
+  return `<span class="me-2" title="${label}: Nenhum"><i class="fas ${iconClass} me-1 text-secondary"></i><i class="fas fa-times text-danger" aria-label="Nenhum"></i></span>`;
+  };
+  let html = '';
+  modelos.forEach(mod => {
+  const vars = mod.variacoes || [];
+  if (vars.length === 0) html += `<div class="mb-2"><strong>${mod.marca} ${mod.modelo}</strong><br><small class="text-muted">Sem variações</small></div>`;
+  else vars.forEach(v => {
+  const valorStr = typeof formatarMoeda === 'function' ? formatarMoeda(v.valor) : v.valor;
+  const motor = partRow('fa-cog', 'Motor', v.motor_nome);
+  const cambio = partRow('fa-gears', 'Câmbio', v.cambio_nome);
+  const suspensao = partRow('fa-compress-arrows-alt', 'Suspensão', v.suspensao_nome);
+  const kitAngulo = partRow('fa-angle-double-up', 'Kit ângulo', v.kit_angulo_nome);
+  const diferencial = partRow('fa-circle-notch', 'Diferencial', v.diferencial_nome);
+  html += `<div class="mb-2 p-2 border rounded"><strong>${mod.marca} ${mod.modelo}</strong> — Valor: ${valorStr}<br><small class="text-muted d-flex flex-wrap align-items-center gap-1">${motor} ${cambio} ${suspensao} ${kitAngulo} ${diferencial}</small></div>`;
+  });
+  });
+  lista.innerHTML = html || '<p class="text-muted">Nenhuma variação cadastrada</p>';
+  } catch (e) {
+  document.getElementById('listaVariacoes').innerHTML = '<p class="text-danger">Erro ao carregar</p>';
+  }
+  }
+  window.cadastrarVariacao = async function() {
+  var modeloId = document.getElementById('variacaoModelo') && document.getElementById('variacaoModelo').value;
+  var valor = document.getElementById('variacaoValor') && document.getElementById('variacaoValor').value;
+  if (!modeloId) { alert('Selecione um modelo de carro.'); return; }
+  var payload = {
+  modelo_carro_loja_id: modeloId,
+  motor_id: (document.getElementById('variacaoMotor') && document.getElementById('variacaoMotor').value) || null,
+  cambio_id: (document.getElementById('variacaoCambio') && document.getElementById('variacaoCambio').value) || null,
+  suspensao_id: (document.getElementById('variacaoSuspensao') && document.getElementById('variacaoSuspensao').value) || null,
+  kit_angulo_id: (document.getElementById('variacaoKitAngulo') && document.getElementById('variacaoKitAngulo').value) || null,
+  diferencial_id: (document.getElementById('variacaoDiferencial') && document.getElementById('variacaoDiferencial').value) || null,
+  valor: parseFloat(valor) || 0
+  };
+  try {
+  var r = await fetch('/api/admin/cadastrar-variacao', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  var data = await r.json();
+  if (data.sucesso) {
+  if (typeof carregarVariacoes === 'function') carregarVariacoes();
+  alert('Variação cadastrada com sucesso.');
+  } else { alert('Erro: ' + (data.erro || '')); }
+  } catch (e) { alert('Erro: ' + e.message); }
+  };
+  window.carregarVariacoes = carregarVariacoes;
+  window.carregarPecasParaVariacao = carregarPecasParaVariacao;
   </script>
   <!-- Verificar URL para abrir evento automaticamente após login (apenas para não-admins) -->
   <script>

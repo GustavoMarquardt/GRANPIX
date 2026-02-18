@@ -246,7 +246,7 @@
 
   <div id="grupoEtapa" style="display: none;">
   <div class="text-center mb-4">
-  <button id="botaoIniciarQualificacao" class="btn btn-success btn-lg" onclick="iniciarQualificacao()">
+  <button id="botaoIniciarQualificacao" class="btn btn-success btn-lg" type="button" onclick="window.iniciarQualificacao()">
   🚀 Iniciar Qualificação
   </button>
   <input type="hidden" id="etapaIdAtual" value="">
@@ -262,7 +262,7 @@
   
   <!-- Botão para finalizar qualificação -->
   <div class="text-center mt-4">
-  <button id="botaoFinalizarQualificacao" class="btn btn-danger btn-lg" onclick="finalizarQualificacao()" style="display: none;">
+  <button id="botaoFinalizarQualificacao" class="btn btn-danger btn-lg" type="button" onclick="window.finalizarQualificacao()" style="display: none;">
   🏁 Finalizar Qualificação
   </button>
   </div>
@@ -292,8 +292,9 @@
       mostrarToast('❌ Nenhuma etapa selecionada', 'error');
       return;
     }
-    await abrirQualificacao(etapaId);
+    await (typeof abrirQualificacao === 'function' ? abrirQualificacao(etapaId) : Promise.resolve());
   }
+  window.iniciarQualificacao = iniciarQualificacao;
 
   async function atualizarStatusAdmin() {
   try {

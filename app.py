@@ -4,6 +4,14 @@ Com autenticação por equipe e painel admin
 """
 import sys
 import os
+
+# Carregar .env no início (para TEST_E2E, MERCADO_PAGO, etc.)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # Adicionar o diretório atual ao path para que 'src' seja reconhecido como pacote
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
@@ -14,16 +22,28 @@ if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
+from flask.json.provider import DefaultJSONProvider
 from src.api import APIGranpix
 from functools import wraps
 import json
 from pathlib import Path
 from datetime import datetime
 import uuid
+from decimal import Decimal
 from src.models import Carro, Peca
 from werkzeug.security import generate_password_hash, check_password_hash
 
+
+class CustomJSONProvider(DefaultJSONProvider):
+    """Serializa Decimal (ex.: do banco) como float."""
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
+
+
 app = Flask(__name__)
+app.json = CustomJSONProvider(app)
 app.secret_key = 'GRANPIX_SUPER_SECRET_2026'
 app.config['JSON_SORT_KEYS'] = False
 
@@ -35,11 +55,16 @@ def disable_cache(response):
     response.headers['Expires'] = '0'
     return response
 
-# Configuração MySQL
-MYSQL_CONFIG = "mysql://root:@localhost:3306/granpix"
+# Configuração MySQL (variável de ambiente no Docker; fallback para desenvolvimento local)
+MYSQL_CONFIG = os.environ.get(
+    "MYSQL_CONFIG",
+    "mysql://root:@127.0.0.1:3306/granpix"
+)
 
-# Inicializar API com MySQL (sempre)
+# Inicializar API com MySQL (sempre; driver PyMySQL para compatibilidade com MariaDB)
+print("[APP] Conectando ao banco (PyMySQL)...", flush=True)
 api = APIGranpix(MYSQL_CONFIG)
+print("[APP] Banco inicializado.", flush=True)
 
 # Credenciais
 SENHA_ADMIN = "admin123"
@@ -1433,8 +1458,8 @@ def get_aguardando_pecas():
                         }
                     pecas_aguardando.append({
                         'id': sol.get('id'),
-                        'peca_nome': sol.get('peca_nome', ''),
-                        'peca_tipo': sol.get('tipo_peca', ''),
+                        'peca_nome': sol.get('peca_nome') or '',
+                        'peca_tipo': (sol.get('peca_tipo') or sol.get('tipo_peca')) or '',
                         'preco': sol.get('preco', 0),
                         'carro': carro_info,
                         'timestamp': sol.get('data_solicitacao', '')
@@ -1976,10 +2001,12 @@ def obter_etapa_hoje():
                 'etapa': resultado
             })
         else:
+            # Retorna 200 para não gerar 404 no console do front (sistema_notificacao.js)
             return jsonify({
                 'sucesso': False,
+                'etapa': None,
                 'mensagem': 'Nenhuma etapa agendada para hoje'
-            }), 404
+            })
     except Exception as e:
         print(f"[ERRO] Erro ao obter etapa de hoje: {e}")
         import traceback
@@ -4064,13 +4091,17 @@ def cadastrar_equipe():
         doricoins = float(dados.get('doricoins', 10000))
         senha = dados.get('senha', '123456')
         serie = dados.get('serie', 'A')  # Série A ou B - padrão A
-        carro_id = dados.get('carro_id')  # ID do modelo a atribuir
+        carro_id = dados.get('carro_id')
+        if isinstance(carro_id, str):
+            carro_id = carro_id.strip() or None
+        if not carro_id:
+            carro_id = None
         
         # Validar série
         if serie not in ['A', 'B']:
             serie = 'A'
         
-        print(f"[CADASTRO EQUIPE] Nome: {nome}, Doricoins: {doricoins}, Série: {serie}, Carro ID: {carro_id}")
+        print(f"[CADASTRO EQUIPE] Nome: {nome}, Doricoins: {doricoins}, Série: {serie}, Carro ID: {carro_id!r}")
         
         # Criar equipe via API com a senha e série fornecidas
         equipe = api.criar_equipe_novo(nome=nome, doricoins_iniciais=doricoins, senha=senha, serie=serie)
@@ -4092,6 +4123,15 @@ def cadastrar_equipe():
             
             if modelo_encontrado:
                 print(f"[CADASTRO EQUIPE] Modelo encontrado: {modelo_encontrado.marca} {modelo_encontrado.modelo}")
+                # Próximo numero_carro disponível (coluna é UNIQUE na tabela carros)
+                try:
+                    conn = api.db._get_conn()
+                    cur = conn.cursor()
+                    cur.execute('SELECT COALESCE(MAX(numero_carro), 0) + 1 FROM carros')
+                    prox_num = cur.fetchone()[0]
+                    conn.close()
+                except Exception:
+                    prox_num = 1
                 # Criar uma instância do modelo para a equipe
                 # Criar peças padrão com coeficiente de quebra
                 motor = Peca(
@@ -4130,10 +4170,10 @@ def cadastrar_equipe():
                     coeficiente_quebra=1.0
                 )
                 
-                # Criar carro instance
+                # Criar carro instance (numero_carro deve ser único na tabela)
                 carro_novo = Carro(
                     id=str(uuid.uuid4()),
-                    numero_carro=1,  # Será atualizado depois
+                    numero_carro=prox_num,
                     marca=modelo_encontrado.marca,
                     modelo=modelo_encontrado.modelo,
                     motor=motor,
@@ -4143,11 +4183,15 @@ def cadastrar_equipe():
                     diferenciais=[],
                     pecas_instaladas=[]
                 )
+                carro_novo.modelo_id = modelo_encontrado.id  # FK carros.modelo_id -> modelos_carro_loja.id
+                print(f"[CADASTRO EQUIPE] Carro criado: {carro_novo.id}, modelo_id={carro_novo.modelo_id}")
                 
-                print(f"[CADASTRO EQUIPE] Carro criado: {carro_novo.id}")
-                
-                # Salvar o carro no banco
-                api.db.salvar_carro(carro_novo, equipe.id)
+                # Salvar o carro no banco (numero_carro único; falha se ex.: duplicado)
+                ok_carro = api.db.salvar_carro(carro_novo, equipe.id)
+                if not ok_carro:
+                    err = getattr(api.db, '_ultimo_erro_carro', None) or 'Falha ao gravar carro no banco (verifique logs)'
+                    print(f"[CADASTRO EQUIPE] ERRO: salvar_carro retornou False: {err}")
+                    return jsonify({'sucesso': False, 'erro': str(err)}), 500
                 print(f"[CADASTRO EQUIPE] Carro salvo no banco")
                 
                 # Associar à equipe
@@ -4159,18 +4203,32 @@ def cadastrar_equipe():
                 return jsonify({'sucesso': False, 'erro': 'Modelo de carro não encontrado'}), 400
         
         api.db.salvar_equipe(equipe)
+        # Garantir que equipes.carro_id fica persistido (UPDATE explícito)
+        if equipe.carro:
+            try:
+                conn = api.db._get_conn()
+                cur = conn.cursor()
+                cur.execute('UPDATE equipes SET carro_id = %s WHERE id = %s', (equipe.carro.id, equipe.id))
+                conn.commit()
+                conn.close()
+                print(f"[CADASTRO EQUIPE] equipes.carro_id atualizado para {equipe.carro.id}")
+            except Exception as ex:
+                print(f"[CADASTRO EQUIPE] Aviso ao atualizar carro_id: {ex}")
         print(f"[CADASTRO EQUIPE] Equipe salva no banco")
         
+        resp_equipe = {
+            'id': equipe.id,
+            'nome': equipe.nome,
+            'doricoins': equipe.doricoins,
+            'senha': senha,
+            'carro_id': carro_id
+        }
+        if getattr(equipe, 'carro', None) and getattr(equipe.carro, 'id', None):
+            resp_equipe['carro_instancia_id'] = equipe.carro.id
         return jsonify({
             'sucesso': True,
             'mensagem': f'Equipe {nome} criada com sucesso',
-            'equipe': {
-                'id': equipe.id,
-                'nome': equipe.nome,
-                'doricoins': equipe.doricoins,
-                'senha': senha,
-                'carro_id': carro_id
-            }
+            'equipe': resp_equipe
         })
     except Exception as e:
         print(f"[ERRO CADASTRO EQUIPE] {str(e)}")
@@ -4226,60 +4284,47 @@ def listar_carros_admin():
         if modelos_db:
             api.loja_carros.modelos = modelos_db
         
-        # Retornar apenas os modelos da loja, não carros de equipes
+        # Retornar apenas os modelos da loja, não carros de equipes (com variacoes para cada modelo)
         if api.loja_carros and hasattr(api.loja_carros, 'modelos'):
             for modelo in api.loja_carros.modelos:
-                motor_info = None
-                cambio_info = None
-                suspensao_info = None
-                kit_angulo_info = None
-                
-                if hasattr(modelo, 'motor_id') and modelo.motor_id:
-                    motor_peca = api.db.buscar_peca_loja_por_id(modelo.motor_id)
-                    if motor_peca:
-                        motor_info = {
-                            'id': motor_peca.id,
-                            'nome': motor_peca.nome,
-                            'preco': motor_peca.preco
-                        }
-                
-                if hasattr(modelo, 'cambio_id') and modelo.cambio_id:
-                    cambio_peca = api.db.buscar_peca_loja_por_id(modelo.cambio_id)
-                    if cambio_peca:
-                        cambio_info = {
-                            'id': cambio_peca.id,
-                            'nome': cambio_peca.nome,
-                            'preco': cambio_peca.preco
-                        }
-                
-                if hasattr(modelo, 'suspensao_id') and modelo.suspensao_id:
-                    suspensao_peca = api.db.buscar_peca_loja_por_id(modelo.suspensao_id)
-                    if suspensao_peca:
-                        suspensao_info = {
-                            'id': suspensao_peca.id,
-                            'nome': suspensao_peca.nome,
-                            'preco': suspensao_peca.preco
-                        }
-                
-                if hasattr(modelo, 'kit_angulo_id') and modelo.kit_angulo_id:
-                    kit_peca = api.db.buscar_peca_loja_por_id(modelo.kit_angulo_id)
-                    if kit_peca:
-                        kit_angulo_info = {
-                            'id': kit_peca.id,
-                            'nome': kit_peca.nome,
-                            'preco': kit_peca.preco
-                        }
-                
-                diferencial_info = None
-                if hasattr(modelo, 'diferencial_id') and modelo.diferencial_id:
-                    diferencial_peca = api.db.buscar_peca_loja_por_id(modelo.diferencial_id)
-                    if diferencial_peca:
-                        diferencial_info = {
-                            'id': diferencial_peca.id,
-                            'nome': diferencial_peca.nome,
-                            'preco': diferencial_peca.preco
-                        }
-                
+                variacoes_list = []
+                for variacao in getattr(modelo, 'variacoes', []):
+                    # Resolver nomes das peças (1 motor, 1 câmbio, 1 suspensão, 1 kit ângulo, 1 diferencial por variação)
+                    motor_nome = None
+                    if variacao.motor_id:
+                        p = api.db.buscar_peca_loja_por_id(variacao.motor_id)
+                        motor_nome = p.nome if p else None
+                    cambio_nome = None
+                    if variacao.cambio_id:
+                        p = api.db.buscar_peca_loja_por_id(variacao.cambio_id)
+                        cambio_nome = p.nome if p else None
+                    suspensao_nome = None
+                    if variacao.suspensao_id:
+                        p = api.db.buscar_peca_loja_por_id(variacao.suspensao_id)
+                        suspensao_nome = p.nome if p else None
+                    kit_angulo_nome = None
+                    if variacao.kit_angulo_id:
+                        p = api.db.buscar_peca_loja_por_id(variacao.kit_angulo_id)
+                        kit_angulo_nome = p.nome if p else None
+                    diferencial_nome = None
+                    if variacao.diferencial_id:
+                        p = api.db.buscar_peca_loja_por_id(variacao.diferencial_id)
+                        diferencial_nome = p.nome if p else None
+                    variacoes_list.append({
+                        'id': variacao.id,
+                        'modelo_carro_loja_id': variacao.modelo_carro_loja_id,
+                        'valor': getattr(variacao, 'valor', 0.0),
+                        'motor_id': variacao.motor_id,
+                        'cambio_id': variacao.cambio_id,
+                        'suspensao_id': variacao.suspensao_id,
+                        'kit_angulo_id': variacao.kit_angulo_id,
+                        'diferencial_id': variacao.diferencial_id,
+                        'motor_nome': motor_nome,
+                        'cambio_nome': cambio_nome,
+                        'suspensao_nome': suspensao_nome,
+                        'kit_angulo_nome': kit_angulo_nome,
+                        'diferencial_nome': diferencial_nome,
+                    })
                 modelos.append({
                     'id': modelo.id,
                     'marca': modelo.marca,
@@ -4287,26 +4332,14 @@ def listar_carros_admin():
                     'classe': modelo.classe,
                     'preco': modelo.preco,
                     'descricao': getattr(modelo, 'descricao', ''),
-                    'motor_id': getattr(modelo, 'motor_id', None),
-                    'motor_info': motor_info,
-                    'cambio_id': getattr(modelo, 'cambio_id', None),
-                    'cambio_info': cambio_info,
-                    'suspensao_id': getattr(modelo, 'suspensao_id', None),
-                    'suspensao_info': suspensao_info,
-                    'kit_angulo_id': getattr(modelo, 'kit_angulo_id', None),
-                    'kit_angulo_info': kit_angulo_info,
-                    'diferencial_id': getattr(modelo, 'diferencial_id', None),
-                    'diferencial_info': diferencial_info,
-                    'imagem': getattr(modelo, 'imagem', None),  # Incluir base64 da imagem
+                    'variacoes': variacoes_list,
+                    'imagem': getattr(modelo, 'imagem', None),
                     'tem_imagem': bool(getattr(modelo, 'imagem', None))
                 })
                 
-                # DEBUG: Log da imagem
                 imagem_attr = getattr(modelo, 'imagem', None)
                 if imagem_attr:
                     print(f"[DEBUG IMAGEM] {modelo.modelo}: Tem imagem, tipo={type(imagem_attr).__name__}, tamanho={len(imagem_attr) if isinstance(imagem_attr, (str, bytes)) else 'N/A'}")
-                    if isinstance(imagem_attr, str):
-                        print(f"[DEBUG IMAGEM] Preview: {imagem_attr[:80]}")
                 else:
                     print(f"[DEBUG IMAGEM] {modelo.modelo}: SEM IMAGEM")
         
@@ -6582,6 +6615,75 @@ def comprar_peca_armazem():
         traceback.print_exc()
         return jsonify({'sucesso': False, 'erro': str(e)}), 500
 
+@app.route('/api/test/ativar-carro-direto', methods=['POST'])
+@requer_login_api
+def test_ativar_carro_direto():
+    """[E2E] Define o primeiro carro da equipe como ativo (sem PIX). Só disponível com TEST_E2E=1."""
+    if os.environ.get('TEST_E2E') != '1':
+        return jsonify({'erro': 'Não disponível'}), 404
+    try:
+        equipe_id = obter_equipe_id_request()
+        if not equipe_id:
+            return jsonify({'sucesso': False, 'erro': 'Não autenticado'}), 401
+        conn = api.db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            'UPDATE carros SET status = %s, timestamp_repouso = NOW() WHERE equipe_id = %s',
+            ('repouso', equipe_id)
+        )
+        cursor.execute(
+            '''UPDATE carros SET status = %s, timestamp_ativo = NOW()
+               WHERE equipe_id = %s ORDER BY numero_carro ASC LIMIT 1''',
+            ('ativo', equipe_id)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({'sucesso': True, 'mensagem': 'Carro ativado (teste)'})
+    except Exception as e:
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
+@app.route('/api/test/criar-solicitacao-peca', methods=['POST'])
+def test_criar_solicitacao_peca():
+    """[E2E] Cria uma solicitação de peça pendente. Só disponível com TEST_E2E=1."""
+    if os.environ.get('TEST_E2E') != '1':
+        return jsonify({'erro': 'Não disponível'}), 404
+    try:
+        dados = request.json or {}
+        equipe_id = dados.get('equipe_id')
+        peca_id = dados.get('peca_id')
+        carro_id = dados.get('carro_id')
+        if not equipe_id or not peca_id or not carro_id:
+            return jsonify({'erro': 'equipe_id, peca_id e carro_id obrigatórios'}), 400
+        sol_id = str(uuid.uuid4())
+        ok = api.db.salvar_solicitacao_peca(sol_id, equipe_id, peca_id, 1, 'pendente', carro_id)
+        if not ok:
+            return jsonify({'erro': 'Falha ao salvar solicitação'}), 500
+        return jsonify({'sucesso': True, 'solicitacao_id': sol_id})
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+
+@app.route('/api/test/criar-solicitacao-carro', methods=['POST'])
+def test_criar_solicitacao_carro():
+    """[E2E] Cria uma solicitação de ativação de carro pendente. Só disponível com TEST_E2E=1."""
+    if os.environ.get('TEST_E2E') != '1':
+        return jsonify({'erro': 'Não disponível'}), 404
+    try:
+        dados = request.json or {}
+        equipe_id = dados.get('equipe_id')
+        carro_id = dados.get('carro_id')
+        carro_anterior_id = dados.get('carro_anterior_id')
+        if not equipe_id or not carro_id:
+            return jsonify({'erro': 'equipe_id e carro_id obrigatórios'}), 400
+        sol_id = api.db.criar_solicitacao_ativacao_carro(equipe_id, carro_id, carro_anterior_id)
+        if not sol_id:
+            return jsonify({'erro': 'Falha ao criar solicitação'}), 500
+        return jsonify({'sucesso': True, 'solicitacao_id': sol_id})
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+
 @app.route('/api/test-pecas')
 def test_pecas():
     return jsonify({'status': 'ok', 'test': 'pecas endpoint works'})
@@ -7191,7 +7293,10 @@ if __name__ == '__main__':
     print()
     
     try:
-        app.run(debug=True, host='localhost', port=5000, use_reloader=True)
+        host = os.environ.get("FLASK_RUN_HOST", "localhost")
+        port = int(os.environ.get("FLASK_RUN_PORT", "5000"))
+        debug = os.environ.get("FLASK_DEBUG", "true").lower() in ("1", "true", "yes")
+        app.run(debug=debug, host=host, port=port, use_reloader=debug)
     except KeyboardInterrupt:
         print("\n[ENCERRAMENTO] Encerrando aplicação...")
         cleanup_on_exit()

@@ -47,8 +47,8 @@ async function verificarEtapaEmAndamento() {
         }
         
         const resp = await fetch('/api/admin/etapa-hoje');
-        if (!resp.ok) return;
-        
+        if (!resp.ok) return; // 500 etc.
+
         const data = await resp.json();
         
         if (data.sucesso && data.etapa) {

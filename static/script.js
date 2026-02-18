@@ -2783,13 +2783,14 @@ async function processarCarrinhoArmazemAtivo() {
 async function processarCarrinhoArmazemRepouso() {
     /**Processa o carrinho para carros em repouso - sem PIX, apenas guarda*/
     try {
-        if (!window.garagemAtual || !window.garagemAtual.carros) {
+        const carrosGaragem = Array.isArray(window.garagemAtual?.carros) ? window.garagemAtual.carros : [];
+        if (!window.garagemAtual || carrosGaragem.length === 0) {
             mostrarToast('⏳ Aguarde o carregamento da garagem...', 'info');
             return;
         }
         
         // Filtrar carros em repouso (carro_ativo = false ou não existe)
-        const carrosEmRepouso = window.garagemAtual.carros.filter(c => !c.carro_ativo);
+        const carrosEmRepouso = carrosGaragem.filter(c => !c.carro_ativo);
         
         if (carrosEmRepouso.length === 0) {
             mostrarToast('Nenhum carro em repouso disponível', 'warning');
@@ -2983,8 +2984,9 @@ function abrirModalAdicionarPecasArmazem() {
         
         // Gerar lista de carros para dropdown
         let opcoesCarros = '<option value="">-- Selecione um carro --</option>';
-        if (window.garagemAtual && window.garagemAtual.carros) {
-            opcoesCarros += window.garagemAtual.carros.map(carro => {
+        const carrosGaragem = Array.isArray(window.garagemAtual?.carros) ? window.garagemAtual.carros : [];
+        if (carrosGaragem.length) {
+            opcoesCarros += carrosGaragem.map(carro => {
                 const ativo = carro.carro_ativo ? ' [ATIVO]' : '';
                 return `<option value="${carro.id}" ${carro.carro_ativo ? 'selected' : ''}>${carro.marca} ${carro.modelo}${ativo}</option>`;
             }).join('');
@@ -3783,8 +3785,9 @@ function renderizarListaPecasDestino() {
         
         // Buscar qual peça será substituída no carro ativo (mostrar sempre como preview)
         let pecaSubstituinda = '';
-        if (window.garagemAtual?.carros) {
-            const carro = window.garagemAtual.carros.find(c => c.carro_ativo);
+        const carrosGaragemAtual = Array.isArray(window.garagemAtual?.carros) ? window.garagemAtual.carros : [];
+        if (carrosGaragemAtual.length) {
+            const carro = carrosGaragemAtual.find(c => c.carro_ativo);
             if (carro && carro.pecas) {
                 const pecaExistente = carro.pecas.find(p => p.tipo === tipo);
                 if (pecaExistente) {
@@ -5919,11 +5922,16 @@ async function carregarEquipesCadastro() {
 }
 
 async function cadastrarEquipe() {
-    const nome = document.getElementById('nomeEquipe').value.trim();
-    const doricoins = parseFloat(document.getElementById('doricoinsEquipe').value) || 10000;
-    const senha = document.getElementById('senhaEquipe').value.trim();
-    const serie = document.getElementById('serieEquipe').value;
-    const carroId = document.getElementById('carroEquipe').value;
+    const nomeEl = document.getElementById('equipeNome') || document.getElementById('nomeEquipe');
+    const doricoinsEl = document.getElementById('equipeDoricoins') || document.getElementById('doricoinsEquipe');
+    const senhaEl = document.getElementById('equipeSenha') || document.getElementById('senhaEquipe');
+    const serieEl = document.getElementById('equipeSerie') || document.getElementById('serieEquipe');
+    const carroEl = document.getElementById('equipeCarroSelecionado') || document.getElementById('carroEquipe');
+    const nome = (nomeEl && nomeEl.value) ? nomeEl.value.trim() : '';
+    const doricoins = (doricoinsEl && doricoinsEl.value) ? parseFloat(doricoinsEl.value) : 10000;
+    const senha = (senhaEl && senhaEl.value) ? senhaEl.value.trim() : '';
+    const serie = (serieEl && serieEl.value) ? serieEl.value : 'A';
+    const carroId = (carroEl && carroEl.value) ? String(carroEl.value).trim() : '';
     
     if (!nome) {
         mostrarToast('Nome da equipe é obrigatório', 'error');
@@ -5939,25 +5947,25 @@ async function cadastrarEquipe() {
         const resp = await fetch('/api/admin/cadastrar-equipe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                nome: nome,
-                doricoins: doricoins,
-                senha: senha,
-                serie: serie,
-                carro_id: carroId || null
-            })
+                body: JSON.stringify({
+                    nome: nome,
+                    doricoins: doricoins,
+                    senha: senha,
+                    serie: serie,
+                    carro_id: carroId || undefined
+                })
         });
         
         const resultado = await resp.json();
         
         if (resultado.sucesso) {
             mostrarToast('Equipe cadastrada com sucesso!', 'success');
-            // Limpar formulário
-            document.getElementById('nomeEquipe').value = '';
-            document.getElementById('doricoinsEquipe').value = '10000';
-            document.getElementById('senhaEquipe').value = '';
-            document.getElementById('serieEquipe').value = 'A';
-            document.getElementById('carroEquipe').value = '';
+            // Limpar formulário (suporta IDs admin_equipes ou alternativos)
+            if (nomeEl) nomeEl.value = '';
+            if (doricoinsEl) doricoinsEl.value = '10000';
+            if (senhaEl) senhaEl.value = '';
+            if (serieEl) serieEl.value = 'A';
+            if (carroEl) carroEl.value = '';
             // Recarregar lista
             carregarEquipesCadastro();
         } else {
@@ -5969,9 +5977,47 @@ async function cadastrarEquipe() {
     }
 }
 
+// Retorna true se a variação tem todas as peças (motor, câmbio, suspensão, kit ângulo, diferencial)
+function variacaoCompleta(v) {
+    return !!(v && v.motor_id && v.cambio_id && v.suspensao_id && v.kit_angulo_id && v.diferencial_id);
+}
+
+// Preencher dropdown de carros (equipes e variações)
+async function carregarCarrosPraEquipe() {
+    try {
+        const resp = await fetch('/api/admin/carros');
+        const carros = await resp.json();
+        if (!Array.isArray(carros)) return;
+        const opt = (id, label) => `<option value="${id}">${label}</option>`;
+        // No dropdown da equipe: só modelos que tenham ao menos uma variação com todas as peças
+        const carrosCompletos = carros.filter(c =>
+            (c.variacoes || []).some(v => variacaoCompleta(v))
+        );
+        const elEquipe = document.getElementById('equipeCarroSelecionado');
+        if (elEquipe) {
+            const grp = elEquipe.querySelector('optgroup') || elEquipe;
+            const inner = carrosCompletos.map(c => opt(c.id, (c.marca || '') + ' ' + (c.modelo || ''))).join('');
+            if (elEquipe.querySelector('optgroup')) {
+                elEquipe.querySelector('optgroup').innerHTML = inner;
+            } else {
+                const keepFirst = elEquipe.options.length ? elEquipe.options[0].outerHTML : '<option value="">Sem carro</option>';
+                elEquipe.innerHTML = keepFirst + inner;
+            }
+        }
+        // Dropdown de variações: todos os modelos (para cadastrar/editar variações)
+        const grpVariacao = document.getElementById('variacaoModelosGroup');
+        if (grpVariacao) {
+            grpVariacao.innerHTML = carros.map(c => `<option value="${c.id}">${(c.marca || '')} ${(c.modelo || '')}</option>`).join('');
+        }
+    } catch (e) {
+        console.error('Erro carregarCarrosPraEquipe:', e);
+    }
+}
+
 // Tornar funções globais
 window.carregarEquipesCadastro = carregarEquipesCadastro;
 window.cadastrarEquipe = cadastrarEquipe;
+window.carregarCarrosPraEquipe = carregarCarrosPraEquipe;
 
 // =================== ADMIN - SOLICITAÇÕES ===================
 

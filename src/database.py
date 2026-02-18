@@ -3,7 +3,8 @@ Sistema de persistência de dados usando JSON e SQLite
 """
 import json
 import sqlite3
-import mysql.connector
+import pymysql
+from pymysql.cursors import DictCursor
 import re  # Regular expression module for parsing MySQL connection strings
 import traceback
 import base64  # Para codificar/decodificar imagens
@@ -25,17 +26,39 @@ class DatabaseManager:
         self.init_database()
 
     def _get_conn(self, use_db=True):
-        # Enforce MySQL connection only
+        # Conexão MySQL/MariaDB via PyMySQL (compatível com MariaDB, collation explícita)
         m = re.match(r"mysql://([^:@]+)(?::([^@]*))?@([^:/]+)(?::(\d+))?/([^?]+)", self.db_path)
         if not m:
             raise ValueError("String de conexão MySQL inválida")
         user, password, host, port, db = m.groups()
-        password = password or ""  # Se senha for None, usar string vazia
+        password = password or ""
         port = int(port) if port else 3306
+        kwargs = dict(
+            host=host,
+            user=user,
+            password=password,
+            port=port,
+            charset="utf8mb4",
+            collation="utf8mb4_unicode_ci",
+        )
         if use_db:
-            return mysql.connector.connect(host=host, user=user, passwd=password, db=db, port=port, charset='utf8mb4')
-        else:
-            return mysql.connector.connect(host=host, user=user, passwd=password, port=port, charset='utf8mb4')
+            kwargs["database"] = db
+        raw = pymysql.connect(**kwargs)
+        # Wrapper para compatibilidade com código que usa cursor(dictionary=True) (mysql.connector)
+        class _ConnWrapper:
+            def __init__(self, conn):
+                self._raw = conn
+            def __getattr__(self, name):
+                return getattr(self._raw, name)
+            def cursor(self, dictionary=False, **kw):
+                if dictionary:
+                    return self._raw.cursor(DictCursor, **kw)
+                return self._raw.cursor(**kw)
+            def close(self):
+                return self._raw.close()
+            def commit(self):
+                return self._raw.commit()
+        return _ConnWrapper(raw)
 
     def _column_exists(self, table_name: str, column_name: str) -> bool:
         """Verifica se uma coluna existe na tabela"""
@@ -79,16 +102,22 @@ class DatabaseManager:
 
     def init_database(self) -> None:
         """Inicializa as tabelas do banco de dados"""
+        m = re.match(r"mysql://([^:@]+)(?::([^@]*))?@([^:/]+)(?::(\d+))?/([^?]+)", self.db_path)
+        db_name = m.group(5) if m else "granpix"
+        if not re.match(r"^[a-zA-Z0-9_]+$", db_name):
+            db_name = "granpix"
         # Conecta sem banco para criar o banco se necessário
         conn = self._get_conn(use_db=False)
         cursor = conn.cursor()
-        cursor.execute("CREATE DATABASE IF NOT EXISTS granpix CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
+        cursor.execute(
+            "CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+            % db_name.replace("`", "``")
+        )
         conn.close()
-        
-        # Agora conecta ao banco granpix normalmente
+        # Agora conecta ao banco normalmente
         conn = self._get_conn()
         cursor = conn.cursor()
-        cursor.execute("USE granpix;")
+        cursor.execute("USE `%s`;" % db_name.replace("`", "``"))
         # Desabilitar verificação de foreign keys temporariamente
         cursor.execute("SET FOREIGN_KEY_CHECKS=0")
 
@@ -585,8 +614,8 @@ class DatabaseManager:
 
         # Executar migração para remover colunas obsoletas
         self._remover_colunas_obsoletas()
-        # Executar migração para adicionar carro_id se necessário
-        # self._migrar_equipes()
+        # Garantir que equipes tem coluna carro_id (para vincular carro ativo)
+        self._ensure_equipes_carro_id()
         # Executar migração para adicionar peças separadas aos carros
         # self._migrar_pecas_separadas_carros()  # DESABILITADO: não queremos essas colunas
         # Executar migração para remover coluna pecas_instaladas
@@ -713,6 +742,20 @@ class DatabaseManager:
             conn.close()
         except Exception as e:
             print(f"[DB] Erro ao remover colunas obsoletas: {e}")
+
+    def _ensure_equipes_carro_id(self) -> None:
+        """Garante que a tabela equipes tem a coluna carro_id (só adiciona se não existir)."""
+        try:
+            if not self._column_exists('equipes', 'carro_id'):
+                conn = self._get_conn()
+                cursor = conn.cursor()
+                print("[DB] Adicionando coluna carro_id à tabela equipes...")
+                cursor.execute('ALTER TABLE equipes ADD COLUMN carro_id VARCHAR(64) NULL')
+                conn.commit()
+                conn.close()
+                print("[DB] Coluna equipes.carro_id criada.")
+        except Exception as e:
+            print(f"[DB] Aviso ao garantir equipes.carro_id: {e}")
 
     def _migrar_equipes(self) -> None:
         """Migração: adiciona carro_id às equipes se a coluna não existir"""
@@ -1161,22 +1204,35 @@ class DatabaseManager:
                     print(f"[DB]   Carro {idx+1}: {carro.marca} {carro.modelo} (status: {carro.status})")
                     self.salvar_carro(carro, equipe.id)
 
-            # Depois salvar a equipe
+            # Depois salvar a equipe (incluindo carro_id do carro ativo)
             conn = self._get_conn()
             cursor = conn.cursor()
 
             senha = equipe.senha if hasattr(equipe, 'senha') else ''  # Adiciona a senha, se existir
             serie = equipe.serie if hasattr(equipe, 'serie') else 'A'  # Série padrão A
-            print(f"[DB] INSERT/REPLACE equipes: {equipe.id}, {equipe.nome}, Série: {serie}, Senha: {senha}")
-            cursor.execute('''
-                INSERT INTO equipes (id, nome, serie, doricoins, senha)
-                VALUES (%s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                nome = VALUES(nome),
-                serie = VALUES(serie),
-                doricoins = VALUES(doricoins),
-                senha = VALUES(senha)
-            ''', (equipe.id, equipe.nome, serie, equipe.doricoins, senha))
+            carro_id = equipe.carro.id if equipe.carro else None
+            print(f"[DB] INSERT/REPLACE equipes: {equipe.id}, {equipe.nome}, Série: {serie}, Carro: {carro_id}")
+            if self._column_exists('equipes', 'carro_id'):
+                cursor.execute('''
+                    INSERT INTO equipes (id, nome, serie, doricoins, senha, carro_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                    nome = VALUES(nome),
+                    serie = VALUES(serie),
+                    doricoins = VALUES(doricoins),
+                    senha = VALUES(senha),
+                    carro_id = VALUES(carro_id)
+                ''', (equipe.id, equipe.nome, serie, equipe.doricoins, senha, carro_id))
+            else:
+                cursor.execute('''
+                    INSERT INTO equipes (id, nome, serie, doricoins, senha)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                    nome = VALUES(nome),
+                    serie = VALUES(serie),
+                    doricoins = VALUES(doricoins),
+                    senha = VALUES(senha)
+                ''', (equipe.id, equipe.nome, serie, equipe.doricoins, senha))
 
             print(f"[DB] COMMIT banco de dados...")
             conn.commit()
@@ -1206,10 +1262,12 @@ class DatabaseManager:
             # Obter modelo_id
             modelo_id = getattr(carro, 'modelo_id', None)
 
-            # Obter status e timestamps do carro
+            # Obter status e timestamps do carro (NULL se vazio para colunas TIMESTAMP)
             status = getattr(carro, 'status', 'ativo')
-            timestamp_ativo = getattr(carro, 'timestamp_ativo', '')
-            timestamp_repouso = getattr(carro, 'timestamp_repouso', '')
+            _ta = getattr(carro, 'timestamp_ativo', None)
+            _tr = getattr(carro, 'timestamp_repouso', None)
+            timestamp_ativo = _ta if _ta else None
+            timestamp_repouso = _tr if _tr else None
 
             print(f"[DB-CARRO]   Status: {status}")
             print(f"[DB-CARRO]   Número: {carro.numero_carro}")
@@ -1217,29 +1275,42 @@ class DatabaseManager:
             print(f"[DB-CARRO]   Modelo ID: {modelo_id}")
             print(f"[DB-CARRO]   Variação ID: {variacao_carro_id}")
 
-            # INSERT com nova arquitetura (sem motor_id, cambio_id, etc.)
-            cursor.execute('''
-                INSERT INTO carros 
-                (id, numero_carro, marca, modelo, modelo_id, batidas_totais, vitoria, derrotas, empates, status, timestamp_ativo, timestamp_repouso, equipe_id, variacao_carro_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                numero_carro = VALUES(numero_carro),
-                marca = VALUES(marca),
-                modelo = VALUES(modelo),
-                modelo_id = VALUES(modelo_id),
-                batidas_totais = VALUES(batidas_totais),
-                vitoria = VALUES(vitoria),
-                derrotas = VALUES(derrotas),
-                empates = VALUES(empates),
-                status = VALUES(status),
-                timestamp_ativo = VALUES(timestamp_ativo),
-                timestamp_repouso = VALUES(timestamp_repouso),
-                equipe_id = VALUES(equipe_id),
-                variacao_carro_id = VALUES(variacao_carro_id)
-            ''', (carro.id, carro.numero_carro, carro.marca, carro.modelo, modelo_id,
-                  carro.batidas_totais, carro.vitoria, carro.derrotas, carro.empates,
-                  status, timestamp_ativo, timestamp_repouso, equipe_id, variacao_carro_id))
+            # INSERT do carro (numero_carro é UNIQUE; variacao_carro_id pode não existir em DB antigos)
+            tem_variacao_col = self._column_exists('carros', 'variacao_carro_id')
+            cols = 'id, numero_carro, marca, modelo, modelo_id, batidas_totais, vitoria, derrotas, empates, status, timestamp_ativo, timestamp_repouso, equipe_id'
+            vals = '%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s'
+            upds = '''numero_carro = VALUES(numero_carro), marca = VALUES(marca), modelo = VALUES(modelo), modelo_id = VALUES(modelo_id),
+                batidas_totais = VALUES(batidas_totais), vitoria = VALUES(vitoria), derrotas = VALUES(derrotas), empates = VALUES(empates),
+                status = VALUES(status), timestamp_ativo = VALUES(timestamp_ativo), timestamp_repouso = VALUES(timestamp_repouso), equipe_id = VALUES(equipe_id)'''
+            if tem_variacao_col:
+                cols += ', variacao_carro_id'
+                vals += ', %s'
+                upds += ', variacao_carro_id = VALUES(variacao_carro_id)'
+            params_base = (carro.id, carro.numero_carro, carro.marca, carro.modelo, modelo_id,
+                          carro.batidas_totais, carro.vitoria, carro.derrotas, carro.empates,
+                          status, timestamp_ativo, timestamp_repouso, equipe_id)
+            params = params_base + (variacao_carro_id,) if tem_variacao_col else params_base
 
+            for _ in range(2):
+                try:
+                    cursor.execute('''
+                        INSERT INTO carros (''' + cols + ''')
+                        VALUES (''' + vals + ''')
+                        ON DUPLICATE KEY UPDATE ''' + upds,
+                        params)
+                    break
+                except Exception as ins_err:
+                    err_msg = str(ins_err).lower()
+                    if '1062' in err_msg or ('duplicate' in err_msg and 'unique' in err_msg):
+                        cursor.execute('SELECT COALESCE(MAX(numero_carro), 0) + 1 FROM carros')
+                        carro.numero_carro = cursor.fetchone()[0]
+                        params_base = (carro.id, carro.numero_carro, carro.marca, carro.modelo, modelo_id,
+                                      carro.batidas_totais, carro.vitoria, carro.derrotas, carro.empates,
+                                      status, timestamp_ativo, timestamp_repouso, equipe_id)
+                        params = params_base + (variacao_carro_id,) if tem_variacao_col else params_base
+                        print(f"[DB-CARRO] numero_carro em conflito, usando {carro.numero_carro}")
+                    else:
+                        raise
             print(f"[DB-CARRO] INSERT/REPLACE carro executado")
 
             # Commit do carro antes de salvar as peças
@@ -1254,40 +1325,43 @@ class DatabaseManager:
                 conn.close()
                 return False
 
-            # Salvar todas as peças
+            # Salvar todas as peças (opcional: se falhar, carro já está salvo)
             pecas_list = carro.get_todas_pecas()
             print(f"[DB-CARRO] Salvando {len(pecas_list)} peças...")
-            for peca in pecas_list:
-                # Gerar um ID único para cada peça instalada (combinação de carro + peca_loja)
-                peca_id_unico = f"{carro.id}_{peca.id}"
-                
-                # peca.id é o ID da peça de pecas_loja (motor_id, cambio_id, etc)
-                cursor.execute('''
-                    INSERT INTO pecas 
-                    (id, carro_id, peca_loja_id, nome, tipo, durabilidade_maxima, durabilidade_atual, preco, coeficiente_quebra, instalado, equipe_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s)
-                    ON DUPLICATE KEY UPDATE
-                    carro_id = VALUES(carro_id),
-                    peca_loja_id = VALUES(peca_loja_id),
-                    nome = VALUES(nome),
-                    tipo = VALUES(tipo),
-                    durabilidade_maxima = VALUES(durabilidade_maxima),
-                    durabilidade_atual = VALUES(durabilidade_atual),
-                    preco = VALUES(preco),
-                    coeficiente_quebra = VALUES(coeficiente_quebra),
-                    instalado = 1,
-                    equipe_id = VALUES(equipe_id)
-                ''', (peca_id_unico, carro.id, peca.id, peca.nome, peca.tipo, 
-                      peca.durabilidade_maxima, peca.durabilidade_atual, peca.preco, peca.coeficiente_quebra, equipe_id))
-
-            print(f"[DB-CARRO] Fazendo commit final...")
-            conn.commit()
+            try:
+                for peca in pecas_list:
+                    peca_id_unico = f"{carro.id}_{peca.id}"
+                    cursor.execute('SELECT id FROM pecas_loja WHERE id = %s', (peca.id,))
+                    peca_loja_id = peca.id if cursor.fetchone() else None
+                    cursor.execute('''
+                        INSERT INTO pecas 
+                        (id, carro_id, peca_loja_id, nome, tipo, durabilidade_maxima, durabilidade_atual, preco, coeficiente_quebra, instalado, equipe_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s)
+                        ON DUPLICATE KEY UPDATE
+                        carro_id = VALUES(carro_id),
+                        peca_loja_id = VALUES(peca_loja_id),
+                        nome = VALUES(nome),
+                        tipo = VALUES(tipo),
+                        durabilidade_maxima = VALUES(durabilidade_maxima),
+                        durabilidade_atual = VALUES(durabilidade_atual),
+                        preco = VALUES(preco),
+                        coeficiente_quebra = VALUES(coeficiente_quebra),
+                        instalado = 1,
+                        equipe_id = VALUES(equipe_id)
+                    ''', (peca_id_unico, carro.id, peca_loja_id, peca.nome, peca.tipo,
+                          peca.durabilidade_maxima, peca.durabilidade_atual, peca.preco, peca.coeficiente_quebra, equipe_id))
+                conn.commit()
+            except Exception as ep:
+                print(f"[DB-CARRO] Aviso: falha ao salvar peças (carro já gravado): {ep}")
+                traceback.print_exc()
+                conn.rollback()
             conn.close()
             print(f"[DB-CARRO] Carro {carro.marca} {carro.modelo} salvo com sucesso!")
             return True
         except Exception as e:
             print(f"[DB-CARRO ERRO] Erro ao salvar carro: {e}")
             traceback.print_exc()
+            self._ultimo_erro_carro = str(e)
             return False
 
     def salvar_piloto(self, piloto: Piloto) -> bool:
@@ -1480,7 +1554,10 @@ class DatabaseManager:
             conn = self._get_conn()
             cursor = conn.cursor()
 
-            cursor.execute('SELECT id, nome, serie, doricoins, senha FROM equipes WHERE id = %s', (equipe_id,))
+            if self._column_exists('equipes', 'carro_id'):
+                cursor.execute('SELECT id, nome, serie, doricoins, senha, carro_id FROM equipes WHERE id = %s', (equipe_id,))
+            else:
+                cursor.execute('SELECT id, nome, serie, doricoins, senha FROM equipes WHERE id = %s', (equipe_id,))
             row = cursor.fetchone()
 
             if not row:
@@ -1488,8 +1565,11 @@ class DatabaseManager:
                 conn.close()
                 return None
 
-            equipe_id, nome, serie, doricoins, senha = row
-            carro_id_atual = None  # Carros não têm relação direta com equipe via carro_id
+            if len(row) >= 6:
+                equipe_id, nome, serie, doricoins, senha, carro_id_atual = row[0], row[1], row[2], row[3], row[4], row[5]
+            else:
+                equipe_id, nome, serie, doricoins, senha = row[0], row[1], row[2], row[3], row[4]
+                carro_id_atual = None
 
             # Carregar os carros associados à equipe
             carros = self.carregar_carros_por_equipe(equipe_id)
@@ -1501,8 +1581,8 @@ class DatabaseManager:
                     if str(c.id) == str(carro_id_atual):
                         carro_ativo = c
                         break
-            
-            # Se não encontrar, deixar como None
+            if not carro_ativo and carros:
+                carro_ativo = carros[0]
 
             # Criar objeto Equipe
             equipe = Equipe(
@@ -1529,14 +1609,25 @@ class DatabaseManager:
             cursor = conn.cursor()
 
             print("[DB] Carregando equipes do banco de dados...")
-            cursor.execute('SELECT id, nome, serie, doricoins, senha FROM equipes')
+            if self._column_exists('equipes', 'carro_id'):
+                cursor.execute('SELECT id, nome, serie, doricoins, senha, carro_id FROM equipes')
+            else:
+                cursor.execute('SELECT id, nome, serie, doricoins, senha FROM equipes')
             equipes_rows = cursor.fetchall()
 
             equipes = []
-            for equipe_id, nome, serie, doricoins, senha in equipes_rows:
-                # Carregar os carros associados à equipe
+            for row in equipes_rows:
+                equipe_id, nome, serie, doricoins, senha = row[0], row[1], row[2], row[3], row[4]
+                carro_id_atual = row[5] if len(row) >= 6 else None
                 carros = self.carregar_carros_por_equipe(equipe_id)
-                carro = carros[0] if carros else None  # Primeiro carro como ativo
+                carro = None
+                if carro_id_atual:
+                    for c in carros:
+                        if str(c.id) == str(carro_id_atual):
+                            carro = c
+                            break
+                if not carro and carros:
+                    carro = carros[0]
 
                 # Criar objeto Equipe
                 equipe = Equipe(
@@ -3091,6 +3182,39 @@ class DatabaseManager:
             print(f"Erro ao salvar solicitação de carro: {e}")
             return False
 
+    def criar_solicitacao_ativacao_carro(self, equipe_id: str, carro_id: str, carro_anterior_id: str = None) -> str:
+        """Cria uma solicitação de ativação de carro (pendente). Retorna o id da solicitação."""
+        import uuid as _uuid
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            cursor.execute('SELECT marca, modelo FROM carros WHERE id = %s AND equipe_id = %s', (carro_id, equipe_id))
+            row = cursor.fetchone()
+            marca = (row[0] or 'Carro') if row else 'Carro'
+            modelo = (row[1] or 'Ativação') if row else 'Ativação'
+            tipo_carro = f"{carro_id}|{marca}|{modelo}"
+            sol_id = str(_uuid.uuid4())
+            if self._column_exists('solicitacoes_carros', 'tipo_solicitacao'):
+                cursor.execute('''
+                    INSERT INTO solicitacoes_carros
+                    (id, equipe_id, carro_id, carro_anterior_id, tipo_carro, tipo_solicitacao, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ''', (sol_id, equipe_id, carro_id, carro_anterior_id, tipo_carro, 'ativacao', 'pendente'))
+            else:
+                cursor.execute('''
+                    INSERT INTO solicitacoes_carros
+                    (id, equipe_id, tipo_carro, status, data_solicitacao, data_atualizacao)
+                    VALUES (%s, %s, %s, %s, NOW(), NOW())
+                ''', (sol_id, equipe_id, tipo_carro, 'pendente'))
+            conn.commit()
+            conn.close()
+            return sol_id
+        except Exception as e:
+            print(f"Erro ao criar solicitação de ativação: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
     def salvar_solicitacao_peca(self, id, equipe_id, peca_id, quantidade, status, carro_id=None):
         """Salva uma solicitação de peça no banco de dados"""
         try:
@@ -3123,32 +3247,26 @@ class DatabaseManager:
             conn = self._get_conn()
             cursor = conn.cursor()
 
-            # Query com JOINs para trazer dados da peça, equipe e carro
+            # Query com JOINs; usar sp.tipo_peca como fallback quando p.tipo for NULL
+            cols = [
+                'sp.id', 'sp.equipe_id', 'sp.peca_id', 'sp.carro_id', 'sp.quantidade', 'sp.status',
+                'sp.data_solicitacao', 'sp.data_atualizacao',
+                'e.nome as equipe_nome', 'p.nome as peca_nome', 'p.tipo as peca_tipo_join', 'p.preco',
+                'c.marca as carro_marca', 'c.modelo as carro_modelo', 'c.status as carro_status'
+            ]
+            if self._column_exists('solicitacoes_pecas', 'tipo_peca'):
+                cols.insert(cols.index('p.preco'), 'sp.tipo_peca')
+            # Ocultar solicitações aprovadas (instalado) com mais de 72h
+            filtro_72h = " (sp.status != 'instalado' OR sp.data_atualizacao >= NOW() - INTERVAL 72 HOUR) "
             query = '''
-                SELECT
-                    sp.id,
-                    sp.equipe_id,
-                    sp.peca_id,
-                    sp.carro_id,
-                    sp.quantidade,
-                    sp.status,
-                    sp.data_solicitacao,
-                    sp.data_atualizacao,
-                    e.nome as equipe_nome,
-                    p.nome as peca_nome,
-                    p.tipo as peca_tipo,
-                    p.preco,
-                    c.marca as carro_marca,
-                    c.modelo as carro_modelo,
-                    c.status as carro_status
+                SELECT ''' + ', '.join(cols) + '''
                 FROM solicitacoes_pecas sp
                 LEFT JOIN equipes e ON sp.equipe_id = e.id
                 LEFT JOIN pecas_loja p ON sp.peca_id = p.id
                 LEFT JOIN carros c ON sp.carro_id = c.id
-            '''
-
+                WHERE ''' + filtro_72h
             if equipe_id:
-                query += ' WHERE sp.equipe_id = %s'
+                query += ' AND sp.equipe_id = %s'
                 cursor.execute(query + ' ORDER BY sp.data_solicitacao DESC', (equipe_id,))
             else:
                 cursor.execute(query + ' ORDER BY sp.data_solicitacao DESC')
@@ -3156,16 +3274,20 @@ class DatabaseManager:
             rows = cursor.fetchall()
             conn.close()
 
+            has_tipo_peca_col = self._column_exists('solicitacoes_pecas', 'tipo_peca')
             solicitacoes = []
             for row in rows:
+                # Índices: 0 id, 1 equipe_id, 2 peca_id, 3 carro_id, 4 quantidade, 5 status, 6 data_sol, 7 data_atual
+                # 8 equipe_nome, 9 peca_nome, 10 peca_tipo_join, [11 tipo_peca se existe], 11 ou 12 preco, depois carro
+                if has_tipo_peca_col:
+                    peca_tipo_join, tipo_peca_tab, preco = row[10], row[11], row[12]
+                    carro_marca, carro_modelo, carro_status = row[13], row[14], row[15]
+                else:
+                    peca_tipo_join, tipo_peca_tab, preco = row[10], None, row[11]
+                    carro_marca, carro_modelo, carro_status = row[12], row[13], row[14]
                 carro = None
-                if row[12] and row[13]:  # Se tem carro_marca e carro_modelo
-                    carro = {
-                        'marca': row[12],
-                        'modelo': row[13],
-                        'status': row[14]
-                    }
-                
+                if carro_marca and carro_modelo:
+                    carro = {'marca': carro_marca, 'modelo': carro_modelo, 'status': carro_status}
                 solicitacao = {
                     'id': row[0],
                     'equipe_id': row[1],
@@ -3176,9 +3298,9 @@ class DatabaseManager:
                     'data_solicitacao': row[6].isoformat() if row[6] else None,
                     'data_atualizacao': row[7].isoformat() if row[7] else None,
                     'equipe_nome': row[8],
-                    'peca_nome': row[9],
-                    'peca_tipo': row[10],
-                    'preco': float(row[11]) if row[11] else 0.0,
+                    'peca_nome': row[9] or '',
+                    'peca_tipo': (peca_tipo_join or tipo_peca_tab) or '',
+                    'preco': float(preco) if preco else 0.0,
                     'carro': carro
                 }
                 solicitacoes.append(solicitacao)
@@ -3196,17 +3318,17 @@ class DatabaseManager:
             conn = self._get_conn()
             cursor = conn.cursor()
 
-            # Query com todos os campos novos
+            # Ocultar solicitações aprovadas com mais de 72h
+            filtro_72h = " (sc.status NOT IN ('aprovado', 'aprovada') OR sc.data_atualizacao >= NOW() - INTERVAL 72 HOUR) "
             query = '''
                 SELECT
                     sc.id, sc.equipe_id, sc.tipo_carro, sc.status, sc.data_solicitacao, sc.data_atualizacao,
                     e.nome as equipe_nome, sc.carro_id, sc.carro_anterior_id, sc.tipo_solicitacao
                 FROM solicitacoes_carros sc
                 LEFT JOIN equipes e ON sc.equipe_id = e.id
-            '''
-
+                WHERE ''' + filtro_72h
             if equipe_id:
-                query += ' WHERE sc.equipe_id = %s'
+                query += ' AND sc.equipe_id = %s'
                 cursor.execute(query + ' ORDER BY sc.data_solicitacao DESC', (equipe_id,))
             else:
                 cursor.execute(query + ' ORDER BY sc.data_solicitacao DESC')

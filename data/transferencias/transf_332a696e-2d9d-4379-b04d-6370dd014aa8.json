@@ -1,0 +1,13 @@
+{
+  "id": "332a696e-2d9d-4379-b04d-6370dd014aa8",
+  "equipe_origem_id": "c0976426-796e-4476-af09-76c6b05a18cd",
+  "equipe_origem_nome": "teste",
+  "equipe_destino_id": "4f390a9c-f23e-4cad-b7a3-673bad6fbb5b",
+  "equipe_destino_nome": "hover",
+  "valor_enviado": 200.0,
+  "taxa": 40.0,
+  "taxa_percentual": 20,
+  "valor_recebido": 160.0,
+  "timestamp": "2026-02-13T06:33:00.490203",
+  "status": "concluido"
+}

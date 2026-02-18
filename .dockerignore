@@ -1,0 +1,30 @@
+# Git e ambiente local
+.git
+.venv
+venv
+env
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info
+.eggs
+dist
+build
+
+# IDE e OS
+.idea
+.vscode
+.cursor
+*.swp
+.DS_Store
+Thumbs.db
+
+# Documentação local e scripts de correção do host (não necessários no container)
+MARIADB_CONEXAO.md
+fix_mariadb_host.sql
+
+# Opcional: descomente se não quiser copiar dados locais para a imagem
+# *.db
+# uploads/
