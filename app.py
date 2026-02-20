@@ -5,12 +5,21 @@ Com autenticação por equipe e painel admin
 import sys
 import os
 
-# Carregar .env no início (para TEST_E2E, MERCADO_PAGO, etc.)
+# Carregar .env no início (garante CWD-independent load)
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    load_dotenv(_env_path)
 except ImportError:
     pass
+
+# Log Challonge
+if os.environ.get('CHALLONGE_API_KEY') and os.environ.get('CHALLONGE_USERNAME'):
+    print("[CHALLONGE] API key + username carregados (v1).")
+elif os.environ.get('CHALLONGE_API_KEY'):
+    print("[CHALLONGE] API key carregada (configure CHALLONGE_USERNAME para evitar 401).")
+else:
+    print("[CHALLONGE] Configure CHALLONGE_API_KEY e CHALLONGE_USERNAME no .env")
 
 # Adicionar o diretório atual ao path para que 'src' seja reconhecido como pacote
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -2175,7 +2184,7 @@ def obter_equipes_pilotos_etapa(etapa_id):
 
 @app.route('/api/admin/finalizar-qualificacao/<etapa_id>', methods=['POST'])
 def finalizar_qualificacao(etapa_id):
-    """Finaliza apenas a fase de qualificação da etapa"""
+    """Finaliza a fase de qualificação: atualiza ordem_qualificacao pelas notas e muda status para batalhas."""
     try:
         conn = api.db._get_conn()
         cursor = conn.cursor(dictionary=True)
@@ -2186,6 +2195,24 @@ def finalizar_qualificacao(etapa_id):
             cursor.close()
             conn.close()
             return jsonify({'sucesso': False, 'erro': 'Etapa nao encontrada'}), 404
+        
+        # Atualizar ordem_qualificacao em participacoes_etapas com base nas notas da volta
+        cursor.execute('''
+            SELECT pe.id as participacao_id, pe.equipe_id,
+                   COALESCE(v.nota_linha, 0) + COALESCE(v.nota_angulo, 0) + COALESCE(v.nota_estilo, 0) as total_notas
+            FROM participacoes_etapas pe
+            LEFT JOIN volta v ON v.id_equipe COLLATE utf8mb4_unicode_ci = pe.equipe_id COLLATE utf8mb4_unicode_ci
+                AND v.id_etapa COLLATE utf8mb4_unicode_ci = pe.etapa_id COLLATE utf8mb4_unicode_ci
+            WHERE pe.etapa_id = %s
+        ''', (etapa_id,))
+        rows = cursor.fetchall()
+        # Ordenar por total_notas DESC (maior nota = melhor posição)
+        rows_sorted = sorted(rows, key=lambda r: (-(r['total_notas'] or 0), r['equipe_id']))
+        for pos, row in enumerate(rows_sorted, 1):
+            cursor.execute(
+                'UPDATE participacoes_etapas SET ordem_qualificacao = %s WHERE id = %s',
+                (pos, row['participacao_id'])
+            )
         
         # Marcar qualificação como finalizada e mudar status para batalhas
         cursor.execute('UPDATE etapas SET qualificacao_finalizada = TRUE, status = %s WHERE id = %s', ('batalhas', etapa_id))
@@ -2251,6 +2278,387 @@ def obter_classificacao_final(etapa_id):
         
     except Exception as e:
         return jsonify({'sucesso': False, 'erro': str(e)}), 400
+
+
+def _gerar_chaveamento_single_elimination(participantes):
+    """Gera chaveamento single-elimination no estilo Challonge: 1 vs N, 2 vs N-1, etc."""
+    n = len(participantes)
+    if n < 2:
+        return []
+    # Seed order: 1º enfrenta último, 2º enfrenta penúltimo, etc.
+    chaveamento = []
+    for i in range(n // 2):
+        a = participantes[i]
+        b = participantes[n - 1 - i]
+        chaveamento.append({
+            'rodada': 1,
+            'match_num': i + 1,
+            'equipe_a': a,
+            'equipe_b': b,
+            'vencedor_id': None,
+        })
+    return chaveamento
+
+
+@app.route('/api/etapas/<etapa_id>/chaveamento', methods=['GET'])
+def obter_chaveamento_etapa(etapa_id):
+    """Retorna o chaveamento (bracket) da etapa baseado na ordem de qualificação."""
+    try:
+        conn = api.db._get_conn()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute('''
+            SELECT pe.equipe_id, e.nome as equipe_nome, p.nome as piloto_nome,
+                   pe.ordem_qualificacao,
+                   COALESCE(v.nota_linha,0)+COALESCE(v.nota_angulo,0)+COALESCE(v.nota_estilo,0) as total_notas
+            FROM participacoes_etapas pe
+            JOIN equipes e ON pe.equipe_id = e.id
+            LEFT JOIN pilotos p ON pe.piloto_id = p.id
+            LEFT JOIN volta v ON v.id_equipe = pe.equipe_id AND v.id_etapa = pe.etapa_id
+            WHERE pe.etapa_id = %s
+            ORDER BY (pe.ordem_qualificacao IS NULL), pe.ordem_qualificacao ASC
+        ''', (etapa_id,))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        # Ordenar por total_notas DESC (melhor nota = seed 1)
+        rows_ord = sorted(rows, key=lambda x: (-(x['total_notas'] or 0), x['equipe_id']))
+        participantes = [
+            {'equipe_id': r['equipe_id'], 'equipe_nome': r['equipe_nome'], 'piloto_nome': r['piloto_nome'] or '-', 'seed': i}
+            for i, r in enumerate(rows_ord, 1)
+        ]
+        chaveamento = _gerar_chaveamento_single_elimination(participantes)
+        return jsonify({'sucesso': True, 'participantes': participantes, 'chaveamento': chaveamento})
+    except Exception as e:
+        return jsonify({'sucesso': False, 'erro': str(e)}), 400
+
+
+# ============ CHALLONGE API v1 (https://api.challonge.com/v1) ============
+# API v1 é estável e funcional. v2.1 + OAuth retorna 520 (Cloudflare).
+# Use Basic Auth com API key em challonge.com/settings/developer
+
+CHALLONGE_API_KEY = os.environ.get('CHALLONGE_API_KEY', '')
+CHALLONGE_USERNAME = os.environ.get('CHALLONGE_USERNAME', '')
+CHALLONGE_API_BASE = 'https://api.challonge.com/v1'
+
+
+def _challonge_auth():
+    """Challonge v1: (username, api_key) ou (api_key, "")."""
+    if CHALLONGE_USERNAME and CHALLONGE_API_KEY:
+        return (CHALLONGE_USERNAME, CHALLONGE_API_KEY)
+    if CHALLONGE_API_KEY:
+        return (CHALLONGE_API_KEY, '')
+    return None
+
+
+def _challonge_request(method, endpoint, data=None, params=None):
+    """
+    Faz requisição à Challonge API v1 com Basic Auth.
+    Para POST/PUT, data deve ser dict no formato form: tournament[name]=..., etc.
+    """
+    import requests
+    auth = _challonge_auth()
+    if not auth:
+        raise ValueError('Configure CHALLONGE_API_KEY no .env')
+    url = f"{CHALLONGE_API_BASE}{endpoint}"
+    headers = {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'application/json',
+    }
+    kw = {
+        'method': method,
+        'url': url,
+        'auth': auth,
+        'headers': headers,
+        'params': params,
+        'timeout': 20,
+    }
+    if data is not None:
+        kw['data'] = data  # form-urlencoded (não json)
+    return requests.request(**kw)
+
+
+@app.route('/api/admin/challonge/status')
+@requer_admin
+def challonge_status():
+    """Retorna se o Challonge está conectado (API key + username v1)."""
+    conectado = bool(CHALLONGE_API_KEY) and bool(CHALLONGE_USERNAME)
+    return jsonify({
+        'conectado': conectado,
+        'api_key_ok': bool(CHALLONGE_API_KEY),
+        'username_ok': bool(CHALLONGE_USERNAME),
+    })
+
+
+@app.route('/api/etapas/<etapa_id>/enviar-challonge', methods=['POST'])
+@requer_admin
+def enviar_etapa_challonge(etapa_id):
+    """Cria torneio no Challonge v1 a partir do chaveamento da etapa. Basic Auth (username, api_key)."""
+    try:
+        if not CHALLONGE_API_KEY:
+            return jsonify({'sucesso': False, 'erro': 'Configure CHALLONGE_API_KEY no .env (challonge.com/settings/developer)'}), 400
+        if not CHALLONGE_USERNAME:
+            return jsonify({'sucesso': False, 'erro': 'Configure CHALLONGE_USERNAME no .env (seu usuário Challonge). Reinicie o servidor após editar .env'}), 400
+        conn = api.db._get_conn()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute('''
+            SELECT e.id, e.nome, e.numero, c.nome as campeonato_nome
+            FROM etapas e
+            JOIN campeonatos c ON e.campeonato_id = c.id
+            WHERE e.id = %s
+        ''', (etapa_id,))
+        etapa = cursor.fetchone()
+        if not etapa:
+            cursor.close()
+            conn.close()
+            return jsonify({'sucesso': False, 'erro': 'Etapa não encontrada'}), 404
+        cursor.execute('''
+            SELECT pe.equipe_id, e.nome as equipe_nome, pe.ordem_qualificacao,
+                   COALESCE(v.nota_linha,0)+COALESCE(v.nota_angulo,0)+COALESCE(v.nota_estilo,0) as total_notas
+            FROM participacoes_etapas pe
+            JOIN equipes e ON pe.equipe_id = e.id
+            LEFT JOIN volta v ON v.id_equipe = pe.equipe_id AND v.id_etapa = pe.etapa_id
+            WHERE pe.etapa_id = %s
+        ''', (etapa_id,))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        participantes = sorted(rows, key=lambda x: (-(x['total_notas'] or 0), x['equipe_id']))
+        if len(participantes) < 2:
+            return jsonify({'sucesso': False, 'erro': 'Mínimo 2 participantes para criar torneio'}), 400
+        nome_torneio = f"{etapa['campeonato_nome']} - Etapa {etapa['numero']}"
+        url_slug = f"granpix_{etapa_id.replace('-', '')[:16]}"
+
+        # v1: form encoding (tournament[name], tournament[url], etc) - NÃO JSON:API
+        payload = {
+            'tournament[name]': nome_torneio,
+            'tournament[url]': url_slug,
+            'tournament[tournament_type]': 'single elimination',
+            'tournament[game_name]': 'Drift RP',
+        }
+        r = _challonge_request('POST', '/tournaments.json', data=payload)
+        if r.status_code not in (200, 201):
+            err_detail = r.text[:400] if r.text else str(r.status_code)
+            print(f"[CHALLONGE] Create falhou: {r.status_code} {err_detail}")
+            if r.status_code == 401:
+                msg = 'Challonge: 401 Access denied. Verifique CHALLONGE_USERNAME e CHALLONGE_API_KEY no .env e reinicie o servidor.'
+            elif 500 <= r.status_code < 600:
+                msg = f'Challonge temporariamente indisponível (erro {r.status_code}). Tente novamente em alguns minutos.'
+            else:
+                msg = f'Challonge: {r.status_code} - {err_detail[:150]}'
+            return jsonify({'sucesso': False, 'erro': msg}), 400
+
+        tour = r.json()
+        # v1 retorna { tournament: { id, url, full_challonge_url, ... } }
+        t = tour.get('tournament', tour)
+        tour_id = t.get('id')
+        tour_url = t.get('full_challonge_url') or f"https://challonge.com/{t.get('url', url_slug)}"
+
+        # Adicionar participantes (v1: participant[name], participant[seed])
+        for i, p in enumerate(participantes):
+            part_data = {
+                'participant[name]': p['equipe_nome'][:255],
+                'participant[seed]': i + 1,
+            }
+            pr = _challonge_request('POST', f'/tournaments/{url_slug}/participants.json', data=part_data)
+            if pr.status_code not in (200, 201):
+                print(f"[CHALLONGE] Aviso ao adicionar {p['equipe_nome']}: {pr.status_code} {pr.text[:100]}")
+
+        # Iniciar torneio (v1: POST /tournaments/{url}/start.json)
+        start_r = _challonge_request('POST', f'/tournaments/{url_slug}/start.json')
+        if start_r.status_code not in (200, 201):
+            err_msg = start_r.text[:400] if start_r.text else str(start_r.status_code)
+            print(f"[CHALLONGE] Start falhou: {start_r.status_code} {start_r.text}")
+            api.db.salvar_configuracao(f'challonge_etapa_{etapa_id}', tour_url, 'URL do torneio Challonge')
+            return jsonify({
+                'sucesso': True,
+                'url': tour_url,
+                'tournament_id': tour_id,
+                'bracket_pendente': True,
+                'erro': f'Torneio criado. Inicie manualmente em: {tour_url} (erro: {err_msg})'
+            }), 200
+
+        api.db.salvar_configuracao(f'challonge_etapa_{etapa_id}', tour_url, 'URL do torneio Challonge')
+        return jsonify({'sucesso': True, 'url': tour_url, 'tournament_id': tour_id})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
+def _extrair_slug_challonge(full_url):
+    """Extrai o slug do torneio a partir da URL Challonge (ex: https://challonge.com/xxx -> xxx)."""
+    if not full_url or not isinstance(full_url, str):
+        return None
+    import re
+    m = re.search(r'challonge\.com/([a-zA-Z0-9_-]+)', full_url)
+    return m.group(1) if m else None
+
+
+def _buscar_bracket_challonge(slug):
+    """
+    Busca participantes e matches na API Challonge v1.
+    Retorna (participants_map, matches_list) ou (None, None) em caso de erro.
+    """
+    if not slug or not CHALLONGE_API_KEY:
+        return None, None
+    try:
+        r_part = _challonge_request('GET', f'/tournaments/{slug}/participants.json')
+        if r_part.status_code not in (200, 201):
+            return None, None
+        parts = r_part.json()
+        participants = []
+        if isinstance(parts, list):
+            participants = parts
+        elif isinstance(parts, dict) and 'participant' in parts:
+            participants = [parts]
+        else:
+            participants = parts if isinstance(parts, list) else []
+        part_map = {}
+        for p in participants:
+            if not isinstance(p, dict):
+                continue
+            p_obj = p.get('participant', p)
+            pid = p_obj.get('id')
+            if pid is not None:
+                part_map[str(pid)] = {
+                    'id': pid,
+                    'name': p_obj.get('name') or p_obj.get('display_name') or 'TBD',
+                    'seed': p_obj.get('seed'),
+                }
+        r_mat = _challonge_request('GET', f'/tournaments/{slug}/matches.json')
+        if r_mat.status_code not in (200, 201):
+            return part_map, []
+        mat_data = r_mat.json()
+        matches = []
+        if isinstance(mat_data, list):
+            matches = mat_data
+        elif isinstance(mat_data, dict) and 'match' in mat_data:
+            matches = [mat_data]
+        else:
+            matches = mat_data if isinstance(mat_data, list) else []
+        return part_map, matches
+    except Exception as e:
+        print(f"[CHALLONGE] Erro ao buscar bracket: {e}")
+        return None, None
+
+
+@app.route('/api/etapas/<etapa_id>/bracket-challonge', methods=['GET'])
+def obter_bracket_challonge(etapa_id):
+    """Retorna o bracket buscando participantes e matches diretamente da API Challonge. Fonte de verdade = Challonge."""
+    try:
+        challonge_url = api.db.obter_configuracao(f'challonge_etapa_{etapa_id}') or None
+        slug = _extrair_slug_challonge(challonge_url)
+        bracket = []
+        if slug and CHALLONGE_API_KEY and CHALLONGE_USERNAME:
+            part_map, matches_raw = _buscar_bracket_challonge(slug)
+            if part_map is not None:
+                matches_list = []
+                for m in matches_raw:
+                    m_obj = m.get('match', m) if isinstance(m, dict) else {}
+                    p1_id = m_obj.get('player1_id')
+                    p2_id = m_obj.get('player2_id')
+                    winner_id = m_obj.get('winner_id')
+                    round_num = m_obj.get('round', 1)
+                    scores = m_obj.get('scores_csv') or ''
+                    parts_scores = scores.split('-') if scores else [None, None]
+                    match_id = m_obj.get('id')
+                    p1 = part_map.get(str(p1_id), {}) if p1_id else {}
+                    p2 = part_map.get(str(p2_id), {}) if p2_id else {}
+                    matches_list.append({
+                        'round': round_num,
+                        'match_id': match_id,
+                        'player1_id': p1_id,
+                        'player2_id': p2_id,
+                        'winner_id': winner_id,
+                        'player1': {
+                            'id': p1_id,
+                            'name': p1.get('name', 'TBD'),
+                            'seed': p1.get('seed'),
+                            'score': int(parts_scores[0]) if parts_scores and parts_scores[0] and str(parts_scores[0]).isdigit() else None,
+                        },
+                        'player2': {
+                            'id': p2_id,
+                            'name': p2.get('name', 'TBD'),
+                            'seed': p2.get('seed'),
+                            'score': int(parts_scores[1]) if len(parts_scores) > 1 and parts_scores[1] and str(parts_scores[1]).isdigit() else None,
+                        },
+                    })
+                by_round = {}
+                for m in matches_list:
+                    rn = m.pop('round', 1)
+                    by_round.setdefault(rn, []).append(m)
+                round_labels = {1: 'Fase 01', 2: 'Fase 02', 3: 'Quartas', 4: 'Semi', 5: 'Final'}
+                for rn in sorted(by_round.keys()):
+                    label = round_labels.get(rn, f'Rodada {rn}')
+                    bracket.append({
+                        'label': label,
+                        'matches': by_round[rn],
+                    })
+        # Se tem URL mas bracket vazio (ex: torneio ainda não iniciado), frontend mostra o link
+        return jsonify({
+            'sucesso': True,
+            'bracket': bracket,
+            'challonge_url': challonge_url,
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
+@app.route('/api/etapas/<etapa_id>/challonge-match-report', methods=['POST'])
+@requer_admin
+def challonge_match_report(etapa_id):
+    """Reporta vencedor de uma partida no Challonge. Atualiza o match e retorna sucesso."""
+    try:
+        if not CHALLONGE_API_KEY or not CHALLONGE_USERNAME:
+            return jsonify({'sucesso': False, 'erro': 'Challonge não configurado'}), 400
+        data = request.json or {}
+        match_id = data.get('match_id')
+        winner_id = data.get('winner_id')
+        scores_csv = data.get('scores_csv', '1-0')
+        if not match_id or not winner_id:
+            return jsonify({'sucesso': False, 'erro': 'match_id e winner_id obrigatórios'}), 400
+        challonge_url = api.db.obter_configuracao(f'challonge_etapa_{etapa_id}') or None
+        slug = _extrair_slug_challonge(challonge_url)
+        if not slug:
+            return jsonify({'sucesso': False, 'erro': 'Torneio Challonge não encontrado para esta etapa'}), 404
+        payload = {
+            'match[winner_id]': winner_id,
+            'match[scores_csv]': str(scores_csv) if scores_csv else '1-0',
+        }
+        r = _challonge_request('PUT', f'/tournaments/{slug}/matches/{match_id}.json', data=payload)
+        if r.status_code not in (200, 201):
+            err = r.text[:200] if r.text else str(r.status_code)
+            return jsonify({'sucesso': False, 'erro': f'Challonge: {r.status_code} - {err}'}), 400
+        return jsonify({'sucesso': True})
+    except Exception as e:
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
+@app.route('/api/etapas/<etapa_id>/challonge-match-reopen', methods=['POST'])
+@requer_admin
+def challonge_match_reopen(etapa_id):
+    """Reabre uma partida no Challonge (desfaz resultado). Reseta partidas dependentes."""
+    try:
+        if not CHALLONGE_API_KEY or not CHALLONGE_USERNAME:
+            return jsonify({'sucesso': False, 'erro': 'Challonge não configurado'}), 400
+        data = request.json or {}
+        match_id = data.get('match_id')
+        if not match_id:
+            return jsonify({'sucesso': False, 'erro': 'match_id obrigatório'}), 400
+        challonge_url = api.db.obter_configuracao(f'challonge_etapa_{etapa_id}') or None
+        slug = _extrair_slug_challonge(challonge_url)
+        if not slug:
+            return jsonify({'sucesso': False, 'erro': 'Torneio Challonge não encontrado para esta etapa'}), 404
+        r = _challonge_request('POST', f'/tournaments/{slug}/matches/{match_id}/reopen.json')
+        if r.status_code not in (200, 201):
+            err = r.text[:200] if r.text else str(r.status_code)
+            return jsonify({'sucesso': False, 'erro': f'Challonge: {r.status_code} - {err}'}), 400
+        return jsonify({'sucesso': True})
+    except Exception as e:
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
 
 @app.route('/api/etapas/<etapa_id>/evento', methods=['GET'])
 def obter_evento_etapa(etapa_id):
@@ -4273,6 +4681,53 @@ def deletar_equipe_admin():
         traceback.print_exc()
         return jsonify({'sucesso': False, 'erro': str(e)}), 400
 
+@app.route('/api/admin/editar-equipe', methods=['POST'])
+def editar_equipe_admin():
+    """Editar dados de uma equipe (nome, doricoins, série)"""
+    dados = request.json
+    try:
+        equipe_id = dados.get('id')
+        if not equipe_id:
+            return jsonify({'sucesso': False, 'erro': 'ID da equipe não fornecido'}), 400
+
+        equipe = api.gerenciador.obter_equipe(equipe_id)
+        if not equipe:
+            return jsonify({'sucesso': False, 'erro': 'Equipe não encontrada'}), 404
+
+        if 'nome' in dados and dados['nome'] is not None:
+            novo_nome = str(dados['nome']).strip()
+            if len(novo_nome) >= 2:
+                equipe.nome = novo_nome
+            else:
+                return jsonify({'sucesso': False, 'erro': 'Nome deve ter pelo menos 2 caracteres'}), 400
+
+        if 'doricoins' in dados and dados['doricoins'] is not None:
+            try:
+                equipe.doricoins = float(dados['doricoins'])
+                if equipe.doricoins < 0:
+                    equipe.doricoins = 0
+            except (TypeError, ValueError):
+                return jsonify({'sucesso': False, 'erro': 'Saldo inválido'}), 400
+
+        if 'serie' in dados and dados['serie'] is not None:
+            serie = str(dados['serie']).upper().strip()
+            if serie in ('A', 'B'):
+                equipe.serie = serie
+            else:
+                return jsonify({'sucesso': False, 'erro': 'Série deve ser A ou B'}), 400
+
+        api.db.salvar_equipe(equipe)
+        return jsonify({
+            'sucesso': True,
+            'mensagem': f'Equipe {equipe.nome} atualizada com sucesso',
+            'equipe': {'id': equipe.id, 'nome': equipe.nome, 'doricoins': equipe.doricoins, 'serie': getattr(equipe, 'serie', 'A')}
+        })
+    except Exception as e:
+        print(f"[ERRO EDITAR EQUIPE] {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)}), 400
+
 @app.route('/api/admin/carros')
 def listar_carros_admin():
     """Listar todos os modelos de carros da loja para edição"""
@@ -5055,8 +5510,8 @@ def mudar_senha_equipe():
         if not equipe:
             return jsonify({'sucesso': False, 'erro': 'Equipe não encontrada'}), 404
         
-        # Mudar a senha
-        equipe.senha = str(nova_senha)
+        # Mudar a senha (armazenar hash para compatibilidade com login)
+        equipe.senha = generate_password_hash(str(nova_senha))
         api.db.salvar_equipe(equipe)
         
         print(f"[SENHA EQUIPE ALTERADA] {equipe.nome} (ID: {equipe_id})")
@@ -6684,6 +7139,102 @@ def test_criar_solicitacao_carro():
         return jsonify({'erro': str(e)}), 500
 
 
+@app.route('/api/test/atualizar-saldo-pix', methods=['POST'])
+def test_atualizar_saldo_pix():
+    """[E2E] Adiciona saldo_pix à equipe. Só disponível com TEST_E2E=1."""
+    if os.environ.get('TEST_E2E') != '1':
+        return jsonify({'erro': 'Não disponível'}), 404
+    try:
+        dados = request.json or {}
+        equipe_id = dados.get('equipe_id')
+        valor = float(dados.get('valor', 0))
+        if not equipe_id:
+            return jsonify({'erro': 'equipe_id obrigatório'}), 400
+        api.db.atualizar_saldo_pix(equipe_id, valor)
+        return jsonify({'sucesso': True})
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+
+@app.route('/api/test/inscrever-candidato-piloto', methods=['POST'])
+def test_inscrever_candidato_piloto():
+    """[E2E] Inscreve piloto como candidato para equipe em etapa. Só disponível com TEST_E2E=1."""
+    if os.environ.get('TEST_E2E') != '1':
+        return jsonify({'erro': 'Não disponível'}), 404
+    try:
+        dados = request.json or {}
+        etapa_id = dados.get('etapa_id')
+        equipe_id = dados.get('equipe_id')
+        piloto_id = dados.get('piloto_id')
+        piloto_nome = dados.get('piloto_nome', '')
+        if not all([etapa_id, equipe_id, piloto_id]):
+            return jsonify({'erro': 'etapa_id, equipe_id e piloto_id obrigatórios'}), 400
+        resultado = api.db.inscrever_piloto_candidato_etapa(etapa_id, equipe_id, piloto_id, piloto_nome)
+        if not resultado.get('sucesso'):
+            return jsonify(resultado), 400
+        return jsonify(resultado)
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+
+@app.route('/api/test/server-date', methods=['GET'])
+def test_server_date():
+    """[E2E] Retorna a data atual do servidor (para testes usarem data correta). Só com TEST_E2E=1."""
+    if os.environ.get('TEST_E2E') != '1':
+        return jsonify({'erro': 'Não disponível'}), 404
+    from datetime import datetime
+    return jsonify({'data': datetime.now().date().isoformat()})
+
+
+@app.route('/api/test/salvar-notas-etapa', methods=['POST'])
+def test_salvar_notas_etapa():
+    """[E2E] Define notas para múltiplas equipes de uma etapa de uma vez. Só disponível com TEST_E2E=1."""
+    if os.environ.get('TEST_E2E') != '1':
+        return jsonify({'erro': 'Não disponível'}), 404
+    try:
+        dados = request.json or {}
+        etapa_id = dados.get('etapa_id')
+        notas_list = dados.get('notas', [])  # [{equipe_id, nota_linha, nota_angulo, nota_estilo}, ...]
+        if not etapa_id or not notas_list:
+            return jsonify({'erro': 'etapa_id e notas[] obrigatórios'}), 400
+        conn = api.db._get_conn()
+        cursor = conn.cursor(dictionary=True)
+        for n in notas_list:
+            equipe_id = n.get('equipe_id')
+            nota_linha = int(n.get('nota_linha', 0))
+            nota_angulo = int(n.get('nota_angulo', 0))
+            nota_estilo = int(n.get('nota_estilo', 0))
+            if not equipe_id:
+                continue
+            cursor.execute(
+                'SELECT piloto_id FROM participacoes_etapas WHERE etapa_id = %s AND equipe_id = %s LIMIT 1',
+                (etapa_id, equipe_id)
+            )
+            p = cursor.fetchone()
+            piloto_id = p['piloto_id'] if p and p.get('piloto_id') else None
+            cursor.execute(
+                'SELECT id_piloto, id_equipe FROM volta WHERE id_etapa = %s AND id_equipe = %s LIMIT 1',
+                (etapa_id, equipe_id)
+            )
+            existe = cursor.fetchone()
+            if existe:
+                cursor.execute('''
+                    UPDATE volta SET nota_linha = %s, nota_angulo = %s, nota_estilo = %s, status = 'finalizado'
+                    WHERE id_etapa = %s AND id_equipe = %s
+                ''', (nota_linha, nota_angulo, nota_estilo, etapa_id, equipe_id))
+            else:
+                cursor.execute('''
+                    INSERT INTO volta (id_piloto, id_equipe, id_etapa, nota_linha, nota_angulo, nota_estilo, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, 'finalizado')
+                ''', (piloto_id, equipe_id, etapa_id, nota_linha, nota_angulo, nota_estilo))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({'sucesso': True})
+    except Exception as e:
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
 @app.route('/api/test-pecas')
 def test_pecas():
     return jsonify({'status': 'ok', 'test': 'pecas endpoint works'})
@@ -6802,7 +7353,10 @@ def inicializar_configuracoes_padrao():
     configs_padrao = {
         'comissao_carro': ('10', 'Comissão para cada carro comprado (em reais)'),
         'comissao_peca': ('10', 'Comissão para cada peça comprada (em reais)'),
-        'preco_instalacao_warehouse': ('50', 'Preço para instalar peça do warehouse (em reais)')
+        'preco_instalacao_warehouse': ('50', 'Preço para instalar peça do armazém (em reais)'),
+        'valor_instalacao_peca': ('10', 'Valor por peça ao ativar carro (peças não pagas)'),
+        'valor_ativacao_carro': ('30', 'Valor para troca/ativação de carro (em reais)'),
+        'valor_etapa': ('1000', 'Valor para participar de uma etapa (em reais)')
     }
     
     try:
@@ -7003,6 +7557,78 @@ def migration_remove_colunas_carros():
         }), 500
 
 
+# ==================== CAMPEONATOS E ETAPAS (registrar sempre, para testes e flask run) ====================
+
+@app.route('/api/admin/criar-campeonato', methods=['POST'])
+def criar_campeonato():
+    """Cria um novo campeonato"""
+    dados = request.json or {}
+    try:
+        campeonato_id = str(uuid.uuid4())
+        nome = dados.get('nome')
+        descricao = dados.get('descricao', '')
+        serie = dados.get('serie')
+        numero_etapas = int(dados.get('numero_etapas', 5))
+        if not nome or not serie:
+            return jsonify({'sucesso': False, 'erro': 'Nome e série são obrigatórios'}), 400
+        if api.db.criar_campeonato(campeonato_id, nome, descricao, serie, numero_etapas):
+            return jsonify({'sucesso': True, 'campeonato_id': campeonato_id})
+        return jsonify({'sucesso': False, 'erro': 'Erro ao criar campeonato'}), 500
+    except Exception as e:
+        print(f"[CRIAR CAMPEONATO] Erro: {e}")
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
+@app.route('/api/admin/listar-campeonatos', methods=['GET'])
+def listar_campeonatos():
+    """Lista campeonatos com filtros opcionais"""
+    try:
+        serie = request.args.get('serie')
+        campeonatos = api.db.listar_campeonatos(serie=serie)
+        return jsonify(campeonatos)
+    except Exception as e:
+        print(f"[LISTAR CAMPEONATOS] Erro: {e}")
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
+@app.route('/api/admin/cadastrar-etapa', methods=['POST'])
+def cadastrar_etapa():
+    """Cadastra uma nova etapa"""
+    dados = request.json or {}
+    try:
+        etapa_id = str(uuid.uuid4())
+        campeonato_id = dados.get('campeonato_id')
+        numero = int(dados.get('numero', 1))
+        nome = dados.get('nome', 'Etapa')
+        descricao = dados.get('descricao', '')
+        data_etapa = dados.get('data_etapa')
+        hora_etapa = dados.get('hora_etapa')
+        serie = dados.get('serie', '')
+        if not campeonato_id or not data_etapa or not hora_etapa or not serie:
+            return jsonify({'sucesso': False, 'erro': 'Campeonato, data, hora e série são obrigatórios'}), 400
+        if api.db.cadastrar_etapa(etapa_id, campeonato_id, numero, nome, descricao, data_etapa, hora_etapa, serie):
+            return jsonify({'sucesso': True, 'etapa_id': etapa_id})
+        return jsonify({'sucesso': False, 'erro': 'Erro ao cadastrar etapa'}), 500
+    except Exception as e:
+        print(f"[CADASTRO ETAPA] Erro: {e}")
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
+@app.route('/api/admin/listar-etapas', methods=['GET'])
+def listar_etapas_filtradas():
+    """Lista etapas com filtros opcionais"""
+    try:
+        serie = request.args.get('serie')
+        status = request.args.get('status')
+        etapas = api.db.listar_etapas(serie=serie, status=status)
+        return jsonify(etapas if isinstance(etapas, list) else [])
+    except Exception as e:
+        print(f"[LISTAR ETAPAS] Erro: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
 if __name__ == '__main__':
     import atexit
     import threading
@@ -7062,40 +7688,7 @@ if __name__ == '__main__':
     inicializar_configuracoes_padrao()
     
     print("\n[ROTAS REGISTRADAS - API]")
-    # ==================== CAMPEONATOS ====================
-    
-    @app.route('/api/admin/criar-campeonato', methods=['POST'])
-    def criar_campeonato():
-        """Cria um novo campeonato"""
-        dados = request.json
-        try:
-            campeonato_id = str(uuid.uuid4())
-            nome = dados.get('nome')
-            descricao = dados.get('descricao', '')
-            serie = dados.get('serie')
-            numero_etapas = int(dados.get('numero_etapas', 5))
-            
-            if not nome or not serie:
-                return jsonify({'sucesso': False, 'erro': 'Nome e série são obrigatórios'}), 400
-            
-            if api.db.criar_campeonato(campeonato_id, nome, descricao, serie, numero_etapas):
-                return jsonify({'sucesso': True, 'campeonato_id': campeonato_id})
-            else:
-                return jsonify({'sucesso': False, 'erro': 'Erro ao criar campeonato'}), 500
-        except Exception as e:
-            print(f"[CRIAR CAMPEONATO] Erro: {e}")
-            return jsonify({'sucesso': False, 'erro': str(e)}), 500
-    
-    @app.route('/api/admin/listar-campeonatos', methods=['GET'])
-    def listar_campeonatos():
-        """Lista campeonatos com filtros opcionais"""
-        try:
-            serie = request.args.get('serie')
-            campeonatos = api.db.listar_campeonatos(serie=serie)
-            return jsonify(campeonatos)
-        except Exception as e:
-            print(f"[LISTAR CAMPEONATOS] Erro: {e}")
-            return jsonify({'sucesso': False, 'erro': str(e)}), 500
+    # Campeonatos e etapas já registrados no nível do módulo (acima)
     
     @app.route('/api/admin/campeonato/<campeonato_id>', methods=['GET'])
     def obter_campeonato(campeonato_id):
@@ -7176,51 +7769,7 @@ if __name__ == '__main__':
             print(f"[ATUALIZAR COLOCACOES] Erro: {e}")
             return jsonify({'sucesso': False, 'erro': str(e)}), 500
 
-    # ==================== ETAPAS / TEMPORADA ====================
-    
-    @app.route('/api/admin/cadastrar-etapa', methods=['POST'])
-    def cadastrar_etapa():
-        """Cadastra uma nova etapa"""
-        dados = request.json
-        try:
-            etapa_id = str(uuid.uuid4())
-            campeonato_id = dados.get('campeonato_id')
-            numero = int(dados.get('numero', 1))
-            nome = dados.get('nome', 'Etapa')
-            descricao = dados.get('descricao', '')
-            data_etapa = dados.get('data_etapa')  # YYYY-MM-DD
-            hora_etapa = dados.get('hora_etapa')  # HH:MM:SS
-            serie = dados.get('serie', '')
-            
-            if not campeonato_id or not data_etapa or not hora_etapa or not serie:
-                return jsonify({'sucesso': False, 'erro': 'Campeonato, data, hora e série são obrigatórios'}), 400
-            
-            if api.db.cadastrar_etapa(etapa_id, campeonato_id, numero, nome, descricao, data_etapa, hora_etapa, serie):
-                return jsonify({'sucesso': True, 'etapa_id': etapa_id})
-            else:
-                return jsonify({'sucesso': False, 'erro': 'Erro ao cadastrar etapa'}), 500
-        except Exception as e:
-            print(f"[CADASTRO ETAPA] Erro: {e}")
-            return jsonify({'sucesso': False, 'erro': str(e)}), 500
-    
-    @app.route('/api/admin/listar-etapas', methods=['GET'])
-    def listar_etapas_filtradas():
-        """Lista etapas com filtros opcionais"""
-        try:
-            serie = request.args.get('serie')
-            status = request.args.get('status')
-            
-            etapas = api.db.listar_etapas(serie=serie, status=status)
-            # Garantir que retorna um array
-            if isinstance(etapas, list):
-                return jsonify(etapas)
-            else:
-                return jsonify([])
-        except Exception as e:
-            print(f"[LISTAR ETAPAS] Erro: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'sucesso': False, 'erro': str(e)}), 500
+    # Cadastrar-etapa e listar-etapas já registrados no nível do módulo
     
     @app.route('/api/proxima-etapa/<serie>', methods=['GET'])
     def proxima_etapa(serie):

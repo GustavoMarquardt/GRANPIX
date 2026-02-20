@@ -266,6 +266,16 @@
   🏁 Finalizar Qualificação
   </button>
   </div>
+
+  <div id="secaoResultadoQualificacao" style="display: none;" class="mt-4">
+  <h5 class="mb-3" style="color: #ffc107; font-weight: bold;">📊 Resultado da Qualificação</h5>
+  <div id="listaResultadoQualificacao"></div>
+  </div>
+
+  <div id="secaoChaveamentoBatalhas" style="display: none;" class="mt-4">
+  <h5 class="mb-3" style="color: #ffc107; font-weight: bold;">⚔️ Chaveamento das Batalhas</h5>
+  <div id="chaveamentoBatalhasInline" style="overflow-x: auto; overflow-y: auto; padding: 12px; background: #1a1a1a; border-radius: 8px; border: 2px solid #ffc107; min-height: 200px; max-height: 70vh;"></div>
+  </div>
   </div>
   </div>
   </div>
@@ -283,7 +293,26 @@
   window.addEventListener('load', () => {
   atualizarStatusAdmin();
   atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
+  const params = new URLSearchParams(window.location.search);
+  const etapaIdParam = params.get('etapa_id');
+  if (etapaIdParam) {
+  // Carregar etapa específica (ex.: E2E ou link direto)
+  fetch('/api/etapas/' + encodeURIComponent(etapaIdParam) + '/evento')
+    .then(r => r.json())
+    .then(data => {
+      if (data.sucesso && data.evento && data.evento.etapa) {
+        const etapa = data.evento.etapa;
+        etapa.id = etapaIdParam;
+        if (typeof preencherEtapaHoje === 'function') preencherEtapaHoje(etapa);
+        if (typeof verificarStatusEtapa === 'function') verificarStatusEtapa(etapaIdParam);
+      } else {
+        carregarEtapaHoje().catch(e => console.error('Erro ao carregar etapa hoje:', e));
+      }
+    })
+    .catch(() => carregarEtapaHoje().catch(e => console.error('Erro ao carregar etapa hoje:', e)));
+  } else {
   carregarEtapaHoje().catch(e => console.error('Erro ao carregar etapa hoje:', e));
+  }
   });
 
   async function iniciarQualificacao() {
@@ -308,30 +337,19 @@
   }
   }
   async function atualizarContadoresSolicitacoes() {
+  if (typeof window.atualizarContadoresSolicitacoesAdmin === 'function') return window.atualizarContadoresSolicitacoesAdmin();
   try {
-  // Contar solicitações de peça pendentes
   const respPecas = await fetch('/api/admin/solicitacoes-pecas');
   const pecas = await respPecas.json();
-  const pecasPendentes = Array.isArray(pecas)
-  ? pecas.filter(s => s.status === 'pendente').length
-  : 0;
+  const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
   const elemPecas = document.getElementById('solicitacoesPecasPendentes');
-  if (elemPecas) {
-  elemPecas.textContent = pecasPendentes;
-  }
-  // Contar solicitações de carro pendentes
+  if (elemPecas) elemPecas.textContent = pecasPendentes;
   const respCarros = await fetch('/api/admin/solicitacoes-carros');
   const carros = await respCarros.json();
-  const carrosPendentes = Array.isArray(carros)
-  ? carros.filter(s => s.status === 'pendente').length
-  : 0;
+  const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
   const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
-  if (elemCarros) {
-  elemCarros.textContent = carrosPendentes;
-  }
-  } catch (e) {
-  console.error('Erro ao atualizar contadores de solicitações:', e);
-  }
+  if (elemCarros) elemCarros.textContent = carrosPendentes;
+  } catch (e) { console.error('Erro ao atualizar contadores:', e); }
   }
   </script>
 </body>

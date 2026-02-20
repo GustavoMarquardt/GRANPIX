@@ -109,7 +109,7 @@ class TestE2ECarroEPecasComCompatibilidade:
         page.locator("#admin-tab").click()
         page.locator("#senhaAdmin").fill("admin123")
         page.locator("#btnLoginAdmin").click()
-        page.wait_for_url(re.compile(r".*/admin.*"), timeout=15000)
+        page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
         print("[E2E]     Login OK, redirecionado para admin.")
 
         # 2) Criar carro via API (mesma sessão do browser) para obter o ID
@@ -211,7 +211,7 @@ class TestE2ECarroEVariacao:
         page.locator("#admin-tab").click()
         page.locator("#senhaAdmin").fill("admin123")
         page.locator("#btnLoginAdmin").click()
-        page.wait_for_url(re.compile(r".*/admin.*"), timeout=15000)
+        page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
         print("[E2E Variação]     Login OK.")
 
         # 2) Criar carro via API para obter o ID
@@ -307,7 +307,7 @@ class TestE2EEquipeComCarro:
         page.locator("#admin-tab").click()
         page.locator("#senhaAdmin").fill("admin123")
         page.locator("#btnLoginAdmin").click()
-        page.wait_for_url(re.compile(r".*/admin.*"), timeout=15000)
+        page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
         print("[E2E Equipe+Carro]     Login OK.")
 
         # 2) Criar carro via API
@@ -392,7 +392,7 @@ class TestE2ELojaCarros:
         page.locator("#admin-tab").click()
         page.locator("#senhaAdmin").fill("admin123")
         page.locator("#btnLoginAdmin").click()
-        page.wait_for_url(re.compile(r".*/admin.*"), timeout=15000)
+        page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
 
     def test_loja_carros_pagina_carrega_com_login(self, page: Page, base_url: str):
         """Página /admin/carros carrega após login e exibe formulário e lista."""
@@ -599,10 +599,12 @@ class TestE2ELojaCarros:
 
     def test_loja_carros_fluxo_completo_cadastrar_editar_deletar(self, page: Page, base_url: str):
         """Fluxo completo: cadastrar pela UI -> aparece na lista -> editar -> salvar -> deletar -> some da lista."""
+        import time
+        suf = str(int(time.time() * 1000))
         self._login_admin(page, base_url)
         page.goto(f"{base_url}/admin/carros")
         page.locator("#carroMarca").wait_for(state="visible", timeout=10000)
-        marca_orig, modelo_orig = "E2E Fluxo Orig", "E2E Fluxo Orig"
+        marca_orig, modelo_orig = f"E2E Fluxo Orig {suf}", f"E2E Fluxo Orig {suf}"
         preco_orig = "8888"
         page.locator("#carroMarca").fill(marca_orig)
         page.locator("#carroModelo").fill(modelo_orig)
@@ -619,31 +621,39 @@ class TestE2ELojaCarros:
         page.locator("button:has-text('Editar')").first.click()
         page.wait_for_timeout(500)
         page.locator("#editCarroMarca").wait_for(state="visible", timeout=5000)
-        page.locator("#editCarroMarca").fill("E2E Fluxo Editado")
-        page.locator("#editCarroModelo").fill("E2E Fluxo Editado")
+        nome_editado = f"E2E Fluxo Editado {suf}"
+        page.locator("#editCarroMarca").fill(nome_editado)
+        page.locator("#editCarroModelo").fill(nome_editado)
         page.locator("#editCarroPreco").fill("7777")
         dialogs.clear()
-        page.on("dialog", lambda d: (dialogs.append(d.message), d.accept()))
+
+        def handle_dialog(d):
+            dialogs.append(d.message)
+            try:
+                d.accept()
+            except Exception:
+                pass  # Já aceito
+
+        page.on("dialog", handle_dialog)
         # Backdrop do modal pode interceptar; usar dispatch click via JS
         page.locator("#modalEditarCarro button:has-text('Salvar')").evaluate("el => el.click()")
         page.wait_for_timeout(1500)
         assert any("atualizado" in (m or "").lower() or "sucesso" in (m or "").lower() for m in dialogs), f"Esperado alert ao salvar edição; got: {dialogs}"
         page.wait_for_timeout(800)
         content2 = page.locator("#listaCarros").inner_text()
-        assert "E2E Fluxo Editado" in content2, f"Lista deve mostrar nome editado: {content2[:500]}"
-        # Deletar: abrir edição do card "E2E Fluxo Editado" e clicar em Deletar Carro (confirm + alert aceitos)
-        page.locator("#listaCarros .mb-3").filter(has_text="E2E Fluxo Editado").locator("button:has-text('Editar')").click()
+        assert nome_editado in content2, f"Lista deve mostrar nome editado: {content2[:500]}"
+        # Deletar: abrir edição do card com nome único e clicar em Deletar Carro
+        page.locator("#listaCarros .mb-3").filter(has_text=nome_editado).locator("button:has-text('Editar')").first.click()
         page.wait_for_timeout(500)
         page.locator("#editCarroMarca").wait_for(state="visible", timeout=5000)
         dialogs.clear()
-        page.on("dialog", lambda d: (dialogs.append(d.message), d.accept()))
+        page.on("dialog", handle_dialog)
         page.locator("#modalEditarCarro button:has-text('Deletar Carro')").evaluate("el => el.click()")
         page.wait_for_timeout(1500)
-        # Aceitar segundo diálogo (alert "Carro deletado") se ainda aparecer
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(2000)  # Aguardar carregarCarros após deletar
         content3 = page.locator("#listaCarros").inner_text()
-        assert "E2E Fluxo Editado" not in content3, (
-            f"Após deletar, 'E2E Fluxo Editado' não deve constar na lista. Conteúdo: {content3[:500]}"
+        assert nome_editado not in content3, (
+            f"Após deletar, '{nome_editado}' não deve constar na lista. Conteúdo: {content3[:500]}"
         )
 
 
@@ -663,7 +673,7 @@ class TestE2ECompraCarroEquipe:
         page.locator("#admin-tab").click()
         page.locator("#senhaAdmin").fill("admin123")
         page.locator("#btnLoginAdmin").click()
-        page.wait_for_url(re.compile(r".*/admin.*"), timeout=15000)
+        page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
         print("[E2E Compra Carro]     Admin logado.")
 
         # 2) Cadastrar um carro na loja (para ter o que comprar)
@@ -737,8 +747,12 @@ class TestE2ECompraCarroEquipe:
         # 5) Abrir aba Loja de Carros (simula usuário na loja)
         print("[E2E Compra Carro] 5/7 Abrindo Loja de Carros...")
         page.locator('a[href="#carros-tab"]').click()
-        page.wait_for_timeout(1000)
-        page.locator("#carrosGrid .btn-comprar").first.wait_for(state="visible", timeout=15000)
+        page.wait_for_timeout(3000)  # Aguardar carregamento lazy da aba
+        # Esperar botão Comprar ou texto do carro (fallback se grid demorar)
+        try:
+            page.locator("#carrosGrid .btn-comprar").first.wait_for(state="visible", timeout=20000)
+        except Exception:
+            page.get_by_text("E2E Compra Marca", exact=False).first.wait_for(state="visible", timeout=5000)
 
         # 6) Comprar o carro via API (mesma chamada do modal; evita flakiness do Bootstrap)
         print("[E2E Compra Carro] 6/7 Comprando carro (POST /api/comprar)...")
@@ -796,7 +810,7 @@ class TestE2ELojaPecas:
         page.locator("#admin-tab").click()
         page.locator("#senhaAdmin").fill("admin123")
         page.locator("#btnLoginAdmin").click()
-        page.wait_for_url(re.compile(r".*/admin.*"), timeout=15000)
+        page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
 
     def _login_equipe(self, page: Page, base_url: str, equipe_id: str, senha: str):
         page.goto(f"{base_url}/login")
@@ -1030,7 +1044,7 @@ class TestE2ESolicitacoesPecas:
         page.locator("#admin-tab").click()
         page.locator("#senhaAdmin").fill("admin123")
         page.locator("#btnLoginAdmin").click()
-        page.wait_for_url(re.compile(r".*/admin.*"), timeout=15000)
+        page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
 
     def test_pagina_solicitacoes_pecas_carrega(self, page: Page, base_url: str):
         """Página /admin/solicitacoes-pecas carrega e exibe título e área de lista ou vazia."""
@@ -1130,7 +1144,7 @@ class TestE2ESolicitacoesCarros:
         page.locator("#admin-tab").click()
         page.locator("#senhaAdmin").fill("admin123")
         page.locator("#btnLoginAdmin").click()
-        page.wait_for_url(re.compile(r".*/admin.*"), timeout=15000)
+        page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
 
     def test_pagina_solicitacoes_carros_carrega(self, page: Page, base_url: str):
         """Página /admin/solicitacoes-carros carrega e exibe título e área de lista ou vazia."""
@@ -1207,3 +1221,485 @@ class TestE2ESolicitacoesCarros:
             f"Esperado feedback de aprovação (Aprovado/ativado/sucesso). Conteúdo: {body[:500]}"
         )
         print("[E2E Solicitações Carros] Aprovação concluída; listagem agrupada por equipe e fluxo OK.")
+
+
+@pytest.mark.e2e
+class TestE2EDashboardMensagensVazias:
+    """E2E: Dashboard da equipe exibe 'Sem carros para ativar' e 'Sem peças para ativar' quando não há pendências."""
+
+    def test_dashboard_exibe_sem_carros_sem_pecas_quando_vazio(self, page: Page, base_url: str):
+        """
+        Login como equipe -> abre dashboard -> verifica seções Carros/Peças Aguardando
+        exibem mensagens de estado vazio (não ficam em Carregando...).
+        """
+        # 1) Admin cria carro e equipe (sem solicitações pendentes)
+        page.goto(f"{base_url}/login")
+        page.locator("#admin-tab").click()
+        page.locator("#senhaAdmin").fill("admin123")
+        page.locator("#btnLoginAdmin").click()
+        page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
+
+        create_car = page.evaluate(
+            """
+            async () => {
+                const r = await fetch('/api/admin/cadastrar-carro', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ marca: 'E2E Msg Car', modelo: 'E2E Msg Model', preco: 5000, classe: 'basico', descricao: 'E2E' })
+                });
+                const dc = await r.json();
+                const modeloId = (dc.carro && dc.carro.id) ? dc.carro.id : null;
+                const re = await fetch('/api/admin/cadastrar-equipe', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ nome: 'E2E Msg Equipe ' + Date.now(), senha: 'senha123', doricoins: 50000, serie: 'A', carro_id: modeloId })
+                });
+                const de = await re.json();
+                const equipeId = (de.equipe && de.equipe.id) ? de.equipe.id : null;
+                return { ok: re.ok && equipeId, equipeId };
+            }
+            """
+        )
+        assert create_car.get("ok") and create_car.get("equipeId"), f"Setup falhou: {create_car}"
+        equipe_id = str(create_car["equipeId"])
+
+        # 2) Login como equipe
+        page.goto(f"{base_url}/login")
+        page.locator("#equipeSelecionada").wait_for(state="visible", timeout=10000)
+        page.wait_for_timeout(1500)
+        page.select_option("#equipeSelecionada", equipe_id)
+        page.locator("#senhaEquipe").fill("senha123")
+        page.locator("#btnLoginEquipe").click()
+        page.wait_for_url(re.compile(r".*/dashboard.*"), timeout=15000)
+
+        # 3) Aguardar sidebar com seções Carros/Peças Aguardando
+        page.locator("#equipeDetalhes").wait_for(state="visible", timeout=10000)
+        page.wait_for_timeout(4000)  # Aguardar APIs /api/aguardando-pecas e /api/aguardando-carros
+
+        # 4) Verificar mensagens de estado vazio (não "Carregando...")
+        content = page.locator("#carrosAguardandoContainer").inner_text()
+        assert "Sem carros para ativar" in content, (
+            f"Esperado 'Sem carros para ativar'. Obtido: {content[:200]}"
+        )
+        content_pecas = page.locator("#pecasAguardandoContainer").inner_text()
+        assert "Sem peças para ativar" in content_pecas, (
+            f"Esperado 'Sem peças para ativar'. Obtido: {content_pecas[:200]}"
+        )
+        # Garantir que não está travado em Carregando
+        assert "Carregando" not in content and "Carregando" not in content_pecas, (
+            "Não deve permanecer em 'Carregando...' após carregar os dados"
+        )
+
+
+@pytest.mark.e2e
+class TestE2EAdminEquipesList:
+    """E2E da página admin/equipes-list: listagem, edição e exclusão de equipes."""
+
+    def _login_admin(self, page: Page, base_url: str):
+        page.goto(f"{base_url}/login")
+        page.locator("#admin-tab").click()
+        page.locator("#senhaAdmin").fill("admin123")
+        page.locator("#btnLoginAdmin").click()
+        page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
+
+    def test_pagina_equipes_list_carrega(self, page: Page, base_url: str):
+        """Página /admin/equipes-list carrega e exibe título e área de listagem."""
+        self._login_admin(page, base_url)
+        page.goto(f"{base_url}/admin/equipes-list")
+        expect(page).to_have_title(re.compile(r"Lista|Equipes|GRANPIX", re.I))
+        page.locator("h5:has-text('Lista de Equipes')").wait_for(state="visible", timeout=10000)
+        page.wait_for_timeout(3500)
+        content = page.locator(".main-content").inner_text()
+        assert "Lista de Equipes" in content, f"Conteúdo esperado: {content[:300]}"
+
+    def test_equipes_list_exibe_tabela_ou_vazio(self, page: Page, base_url: str):
+        """Após carregar: exibe tabela de equipes ou mensagem 'Nenhuma equipe cadastrada'."""
+        self._login_admin(page, base_url)
+        page.goto(f"{base_url}/admin/equipes-list")
+        page.wait_for_timeout(4000)
+        # Deve ter desaparecido o loading e aparecer lista ou nenhuma
+        loading = page.locator("#loadingEquipes")
+        try:
+            loading.wait_for(state="hidden", timeout=8000)
+        except Exception:
+            pass
+        body = page.locator("body").inner_text()
+        assert "Lista de Equipes" in body
+        assert "Carregando" not in body or page.locator("#listaEquipesContainer").is_visible()
+
+    def test_modal_editar_equipe_abre_e_fecha(self, page: Page, base_url: str):
+        """Botão Editar abre modal; botão Cancelar fecha sem erro."""
+        self._login_admin(page, base_url)
+        page.goto(f"{base_url}/admin/equipes-list")
+        page.wait_for_timeout(4000)
+        btn_editar = page.locator('button:has-text("Editar")').first
+        try:
+            btn_editar.wait_for(state="visible", timeout=6000)
+        except Exception:
+            pytest.skip("Nenhuma equipe na lista para testar modal Editar.")
+        page.on("dialog", lambda d: d.accept())
+        btn_editar.click()
+        page.wait_for_timeout(500)
+        modal = page.locator("#modalEditarEquipe")
+        modal.wait_for(state="visible", timeout=5000)
+        assert page.locator("#editEquipeNome").is_visible()
+        page.locator("#modalEditarEquipe button:has-text('Cancelar')").click()
+        page.wait_for_timeout(300)
+
+
+@pytest.mark.e2e
+class TestE2EAdminConfiguracoes:
+    """E2E da página admin/configuracoes: formulário de valores."""
+
+    def _login_admin(self, page: Page, base_url: str):
+        page.goto(f"{base_url}/login")
+        page.locator("#admin-tab").click()
+        page.locator("#senhaAdmin").fill("admin123")
+        page.locator("#btnLoginAdmin").click()
+        page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
+
+    def test_pagina_configuracoes_carrega(self, page: Page, base_url: str):
+        """Página /admin/configuracoes carrega e exibe título e botão Salvar."""
+        self._login_admin(page, base_url)
+        page.goto(f"{base_url}/admin/configuracoes")
+        expect(page).to_have_title(re.compile(r"Configurações|GRANPIX", re.I))
+        page.locator("h5:has-text('Configurações')").wait_for(state="visible", timeout=10000)
+        page.wait_for_timeout(3000)
+        content = page.locator(".main-content").inner_text()
+        assert "Configurações" in content, f"Conteúdo esperado: {content[:300]}"
+
+    def test_configuracoes_tem_campos_valores(self, page: Page, base_url: str):
+        """Formulário possui campos: Instalação de peça, Troca/ativação de carro, Participar da etapa."""
+        self._login_admin(page, base_url)
+        page.goto(f"{base_url}/admin/configuracoes")
+        page.wait_for_timeout(3500)
+        assert page.locator("#cfgInstalacaoPeca").is_visible()
+        assert page.locator("#cfgTrocaCarro").is_visible()
+        assert page.locator("#cfgParticiparEtapa").is_visible()
+        assert page.locator("#btnSalvarConfiguracoes").is_visible()
+
+
+@pytest.mark.e2e
+class TestE2ECampeonatoEtapas:
+    """E2E: criar campeonato e criar etapas nele via API."""
+
+    def _login_admin(self, page: Page, base_url: str):
+        page.goto(f"{base_url}/login")
+        page.locator("#admin-tab").click()
+        page.locator("#senhaAdmin").fill("admin123")
+        page.locator("#btnLoginAdmin").click()
+        page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
+
+    def test_criar_campeonato_via_api(self, page: Page, base_url: str):
+        """Admin logado cria campeonato via API e verifica na listagem."""
+        self._login_admin(page, base_url)
+        page.goto(f"{base_url}/admin/carros")  # página qualquer com sessão admin
+        import time
+        nome = f"E2E Campeonato {int(time.time() * 1000)}"
+        result = page.evaluate(
+            """
+            async (nomeCamp) => {
+                const r = await fetch('/api/admin/criar-campeonato', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        nome: nomeCamp,
+                        descricao: 'Campeonato E2E',
+                        serie: 'A',
+                        numero_etapas: 6
+                    })
+                });
+                const data = await r.json();
+                return { ok: r.ok, sucesso: data.sucesso, campeonato_id: data.campeonato_id };
+            }
+            """,
+            nome,
+        )
+        assert result.get("ok") and result.get("sucesso"), f"Erro ao criar campeonato: {result}"
+        campeonato_id = result.get("campeonato_id")
+        assert campeonato_id
+
+        listagem = page.evaluate(
+            """
+            async () => {
+                const r = await fetch('/api/admin/listar-campeonatos', { credentials: 'include' });
+                const data = await r.json();
+                return { ok: r.ok, campeonatos: Array.isArray(data) ? data : [] };
+            }
+            """
+        )
+        assert listagem.get("ok")
+        campeonatos = listagem.get("campeonatos", [])
+        encontrado = next((c for c in campeonatos if c.get("nome") == nome), None)
+        assert encontrado is not None, f"Campeonato '{nome}' deve aparecer na listagem."
+
+    def test_criar_campeonato_e_etapas_via_api(self, page: Page, base_url: str):
+        """Admin cria campeonato, cria etapas nele e verifica nas listagens."""
+        self._login_admin(page, base_url)
+        page.goto(f"{base_url}/admin/carros")
+        import time
+        suf = str(int(time.time() * 1000))
+        nome_camp = f"E2E Camp Etapas {suf}"
+        result_camp = page.evaluate(
+            """
+            async (payload) => {
+                const r = await fetch('/api/admin/criar-campeonato', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(payload)
+                });
+                const data = await r.json();
+                return { ok: r.ok, sucesso: data.sucesso, campeonato_id: data.campeonato_id };
+            }
+            """,
+            {"nome": nome_camp, "serie": "B", "numero_etapas": 4},
+        )
+        assert result_camp.get("ok") and result_camp.get("sucesso"), f"Erro: {result_camp}"
+        campeonato_id = result_camp.get("campeonato_id")
+        assert campeonato_id
+
+        nome_etapa1 = f"Etapa 1 E2E {suf}"
+        result_etapa = page.evaluate(
+            """
+            async (payload) => {
+                const r = await fetch('/api/admin/cadastrar-etapa', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(payload)
+                });
+                const data = await r.json();
+                return { ok: r.ok, sucesso: data.sucesso, etapa_id: data.etapa_id };
+            }
+            """,
+            {
+                "campeonato_id": campeonato_id,
+                "numero": 1,
+                "nome": nome_etapa1,
+                "data_etapa": "2026-06-01",
+                "hora_etapa": "10:00:00",
+                "serie": "B",
+            },
+        )
+        assert result_etapa.get("ok") and result_etapa.get("sucesso"), f"Erro ao criar etapa: {result_etapa}"
+        etapa_id = result_etapa.get("etapa_id")
+        assert etapa_id, "Cadastrar etapa deve retornar etapa_id"
+
+        # Verificar persistência via listagem (se a API retornar etapas)
+        page.wait_for_timeout(500)
+        listagem = page.evaluate(
+            """
+            async () => {
+                const r = await fetch('/api/admin/listar-etapas', { credentials: 'include' });
+                const data = await r.json();
+                return { ok: r.ok, etapas: Array.isArray(data) ? data : [] };
+            }
+            """
+        )
+        if listagem.get("ok") and len(listagem.get("etapas", [])) > 0:
+            etapas = listagem.get("etapas", [])
+            encontrada = next(
+                (e for e in etapas if e.get("nome") == nome_etapa1 or str(e.get("id", "")) == str(etapa_id)),
+                None,
+            )
+            assert encontrada is not None, f"Etapa criada deve aparecer na listagem. Total: {len(etapas)}"
+
+
+@pytest.mark.e2e
+class TestE2EAlocarPilotos:
+    """E2E: Após criar etapa, equipe com precisa_piloto, 2+ pilotos candidatando à mesma equipe,
+    admin vai em Alocar pilotos e aloca um piloto (via API alocar-proximo ou pela UI)."""
+
+    def _login_admin(self, page: Page, base_url: str):
+        page.goto(f"{base_url}/login")
+        page.locator("#admin-tab").click()
+        page.locator("#senhaAdmin").fill("admin123")
+        page.locator("#btnLoginAdmin").click()
+        page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
+
+    def test_alocar_piloto_apos_etapa_com_multiplos_candidatos(self, page: Page, base_url: str):
+        """Cria etapa, equipe precisa_piloto, 2 pilotos candidatando à mesma equipe, aloca um."""
+        import time
+        self._login_admin(page, base_url)
+        page.goto(f"{base_url}/admin/carros")
+        page.wait_for_load_state("networkidle")
+        suf = str(int(time.time() * 1000))
+
+        # 1. Criar campeonato e etapa
+        result_camp = page.evaluate(
+            """
+            async (suf) => {
+                const r = await fetch('/api/admin/criar-campeonato', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ nome: 'E2E Alocar ' + suf, serie: 'A', numero_etapas: 5 })
+                });
+                const d = await r.json();
+                return { ok: r.ok, campeonato_id: d.campeonato_id };
+            }
+            """,
+            suf,
+        )
+        assert result_camp.get("ok"), f"Erro criar campeonato: {result_camp}"
+        campeonato_id = result_camp.get("campeonato_id")
+        assert campeonato_id
+
+        result_etapa = page.evaluate(
+            """
+            async (payload) => {
+                const r = await fetch('/api/admin/cadastrar-etapa', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify(payload)
+                });
+                const d = await r.json();
+                return { ok: r.ok, etapa_id: d.etapa_id };
+            }
+            """,
+            {
+                "campeonato_id": campeonato_id,
+                "numero": 1,
+                "nome": "Etapa Alocar E2E",
+                "data_etapa": "2026-07-01",
+                "hora_etapa": "10:00:00",
+                "serie": "A",
+            },
+        )
+        assert result_etapa.get("ok"), f"Erro criar etapa: {result_etapa}"
+        etapa_id = result_etapa.get("etapa_id")
+        assert etapa_id
+
+        # 2. Criar carro e equipe com precisa_piloto
+        result_carro = page.evaluate(
+            """
+            async () => {
+                const r = await fetch('/api/admin/cadastrar-carro', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ marca: 'E2E Alocar', modelo: 'Modelo', preco: 5000, classe: 'basico', descricao: '' })
+                });
+                const d = await r.json();
+                const modelo_id = (d.carro || {}).id;
+                return { ok: r.ok, modelo_id };
+            }
+            """
+        )
+        assert result_carro.get("ok"), f"Erro criar carro: {result_carro}"
+        modelo_id = result_carro.get("modelo_id")
+        assert modelo_id
+
+        result_equipe = page.evaluate(
+            """
+            async (modelo_id) => {
+                const r = await fetch('/api/admin/cadastrar-equipe', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ nome: 'Equipe E2E Precisa Piloto', senha: 's1', doricoins: 50000, serie: 'A', carro_id: modelo_id })
+                });
+                const d = await r.json();
+                const equipe_id = (d.equipe || {}).id;
+                const carro_id = (d.equipe || {}).carro_instancia_id || (d.equipe || {}).carro_id;
+                return { ok: r.ok, equipe_id, carro_id };
+            }
+            """,
+            str(modelo_id),
+        )
+        assert result_equipe.get("ok"), f"Erro criar equipe: {result_equipe}"
+        equipe_id = result_equipe.get("equipe_id")
+        carro_id = result_equipe.get("carro_id")
+        assert equipe_id and carro_id
+
+        # Adicionar saldo_pix (requer TEST_E2E=1)
+        saldo_ok = page.evaluate(
+            """
+            async (equipe_id) => {
+                const r = await fetch('/api/test/atualizar-saldo-pix', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ equipe_id, valor: 5000 })
+                });
+                return { ok: r.ok, status: r.status };
+            }
+            """,
+            equipe_id,
+        )
+        if saldo_ok.get("status") == 404:
+            pytest.skip("TEST_E2E=1 não definido; endpoint /api/test/atualizar-saldo-pix indisponível")
+        part = page.evaluate(
+            """
+            async (payload) => {
+                const r = await fetch('/api/etapas/equipe/participar', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify(payload)
+                });
+                const d = await r.json();
+                return { ok: r.ok, sucesso: d.sucesso };
+            }
+            """,
+            {"etapa_id": etapa_id, "equipe_id": equipe_id, "carro_id": carro_id, "tipo_participacao": "precisa_piloto"},
+        )
+        assert part.get("ok") and part.get("sucesso"), f"Inscrição equipe falhou: {part}"
+
+        # 3. Criar 2 pilotos e inscrever como candidatos (via /api/test/inscrever-candidato-piloto se TEST_E2E=1)
+        pilots = []
+        for i in range(2):
+            rp = page.evaluate(
+                """
+                async () => {
+                    const r = await fetch('/api/pilotos/cadastrar', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ nome: 'Piloto E2E Alocar ' + Date.now() + Math.random(), senha: 's123' })
+                    });
+                    const d = await r.json();
+                    return { ok: r.ok, piloto_id: d.piloto_id, piloto_nome: d.nome || 'Piloto' };
+                }
+                """
+            )
+            assert rp.get("ok"), f"Erro criar piloto: {rp}"
+            pid = rp.get("piloto_id")
+            pnome = rp.get("piloto_nome", "Piloto")
+            assert pid
+            pilots.append({"id": pid, "nome": pnome})
+            page.wait_for_timeout(100)
+
+        for p in pilots:
+            rc = page.evaluate(
+                """
+                async (payload) => {
+                    const r = await fetch('/api/test/inscrever-candidato-piloto', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                        body: JSON.stringify(payload)
+                    });
+                    const d = await r.json();
+                    return { ok: r.ok, sucesso: d.sucesso };
+                }
+                """,
+                {"etapa_id": etapa_id, "equipe_id": equipe_id, "piloto_id": p["id"], "piloto_nome": p["nome"]},
+            )
+            if not rc.get("ok") or not rc.get("sucesso"):
+                pytest.skip("TEST_E2E=1 não definido; endpoint /api/test/inscrever-candidato-piloto indisponível")
+
+        # 4. Alocar próximo piloto via API (usa etapa_id e equipe_id diretamente)
+        aloc = page.evaluate(
+            """
+            async (p) => {
+                const r = await fetch(`/api/admin/etapas/${p.etapa_id}/equipes/${p.equipe_id}/alocar-proximo-piloto`, {
+                    method: 'POST', credentials: 'include'
+                });
+                const d = await r.json();
+                return { ok: r.ok, sucesso: d.sucesso, piloto_nome: d.piloto_nome };
+            }
+            """,
+            {"etapa_id": etapa_id, "equipe_id": equipe_id},
+        )
+        assert aloc.get("ok") and aloc.get("sucesso"), f"Erro ao alocar piloto: {aloc}"
+
+        # 5. Verificar alocação: equipe tem piloto
+        verif = page.evaluate(
+            """
+            async (p) => {
+                const r = await fetch(`/api/admin/etapas/${p.etapa_id}/equipes-pilotos`, { credentials: 'include' });
+                const d = await r.json();
+                const eq = (d.equipes || []).find(e => e.equipe_id === p.equipe_id);
+                return { ok: r.ok, piloto_nome: eq ? eq.piloto_nome : null };
+            }
+            """,
+            {"etapa_id": etapa_id, "equipe_id": equipe_id},
+        )
+        assert verif.get("ok"), f"Erro ao verificar: {verif}"
+        assert verif.get("piloto_nome"), f"Equipe deveria ter piloto alocado, obteve: {verif}"

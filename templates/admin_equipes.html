@@ -340,30 +340,19 @@
   }
   }
   async function atualizarContadoresSolicitacoes() {
+  if (typeof window.atualizarContadoresSolicitacoesAdmin === 'function') return window.atualizarContadoresSolicitacoesAdmin();
   try {
-  // Contar solicitações de peça pendentes
   const respPecas = await fetch('/api/admin/solicitacoes-pecas');
   const pecas = await respPecas.json();
-  const pecasPendentes = Array.isArray(pecas)
-  ? pecas.filter(s => s.status === 'pendente').length
-  : 0;
+  const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
   const elemPecas = document.getElementById('solicitacoesPecasPendentes');
-  if (elemPecas) {
-  elemPecas.textContent = pecasPendentes;
-  }
-  // Contar solicitações de carro pendentes
+  if (elemPecas) elemPecas.textContent = pecasPendentes;
   const respCarros = await fetch('/api/admin/solicitacoes-carros');
   const carros = await respCarros.json();
-  const carrosPendentes = Array.isArray(carros)
-  ? carros.filter(s => s.status === 'pendente').length
-  : 0;
+  const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
   const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
-  if (elemCarros) {
-  elemCarros.textContent = carrosPendentes;
-  }
-  } catch (e) {
-  console.error('Erro ao atualizar contadores de solicitações:', e);
-  }
+  if (elemCarros) elemCarros.textContent = carrosPendentes;
+  } catch (e) { console.error('Erro ao atualizar contadores:', e); }
   }
   </script>
   <!-- Verificar URL para abrir evento automaticamente após login (apenas para não-admins) -->

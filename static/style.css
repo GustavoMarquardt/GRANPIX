@@ -483,6 +483,52 @@ body {
     z-index: 1 !important;
 }
 
+/* Texto branco em fundos escuros */
+#chaveamentoBatalhasInline,
+#chaveamentoBatalhasInline .card,
+#chaveamentoBatalhasInline .card-body,
+#chaveamentoBatalhasInline .batalha-card,
+#chaveamentoBatalhasInline .table,
+#chaveamentoBatalhasInline .table td,
+#chaveamentoBatalhasInline .table th,
+.modal-content.bg-dark,
+.modal-content.bg-dark .modal-body,
+.modal-content.bg-dark .modal-header,
+.table-dark,
+.table-dark td,
+.table-dark th {
+    color: #fff !important;
+}
+.table-dark {
+    background-color: #1a1a1a;
+}
+.table-dark tbody tr:hover {
+    background-color: #2a2a2a !important;
+}
+.tabela-colocacoes thead th {
+    color: #ffc107 !important;
+}
+#chaveamentoBatalhasInline .text-muted,
+.modal-content.bg-dark .text-muted {
+    color: #bbb !important;
+}
+#chaveamentoBatalhasInline a,
+.modal-content.bg-dark a {
+    color: #6ea8fe !important;
+}
+#chaveamentoBatalhasInline .form-control,
+.modal-content.bg-dark .form-control {
+    background-color: #333 !important;
+    color: #fff !important;
+    border-color: #555 !important;
+}
+.navbar .nav-link {
+    color: #fff !important;
+}
+.table thead th {
+    color: #fff !important;
+}
+
 .table tbody tr:hover {
     background-color: rgba(204, 0, 0, 0.1);
 }

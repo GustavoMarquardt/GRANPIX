@@ -212,11 +212,45 @@
   <div class="row">
   <div class="col-12">
   <div class="card">
-  <div class="card-header bg-dark text-white">
-  <h5 class="mb-0">Configurações - Em Desenvolvimento</h5>
+  <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+  <h5 class="mb-0">Configurações</h5>
+  <button type="button" class="btn btn-sm btn-success" id="btnSalvarConfiguracoes"><i class="fas fa-save"></i> Salvar</button>
   </div>
   <div class="card-body">
-  <p class="text-muted">Esta seção está sendo desenvolvida. Volte em breve!</p>
+  <div class="row">
+  <div class="col-md-6">
+  <h6 class="text-muted mb-3">Valores Cobrados</h6>
+  <div class="mb-3">
+  <label class="form-label">Instalação de peça (armazém) – R$</label>
+  <input type="number" class="form-control" id="cfgInstalacaoPeca" step="0.01" min="0" placeholder="Ex: 50">
+  <small class="text-muted">Preço para instalar peça do armazém no carro</small>
+  </div>
+  <div class="mb-3">
+  <label class="form-label">Troca / ativação de carro – R$</label>
+  <input type="number" class="form-control" id="cfgTrocaCarro" step="0.01" min="0" placeholder="Ex: 30">
+  <small class="text-muted">Valor cobrado ao trocar ou ativar um carro</small>
+  </div>
+  <div class="mb-3">
+  <label class="form-label">Participar da etapa – R$</label>
+  <input type="number" class="form-control" id="cfgParticiparEtapa" step="0.01" min="0" placeholder="Ex: 1000">
+  <small class="text-muted">Valor para participar de uma etapa</small>
+  </div>
+  </div>
+  <div class="col-md-6">
+  <h6 class="text-muted mb-3">Integrações</h6>
+  <div class="mb-3" id="challongeBox">
+    <label class="form-label d-block">Challonge (chaveamento)</label>
+    <span id="challongeStatus" class="small text-muted"></span>
+    <small class="d-block text-muted">Configure CHALLONGE_API_KEY no .env (challonge.com/settings/developer)</small>
+  </div>
+  <h6 class="text-muted mb-3">Valores adicionais</h6>
+  <div class="mb-3">
+  <label class="form-label">Valor por peça (ativação de carro) – R$</label>
+  <input type="number" class="form-control" id="cfgValorPecaAtivacao" step="0.01" min="0" placeholder="Ex: 10">
+  <small class="text-muted">Valor por peça não paga ao ativar carro</small>
+  </div>
+  </div>
+  </div>
   </div>
   </div>
   </div>
@@ -224,15 +258,72 @@
   <div class="toast-container"></div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
-  // Verificar autenticação de admin
-  if (!sessionStorage.getItem('admin_logado')) {
-  // Se não tem sessão de admin, redireciona para login
-  // Mas permite carregar para testar
+  function getCookie(name) {
+  const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+  return v ? v[2] : null;
   }
-  // Inicializar painel
-  window.addEventListener('load', () => {
+  async function carregarConfiguracoes() {
+  try {
+  const r = await fetch('/api/admin/configuracoes', { credentials: 'include' });
+  const data = await r.json();
+  if (!r.ok || !data.configuracoes) return;
+  const cfg = (chave) => {
+  const c = data.configuracoes.find(x => x.chave === chave);
+  return c ? c.valor : '';
+  };
+  const el = (id) => document.getElementById(id);
+  if (el('cfgInstalacaoPeca')) el('cfgInstalacaoPeca').value = cfg('preco_instalacao_warehouse') || '50';
+  if (el('cfgTrocaCarro')) el('cfgTrocaCarro').value = cfg('valor_ativacao_carro') || '30';
+  if (el('cfgParticiparEtapa')) el('cfgParticiparEtapa').value = cfg('valor_etapa') || '1000';
+  if (el('cfgValorPecaAtivacao')) el('cfgValorPecaAtivacao').value = cfg('valor_instalacao_peca') || '10';
+  } catch (e) { console.error('Erro ao carregar configurações:', e); }
+  }
+  async function salvarConfiguracoes() {
+  const el = (id) => document.getElementById(id);
+  const configs = [
+  { chave: 'preco_instalacao_warehouse', valor: parseFloat(el('cfgInstalacaoPeca')?.value) || 50, descricao: 'Preço para instalar peça do armazém' },
+  { chave: 'valor_ativacao_carro', valor: parseFloat(el('cfgTrocaCarro')?.value) || 30, descricao: 'Valor para troca/ativação de carro' },
+  { chave: 'valor_etapa', valor: parseFloat(el('cfgParticiparEtapa')?.value) || 1000, descricao: 'Valor para participar da etapa' },
+  { chave: 'valor_instalacao_peca', valor: parseFloat(el('cfgValorPecaAtivacao')?.value) || 10, descricao: 'Valor por peça na ativação de carro' }
+  ];
+  try {
+  for (const c of configs) {
+  const r = await fetch('/api/admin/configuracoes', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrf_token') || '' },
+  body: JSON.stringify({ chave: c.chave, valor: String(c.valor), descricao: c.descricao }),
+  credentials: 'include'
+  });
+  if (!r.ok) throw new Error('Falha ao salvar ' + c.chave);
+  }
+  if (typeof mostrarToast === 'function') mostrarToast('Configurações salvas com sucesso!', 'success'); else alert('Configurações salvas!');
+  } catch (e) {
+  if (typeof mostrarToast === 'function') mostrarToast('Erro: ' + e.message, 'error'); else alert('Erro: ' + e.message);
+  }
+  }
+  async function atualizarChallongeStatus() {
+  try {
+  const r = await fetch('/api/admin/challonge/status', { credentials: 'include' });
+  const data = await r.json();
+  const el = document.getElementById('challongeStatus');
+  if (!el) return;
+  if (data.conectado) {
+  el.textContent = 'Conectado (API v1)';
+  el.className = 'small text-success';
+  } else {
+  el.textContent = 'Não configurado';
+  el.className = 'small text-warning';
+  }
+  } catch (e) { console.error('Challonge status:', e); }
+  }
+  window.addEventListener('load', function() {
   atualizarStatusAdmin();
   atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
+  carregarConfiguracoes();
+  atualizarChallongeStatus();
+  document.getElementById('btnSalvarConfiguracoes').addEventListener('click', salvarConfiguracoes);
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('challonge')) window.history.replaceState({}, '', '/admin/configuracoes');
   });
   async function atualizarStatusAdmin() {
   try {
@@ -246,30 +337,19 @@
   }
   }
   async function atualizarContadoresSolicitacoes() {
+  if (typeof window.atualizarContadoresSolicitacoesAdmin === 'function') return window.atualizarContadoresSolicitacoesAdmin();
   try {
-  // Contar solicitações de peça pendentes
   const respPecas = await fetch('/api/admin/solicitacoes-pecas');
   const pecas = await respPecas.json();
-  const pecasPendentes = Array.isArray(pecas)
-  ? pecas.filter(s => s.status === 'pendente').length
-  : 0;
+  const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
   const elemPecas = document.getElementById('solicitacoesPecasPendentes');
-  if (elemPecas) {
-  elemPecas.textContent = pecasPendentes;
-  }
-  // Contar solicitações de carro pendentes
+  if (elemPecas) elemPecas.textContent = pecasPendentes;
   const respCarros = await fetch('/api/admin/solicitacoes-carros');
   const carros = await respCarros.json();
-  const carrosPendentes = Array.isArray(carros)
-  ? carros.filter(s => s.status === 'pendente').length
-  : 0;
+  const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
   const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
-  if (elemCarros) {
-  elemCarros.textContent = carrosPendentes;
-  }
-  } catch (e) {
-  console.error('Erro ao atualizar contadores de solicitações:', e);
-  }
+  if (elemCarros) elemCarros.textContent = carrosPendentes;
+  } catch (e) { console.error('Erro ao atualizar contadores:', e); }
   }
   </script>
 </body>

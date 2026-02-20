@@ -24,6 +24,8 @@ services:
     restart: unless-stopped
     depends_on:
       - db
+    env_file:
+      - .env
     environment:
       # Conexão com o banco do container (serviço "db")
       MYSQL_CONFIG: "mysql://root:granpix@db:3306/granpix"
@@ -35,6 +37,9 @@ services:
       WAIT_PORT: "3306"
       # E2E: ativa endpoint /api/test/ativar-carro-direto para rodar todos os testes E2E
       TEST_E2E: "1"
+      # Challonge API v1 (do .env via env_file; explícito garante que chegue no container)
+      CHALLONGE_API_KEY: ${CHALLONGE_API_KEY:-}
+      CHALLONGE_USERNAME: ${CHALLONGE_USERNAME:-}
     ports:
       - "5000:5000"
     volumes:

@@ -340,6 +340,351 @@ class TestAlocarPiloto:
         assert data.get("sucesso") is False
 
 
+class TestCriarCampeonato:
+    """POST /api/admin/criar-campeonato e listar campeonatos."""
+
+    def test_criar_campeonato_ok(self, client_admin):
+        r = client_admin.post(
+            "/api/admin/criar-campeonato",
+            json={
+                "nome": "Campeonato Teste",
+                "descricao": "Descrição teste",
+                "serie": "A",
+                "numero_etapas": 5,
+            },
+            headers={"Content-Type": "application/json"},
+        )
+        assert r.status_code == 200, r.get_data(as_text=True)
+        data = r.get_json()
+        assert data.get("sucesso") is True
+        assert "campeonato_id" in data
+
+    def test_criar_campeonato_sem_nome_400(self, client_admin):
+        r = client_admin.post(
+            "/api/admin/criar-campeonato",
+            json={"serie": "A", "numero_etapas": 5},
+            headers={"Content-Type": "application/json"},
+        )
+        assert r.status_code == 400
+        data = r.get_json()
+        assert data.get("sucesso") is False
+        assert "obrigatório" in (data.get("erro") or "").lower() or "nome" in (data.get("erro") or "").lower()
+
+    def test_criar_campeonato_sem_serie_400(self, client_admin):
+        r = client_admin.post(
+            "/api/admin/criar-campeonato",
+            json={"nome": "Campeonato X", "numero_etapas": 5},
+            headers={"Content-Type": "application/json"},
+        )
+        assert r.status_code == 400
+        data = r.get_json()
+        assert data.get("sucesso") is False
+
+    def test_criar_campeonato_persiste_na_listagem(self, client_admin):
+        """Cria campeonato e verifica que aparece em GET /api/admin/listar-campeonatos."""
+        nome = "Campeonato Persist Test"
+        r = client_admin.post(
+            "/api/admin/criar-campeonato",
+            json={"nome": nome, "serie": "B", "numero_etapas": 3},
+            headers={"Content-Type": "application/json"},
+        )
+        assert r.status_code == 200, r.get_data(as_text=True)
+        data = r.get_json()
+        assert data.get("sucesso") is True
+        campeonato_id = data.get("campeonato_id")
+        assert campeonato_id
+        listagem = client_admin.get("/api/admin/listar-campeonatos")
+        assert listagem.status_code == 200
+        campeonatos = listagem.get_json()
+        assert isinstance(campeonatos, list)
+        encontrado = next((c for c in campeonatos if c.get("nome") == nome), None)
+        assert encontrado is not None, f"Campeonato '{nome}' deve aparecer na listagem."
+
+
+class TestCadastrarEtapa:
+    """POST /api/admin/cadastrar-etapa e listar etapas."""
+
+    def test_cadastrar_etapa_sem_campeonato_400(self, client_admin):
+        r = client_admin.post(
+            "/api/admin/cadastrar-etapa",
+            json={
+                "numero": 1,
+                "nome": "Etapa 1",
+                "data_etapa": "2025-12-01",
+                "hora_etapa": "10:00:00",
+                "serie": "A",
+            },
+            headers={"Content-Type": "application/json"},
+        )
+        assert r.status_code == 400
+        data = r.get_json()
+        assert data.get("sucesso") is False
+
+    def test_cadastrar_etapa_campeonato_e_etapa_persistem(self, client_admin):
+        """Cria campeonato, cria etapa nele e verifica que ambos aparecem nas listagens."""
+        nome_camp = "Campeonato E2E Etapas"
+        r_camp = client_admin.post(
+            "/api/admin/criar-campeonato",
+            json={"nome": nome_camp, "serie": "A", "numero_etapas": 5},
+            headers={"Content-Type": "application/json"},
+        )
+        assert r_camp.status_code == 200, r_camp.get_data(as_text=True)
+        data_camp = r_camp.get_json()
+        assert data_camp.get("sucesso") is True
+        campeonato_id = data_camp.get("campeonato_id")
+        assert campeonato_id
+
+        nome_etapa = "Etapa Inaugural"
+        r_etapa = client_admin.post(
+            "/api/admin/cadastrar-etapa",
+            json={
+                "campeonato_id": campeonato_id,
+                "numero": 1,
+                "nome": nome_etapa,
+                "descricao": "Primeira etapa",
+                "data_etapa": "2026-03-15",
+                "hora_etapa": "14:00:00",
+                "serie": "A",
+            },
+            headers={"Content-Type": "application/json"},
+        )
+        assert r_etapa.status_code == 200, r_etapa.get_data(as_text=True)
+        data_etapa = r_etapa.get_json()
+        assert data_etapa.get("sucesso") is True
+        assert "etapa_id" in data_etapa
+
+        listagem = client_admin.get("/api/admin/listar-etapas")
+        assert listagem.status_code == 200
+        etapas = listagem.get_json()
+        assert isinstance(etapas, list)
+        encontrada = next((e for e in etapas if e.get("nome") == nome_etapa), None)
+        assert encontrada is not None, f"Etapa '{nome_etapa}' deve aparecer na listagem."
+
+
+class TestParticiparEtapaEquipe:
+    """POST /api/etapas/equipe/participar - inscrição nas 3 formas:
+    dono_vai_andar (dono pilota), tenho_piloto (usa piloto contratado), precisa_piloto (precisa de piloto).
+    """
+
+    def test_inscrever_equipe_etapa_tres_formas(self, client_admin):
+        """Equipe se inscreve na etapa nas 3 formas: dono_vai_andar, tenho_piloto, precisa_piloto."""
+        from app import api
+
+        # 1. Criar campeonato e etapa (nome único para evitar ON DUPLICATE KEY com id diferente)
+        import uuid
+        nome_camp = f"Campeonato Inscrição Etapa {uuid.uuid4().hex[:8]}"
+        r_camp = client_admin.post(
+            "/api/admin/criar-campeonato",
+            json={"nome": nome_camp, "serie": "A", "numero_etapas": 5},
+            headers={"Content-Type": "application/json"},
+        )
+        assert r_camp.status_code == 200, r_camp.get_data(as_text=True)
+        campeonato_id = r_camp.get_json().get("campeonato_id")
+        assert campeonato_id
+
+        r_etapa = client_admin.post(
+            "/api/admin/cadastrar-etapa",
+            json={
+                "campeonato_id": campeonato_id,
+                "numero": 1,
+                "nome": "Etapa Inscrição 3 Formas",
+                "data_etapa": "2026-04-01",
+                "hora_etapa": "10:00:00",
+                "serie": "A",
+            },
+            headers={"Content-Type": "application/json"},
+        )
+        assert r_etapa.status_code == 200, r_etapa.get_data(as_text=True)
+        etapa_id = r_etapa.get_json().get("etapa_id")
+        assert etapa_id
+
+        # 2. Criar carro modelo
+        r_carro = client_admin.post(
+            "/api/admin/cadastrar-carro",
+            json={
+                "marca": "Teste Inscrição",
+                "modelo": "Modelo Etapa",
+                "preco": 5000,
+                "classe": "basico",
+                "descricao": "Carro para teste inscrição",
+            },
+            headers={"Content-Type": "application/json"},
+        )
+        assert r_carro.status_code == 200, r_carro.get_data(as_text=True)
+        modelo_id = (r_carro.get_json().get("carro") or {}).get("id")
+        assert modelo_id
+
+        # 3. Criar 3 equipes com carro e saldo_pix
+        equipes_dados = []
+        for i, (nome, tipo) in enumerate([
+            ("Equipe Dono Pilota", "dono_vai_andar"),
+            ("Equipe Piloto Contratado", "tenho_piloto"),
+            ("Equipe Precisa Piloto", "precisa_piloto"),
+        ]):
+            r_eq = client_admin.post(
+                "/api/admin/cadastrar-equipe",
+                json={
+                    "nome": nome,
+                    "senha": "senha123",
+                    "doricoins": 50000,
+                    "serie": "A",
+                    "carro_id": str(modelo_id),
+                },
+                headers={"Content-Type": "application/json"},
+            )
+            assert r_eq.status_code == 200, r_eq.get_data(as_text=True)
+            data_eq = r_eq.get_json()
+            assert data_eq.get("sucesso") is True
+            equipe = data_eq.get("equipe") or {}
+            equipe_id = equipe.get("id")
+            carro_instancia_id = equipe.get("carro_instancia_id") or equipe.get("carro_id")
+            assert equipe_id, f"Equipe {nome} deve retornar id"
+            assert carro_instancia_id, f"Equipe {nome} deve ter carro_instancia_id"
+            # Garantir saldo_pix para inscrição (valor_etapa ~1000)
+            api.db.atualizar_saldo_pix(equipe_id, 5000.0)
+            equipes_dados.append({
+                "equipe_id": equipe_id,
+                "carro_id": str(carro_instancia_id),
+                "tipo": tipo,
+            })
+
+        # 4. Inscrever cada equipe na etapa com seu tipo
+        for item in equipes_dados:
+            r_part = client_admin.post(
+                "/api/etapas/equipe/participar",
+                json={
+                    "etapa_id": etapa_id,
+                    "equipe_id": item["equipe_id"],
+                    "carro_id": item["carro_id"],
+                    "tipo_participacao": item["tipo"],
+                },
+                headers={"Content-Type": "application/json"},
+            )
+            assert r_part.status_code == 200, (
+                f"Participar ({item['tipo']}) deve retornar 200: {r_part.get_data(as_text=True)}"
+            )
+            data = r_part.get_json()
+            assert data.get("sucesso") is True, (
+                f"Inscrição {item['tipo']} deve ter sucesso: {data}"
+            )
+            assert "requer_regularizacao" not in data or data.get("requer_regularizacao") is False, (
+                f"Inscrição {item['tipo']} não deve requerer regularização: {data}"
+            )
+            assert "mensagem" in data or "inscricao_id" in data or data.get("sucesso")
+
+        # 5. Verificar que as 3 participações existem na etapa
+        tipos_na_etapa = set()
+        for eq in equipes_dados:
+            etapas_da_eq = api.db.obter_etapas_equipe(eq["equipe_id"])
+            for e in etapas_da_eq:
+                if str(e.get("id") or e.get("etapa_id", "")) == str(etapa_id):
+                    tipos_na_etapa.add(e.get("tipo_participacao") or eq["tipo"])
+                    break
+        assert "dono_vai_andar" in tipos_na_etapa, f"Esperado dono_vai_andar em {tipos_na_etapa}"
+        assert "tenho_piloto" in tipos_na_etapa, f"Esperado tenho_piloto em {tipos_na_etapa}"
+        assert "precisa_piloto" in tipos_na_etapa, f"Esperado precisa_piloto em {tipos_na_etapa}"
+
+
+class TestQualificacaoEtapa:
+    """Simula etapa com equipes inscritas, pilotos alocados, qualify, notas e verifica ordem."""
+
+    def test_qualify_com_notas_e_ordem(self, client_admin):
+        """Cria etapa, 4 equipes com pilotos, faz qualify, dá notas, finaliza e confirma ordem."""
+        import os
+        import uuid
+        from app import api
+
+        # 1. Campeonato e etapa
+        nome_camp = f"Campeonato Qualify {uuid.uuid4().hex[:8]}"
+        r_camp = client_admin.post("/api/admin/criar-campeonato", json={"nome": nome_camp, "serie": "A", "numero_etapas": 5})
+        assert r_camp.status_code == 200
+        campeonato_id = r_camp.get_json().get("campeonato_id")
+        assert campeonato_id
+
+        r_etapa = client_admin.post("/api/admin/cadastrar-etapa", json={
+            "campeonato_id": campeonato_id, "numero": 1, "nome": "Etapa Qualify",
+            "data_etapa": "2026-08-01", "hora_etapa": "10:00:00", "serie": "A",
+        })
+        assert r_etapa.status_code == 200
+        etapa_id = r_etapa.get_json().get("etapa_id")
+        assert etapa_id
+
+        # 2. Carro modelo
+        r_carro = client_admin.post("/api/admin/cadastrar-carro", json={
+            "marca": "Qualify", "modelo": "Q1", "preco": 5000, "classe": "basico", "descricao": "",
+        })
+        assert r_carro.status_code == 200
+        modelo_id = (r_carro.get_json().get("carro") or {}).get("id")
+        assert modelo_id
+
+        # 3. 4 equipes precisa_piloto + pilotos + alocar (2 equipes min para ordem)
+        equipes_com_pilotos = []
+        for i in range(4):
+            r_eq = client_admin.post("/api/admin/cadastrar-equipe", json={
+                "nome": f"Equipe Q{i+1}", "senha": "s1", "doricoins": 50000, "serie": "A", "carro_id": str(modelo_id),
+            })
+            assert r_eq.status_code == 200
+            eq = (r_eq.get_json().get("equipe") or {})
+            equipe_id = eq.get("id")
+            carro_id = eq.get("carro_instancia_id") or eq.get("carro_id")
+            assert equipe_id and carro_id
+            api.db.atualizar_saldo_pix(equipe_id, 5000.0)
+
+            r_pil = client_admin.post("/api/pilotos/cadastrar", json={"nome": f"Piloto Q{i+1} {uuid.uuid4().hex[:6]}", "senha": "s123"})
+            assert r_pil.status_code == 200
+            piloto_id = r_pil.get_json().get("piloto_id")
+            piloto_nome = r_pil.get_json().get("nome", f"Piloto Q{i+1}")
+            assert piloto_id
+
+            r_part = client_admin.post("/api/etapas/equipe/participar", json={
+                "etapa_id": etapa_id, "equipe_id": equipe_id, "carro_id": str(carro_id), "tipo_participacao": "precisa_piloto",
+            })
+            assert r_part.status_code == 200 and r_part.get_json().get("sucesso") is True
+
+            res = api.db.inscrever_piloto_candidato_etapa(etapa_id, equipe_id, piloto_id, piloto_nome)
+            assert res.get("sucesso") is True
+            res2 = api.db.alocar_proximo_piloto_candidato(etapa_id, equipe_id)
+            assert res2.get("sucesso") is True
+
+            equipes_com_pilotos.append({"equipe_id": equipe_id, "nome": f"Equipe Q{i+1}"})
+
+        # 4. Iniciar qualify (fazer-etapa)
+        r_fazer = client_admin.post("/api/admin/fazer-etapa", json={"etapa": etapa_id})
+        assert r_fazer.status_code == 200, r_fazer.get_data(as_text=True)
+        assert r_fazer.get_json().get("sucesso") is True
+
+        # 5. Dar notas (ordenadas para verificar: Q4 melhor, Q3, Q2, Q1 pior)
+        notas_por_equipe = [
+            {"equipe_id": equipes_com_pilotos[0]["equipe_id"], "nota_linha": 10, "nota_angulo": 8, "nota_estilo": 7},
+            {"equipe_id": equipes_com_pilotos[1]["equipe_id"], "nota_linha": 12, "nota_angulo": 9, "nota_estilo": 8},
+            {"equipe_id": equipes_com_pilotos[2]["equipe_id"], "nota_linha": 14, "nota_angulo": 10, "nota_estilo": 9},
+            {"equipe_id": equipes_com_pilotos[3]["equipe_id"], "nota_linha": 15, "nota_angulo": 11, "nota_estilo": 10},
+        ]
+        r_notas = client_admin.post("/api/test/salvar-notas-etapa", json={"etapa_id": etapa_id, "notas": notas_por_equipe})
+        if r_notas.status_code == 404:
+            pytest.skip("TEST_E2E=1 necessário para /api/test/salvar-notas-etapa")
+        assert r_notas.status_code == 200, r_notas.get_data(as_text=True)
+
+        # 6. Finalizar qualificação
+        r_fin = client_admin.post(f"/api/admin/finalizar-qualificacao/{etapa_id}")
+        assert r_fin.status_code == 200
+        assert r_fin.get_json().get("sucesso") is True
+
+        # 7. Verificar classificação final (ordem: maior nota primeiro)
+        r_class = client_admin.get(f"/api/etapas/{etapa_id}/classificacao-final")
+        assert r_class.status_code == 200
+        data = r_class.get_json()
+        assert data.get("sucesso") is True
+        classificacao = data.get("classificacao", [])
+        assert len(classificacao) >= 4, f"Esperado pelo menos 4 na classificação: {classificacao}"
+
+        # Ordem esperada: Q4 (36), Q3 (33), Q2 (29), Q1 (25)
+        for i, esp in enumerate([("Equipe Q4", 36), ("Equipe Q3", 33), ("Equipe Q2", 29), ("Equipe Q1", 25)]):
+            assert classificacao[i]["equipe_nome"] == esp[0], f"Pos {i+1} esperado {esp[0]}, obteve {classificacao[i]['equipe_nome']}"
+            assert classificacao[i]["total_notas"] == esp[1], f"Pos {i+1} total esperado {esp[1]}, obteve {classificacao[i]['total_notas']}"
+            assert classificacao[i]["ordem_qualificacao"] == i + 1, f"ordem_qualificacao pos {i+1} deve ser {i+1}"
+
+
 class TestComissoes:
     """GET /api/admin/comissoes (requer admin)."""
 

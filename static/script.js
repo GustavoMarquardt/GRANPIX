@@ -6,6 +6,33 @@ let carrinho = [];  // Carrinho de peças {id, nome, preco, compatibilidade}
 let carrinhoArmazem = [];  // Carrinho de peças do armazém {nome, tipo, id, preco, quantidade, pix_id}
 let destinoCarrinhoArmazem = null;  // 'ativo' ou 'repouso'
 
+// Cache para evitar atualizações desnecessárias e flicker
+let _cachePecasAguardando = null;
+let _cacheCarrosAguardando = null;
+let _cacheGaragem = null;
+let _cacheCarrosLoja = null;
+let _cachePecasLoja = null;
+let _cacheSolicitacoesPecas = null;
+let _cacheSolicitacoesCarros = null;
+
+// Função global para contadores admin - só atualiza DOM se valor mudou (evita flicker)
+window.atualizarContadoresSolicitacoesAdmin = async function() {
+    try {
+        const [rP, rC] = await Promise.all([
+            fetch('/api/admin/solicitacoes-pecas'),
+            fetch('/api/admin/solicitacoes-carros')
+        ]);
+        const pecas = await rP.json();
+        const carros = await rC.json();
+        const nPecas = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
+        const nCarros = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
+        const ep = document.getElementById('solicitacoesPecasPendentes');
+        const ec = document.getElementById('solicitacoesCarrosPendentes');
+        if (ep && String(ep.textContent) !== String(nPecas)) ep.textContent = nPecas;
+        if (ec && String(ec.textContent) !== String(nCarros)) ec.textContent = nCarros;
+    } catch (e) { console.error('Erro atualizar contadores:', e); }
+};
+
 // ============= AUTO-REFRESH DO SISTEMA =============
 let intervaloAutoRefresh = null;
 let intervaloSolicitacoes = null;
@@ -109,12 +136,15 @@ function configurarListenersModals() {
     });
 }
 
-// Monitorar visibilidade da aba
+// Monitorar visibilidade da aba - só iniciar refresh se estivermos em página que usa
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
         pararAutoRefresh();
     } else {
-        iniciarAutoRefresh();
+        const path = window.location.pathname || '';
+        if (path === '/dashboard' || path === '/solicitacoes-pecas' || path === '/solicitacoes-carros' || path === '/admin') {
+            iniciarAutoRefresh();
+        }
     }
 });
 
@@ -471,34 +501,30 @@ async function carregarDetalhesEquipe() {
 
 async function carregarCarrosLoja() {
     try {
-        const resp = await fetch('/api/loja/carros', {
-            headers: obterHeaders()
-        });
+        const resp = await fetch('/api/loja/carros', { headers: obterHeaders() });
         carros = await resp.json();
-        console.log('[DEBUG] Carros carregados:', carros);
-        carros.forEach(c => {
-            console.log(`  - ${c.modelo}: imagem = ${c.imagem ? c.imagem.substring(0, 50) + '...' : 'undefined'}`);
-        });
+        const hash = JSON.stringify(carros);
+        if (_cacheCarrosLoja === hash) return;
+        _cacheCarrosLoja = hash;
         renderizarCarros();
     } catch (e) {
         console.error('[ERRO] Erro ao carregar carros:', e);
+        _cacheCarrosLoja = null;
         mostrarToast('Erro ao carregar carros', 'error');
     }
 }
 
 async function carregarPecasLoja() {
     try {
-        const resp = await fetch('/api/loja/pecas', {
-            headers: obterHeaders()
-        });
+        const resp = await fetch('/api/loja/pecas', { headers: obterHeaders() });
         pecas = await resp.json();
-        console.log('[DEBUG] Peças carregadas:', pecas);
-        pecas.forEach(p => {
-            console.log(`  - ${p.nome}: imagem = ${p.imagem ? p.imagem.substring(0, 50) + '...' : 'undefined'}`);
-        });
+        const hash = JSON.stringify(pecas);
+        if (_cachePecasLoja === hash) return;
+        _cachePecasLoja = hash;
         renderizarPecas();
     } catch (e) {
         console.error('[ERRO] Erro ao carregar peças:', e);
+        _cachePecasLoja = null;
         mostrarToast('Erro ao carregar peças', 'error');
     }
 }
@@ -609,12 +635,18 @@ async function carregarGaragem() {
             }));
         }
 
+        const payload = { garagem, armazem, solicitacoesPendentes, solicitacoesPecasPendentes };
+        const hash = JSON.stringify(payload);
+        if (_cacheGaragem === hash) return;
+        _cacheGaragem = hash;
+
         renderizarGaragem(garagem, armazem, solicitacoesPendentes, solicitacoesPecasPendentes);
-        atualizarUICarrinho();  // Atualizar lista de carros no carrinho
-        atualizarUICarrinhoArmazem();  // Atualizar carrinho do armazém
-        carregarProximaEtapa();  // Carregar próxima etapa da série
+        atualizarUICarrinho();
+        atualizarUICarrinhoArmazem();
+        carregarProximaEtapa();
     } catch (e) {
         console.log('Erro ao carregar garagem:', e);
+        _cacheGaragem = null;
         mostrarToast('Erro ao carregar garagem', 'error');
     }
 }
@@ -648,7 +680,7 @@ function renderizarDetalhesEquipe() {
                         <h6 class="mb-0">⏳ Carros Aguardando Ativação</h6>
                     </div>
                     <div class="card-body" id="carrosAguardandoContainer">
-                        <p class="text-muted">Carregando...</p>
+                        <p class="text-muted">Sem carros para ativar</p>
                     </div>
                 </div>
                 
@@ -657,13 +689,16 @@ function renderizarDetalhesEquipe() {
                         <h6 class="mb-0">⏳ Peças Aguardando Instalação</h6>
                     </div>
                     <div class="card-body" id="pecasAguardandoContainer">
-                        <p class="text-muted">Carregando...</p>
+                        <p class="text-muted">Sem peças para ativar</p>
                     </div>
                 </div>
             </div>
         </div>
     `;
 
+    // Limpar cache para forçar atualização (evita ficar em "Carregando" após re-render)
+    _cachePecasAguardando = null;
+    _cacheCarrosAguardando = null;
     // Carregar peças e carros aguardando
     carregarPecasAguardando();
     carregarCarrosAguardando();
@@ -671,31 +706,18 @@ function renderizarDetalhesEquipe() {
 
 async function carregarPecasAguardando() {
     try {
-        console.log("[FRONTEND] Chamando /api/aguardando-pecas...");
-        console.log("[FRONTEND] Headers:", obterHeaders());
-
-        const resp = await fetch('/api/aguardando-pecas', {
-            headers: obterHeaders()
-        });
-
-        console.log(`[FRONTEND] Resposta status: ${resp.status} ${resp.statusText}`);
-
-        if (!resp.ok) {
-            console.log(`[FRONTEND] ERRO: Status ${resp.status}`);
-            const text = await resp.text();
-            console.log(`[FRONTEND] Response body: ${text}`);
-            throw new Error('Erro ao carregar peças');
-        }
-
+        const resp = await fetch('/api/aguardando-pecas', { headers: obterHeaders() });
+        if (!resp.ok) throw new Error('Erro ao carregar peças');
         const pecasAguardando = await resp.json();
-        console.log(`[FRONTEND] Sucesso! ${pecasAguardando.length} peças recebidas`);
+        const hash = JSON.stringify(pecasAguardando);
+        if (_cachePecasAguardando === hash) return;
+        _cachePecasAguardando = hash;
         renderizarPecasAguardando(pecasAguardando);
     } catch (e) {
         console.log('Erro ao carregar peças aguardando:', e);
+        _cachePecasAguardando = null;
         const container = document.getElementById('pecasAguardandoContainer');
-        if (container) {
-            container.innerHTML = '<p class="text-danger">Erro ao carregar peças</p>';
-        }
+        if (container) container.innerHTML = '<p class="text-danger">Erro ao carregar peças</p>';
     }
 }
 
@@ -703,8 +725,8 @@ function renderizarPecasAguardando(pecas) {
     const container = document.getElementById('pecasAguardandoContainer');
     if (!container) return;
 
-    if (!pecas || pecas.length === 0) {
-        container.innerHTML = '<p class="text-muted">Nenhuma peça aguardando</p>';
+    if (!pecas || !Array.isArray(pecas) || pecas.length === 0) {
+        container.innerHTML = '<p class="text-muted">Sem peças para ativar</p>';
         return;
     }
 
@@ -743,28 +765,18 @@ function renderizarPecasAguardando(pecas) {
 
 async function carregarCarrosAguardando() {
     try {
-        console.log("[FRONTEND] Chamando /api/aguardando-carros...");
-
-        const resp = await fetch('/api/aguardando-carros', {
-            headers: obterHeaders()
-        });
-
-        console.log(`[FRONTEND] Resposta status: ${resp.status} ${resp.statusText}`);
-
-        if (!resp.ok) {
-            console.log(`[FRONTEND] ERRO: Status ${resp.status}`);
-            throw new Error('Erro ao carregar carros');
-        }
-
+        const resp = await fetch('/api/aguardando-carros', { headers: obterHeaders() });
+        if (!resp.ok) throw new Error('Erro ao carregar carros');
         const carrosAguardando = await resp.json();
-        console.log(`[FRONTEND] Sucesso! ${carrosAguardando.length} carros recebidos`);
+        const hash = JSON.stringify(carrosAguardando);
+        if (_cacheCarrosAguardando === hash) return;
+        _cacheCarrosAguardando = hash;
         renderizarCarrosAguardando(carrosAguardando);
     } catch (e) {
         console.log('Erro ao carregar carros aguardando:', e);
+        _cacheCarrosAguardando = null;
         const container = document.getElementById('carrosAguardandoContainer');
-        if (container) {
-            container.innerHTML = '<p class="text-danger">Erro ao carregar carros</p>';
-        }
+        if (container) container.innerHTML = '<p class="text-danger">Erro ao carregar carros</p>';
     }
 }
 
@@ -772,8 +784,8 @@ function renderizarCarrosAguardando(carros) {
     const container = document.getElementById('carrosAguardandoContainer');
     if (!container) return;
 
-    if (!carros || carros.length === 0) {
-        container.innerHTML = '<p class="text-muted">Nenhum carro aguardando ativação</p>';
+    if (!carros || !Array.isArray(carros) || carros.length === 0) {
+        container.innerHTML = '<p class="text-muted">Sem carros para ativar</p>';
         return;
     }
 
@@ -6025,7 +6037,10 @@ async function carregarSolicitacoes() {
     try {
         const resp = await fetch('/api/admin/solicitacoes-pecas');
         const solicitacoes = await resp.json();
-        
+        const hash = JSON.stringify(solicitacoes);
+        if (_cacheSolicitacoesPecas === hash) return;
+        _cacheSolicitacoesPecas = hash;
+
         const container = document.getElementById('listaSolicitacoesPecas');
         if (!container) return;
         
@@ -6069,7 +6084,10 @@ async function carregarSolicitacoesCarros() {
     try {
         const resp = await fetch('/api/admin/solicitacoes-carros');
         const solicitacoes = await resp.json();
-        
+        const hash = JSON.stringify(solicitacoes);
+        if (_cacheSolicitacoesCarros === hash) return;
+        _cacheSolicitacoesCarros = hash;
+
         const container = document.getElementById('listaSolicitacoesCarros');
         if (!container) return;
         

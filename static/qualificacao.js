@@ -1154,16 +1154,27 @@ async function mostrarEventoAoVivo(etapaId) {
                         <div style="color: #999; font-size: 12px;">Atualizado: <span id="ultimaAtualizacao">agora</span></div>
                     </div>
                 </div>
-                <div class="modal-body" style="padding: 20px; background: #0a0a0a; overflow-x: auto; max-height: 75vh; overflow-y: auto;">
-                    <div id="containerEventoPits" style="min-width: 100%;">
+                <div class="modal-body" style="padding: 20px; background: #0a0a0a; overflow-x: auto; max-height: 75vh; overflow-y: auto; position: relative;">
+                    ${evento.etapa.qualificacao_finalizada ? `
+                    <div class="setas-esquerda-evento" style="position: fixed; left: 12px; top: 50%; transform: translateY(-50%); z-index: 100001; display: flex; flex-direction: column; gap: 10px;">
+                        <button type="button" class="btn btn-outline-light btn-setas-evento" onclick="verResultadoQualificacao('${etapaId}')" title="Lista ordenada por nota">
+                            ← Lista ordenada
+                        </button>
+                        <button type="button" class="btn btn-outline-warning btn-setas-evento" onclick="mostrarChaveamentoBatalhas('${etapaId}')" title="Ver chaveamento / batalhas">
+                            ← Batalhas
+                        </button>
+                    </div>
+                    ` : ''}
+                    <div id="containerEventoPits" style="min-width: 100%; ${evento.etapa.qualificacao_finalizada ? 'margin-left: 140px;' : ''}">
                         <!-- Tabela de pits será renderizada aqui -->
                     </div>
                 </div>
                 <div class="modal-footer" style="background: #1a0000; border-top: 2px solid #ff0000;">
                     <small style="color: #999;">Total de equipes: ${evento.total_equipes}</small>
-                    ${evento.etapa.status === 'batalhas' && usuarioTipo !== 'admin' ? `
+                    ${(evento.etapa.qualificacao_finalizada || evento.etapa.status === 'batalhas') ? `
                         <button type="button" class="btn btn-info me-2" onclick="verResultadoQualificacao('${etapaId}')">Ver Resultado Qualify</button>
-                        <button type="button" class="btn btn-warning" onclick="entrarBatalhas('${etapaId}')">Ir para Batalhas</button>
+                        <button type="button" class="btn btn-warning me-2" onclick="mostrarChaveamentoBatalhas('${etapaId}')">Ver Batalhas</button>
+                        ${evento.etapa.status === 'batalhas' && usuarioTipo !== 'admin' ? `<button type="button" class="btn btn-warning" onclick="entrarBatalhas('${etapaId}')">Ir para Batalhas</button>` : ''}
                     ` : ''}
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
                 </div>
@@ -1687,6 +1698,22 @@ function renderizarVoltasAdmin(equipes, etapaInfo) {
             mensagemAnterior.remove();
         }
     }
+
+    // Se qualificação finalizada, mostrar resultado e chaveamento
+    if (qualificacaoFinalizada) {
+        const secaoResultado = document.getElementById('secaoResultadoQualificacao');
+        const secaoChaveamento = document.getElementById('secaoChaveamentoBatalhas');
+        const etapaId = document.getElementById('etapaIdAtual')?.value || etapaInfo?.id;
+        if (secaoResultado) secaoResultado.style.display = 'block';
+        if (secaoChaveamento) secaoChaveamento.style.display = 'block';
+        if (etapaId && typeof carregarResultadoQualificacaoInline === 'function') carregarResultadoQualificacaoInline(etapaId);
+        if (etapaId && typeof carregarChaveamentoBatalhasInline === 'function') carregarChaveamentoBatalhasInline(etapaId);
+    } else {
+        const secaoResultado = document.getElementById('secaoResultadoQualificacao');
+        const secaoChaveamento = document.getElementById('secaoChaveamentoBatalhas');
+        if (secaoResultado) secaoResultado.style.display = 'none';
+        if (secaoChaveamento) secaoChaveamento.style.display = 'none';
+    }
 }
 
 async function salvarNotaEquipeAdmin(equipeId, tipoNota, valor) {
@@ -1746,11 +1773,25 @@ async function finalizarQualificacao() {
         const data = await resp.json();
         
         if (data.sucesso) {
-            mostrarToast('✓ Qualificação finalizada!', 'success');
-            // Recarregar apenas a tabela para mostrar o estado finalizado
+            mostrarToast('✓ Qualificação finalizada! Enviando para Challonge...', 'success');
+            try {
+                const respCh = await fetch(`/api/etapas/${etapaId}/enviar-challonge`, { method: 'POST', credentials: 'include' });
+                const dataCh = await respCh.json();
+                if (dataCh.sucesso) {
+                    mostrarToast(dataCh.bracket_pendente ? '⚠ Torneio criado. Inicie manualmente no Challonge (link disponível).' : '✓ Torneio criado no Challonge!', dataCh.bracket_pendente ? 'warning' : 'success');
+                } else if (dataCh.erro) {
+                    console.error('[CHALLONGE] 400/erro:', dataCh.erro);
+                    mostrarToast('⚠ Challonge: ' + dataCh.erro, 'error');
+                }
+            } catch (e) {
+                console.error('[CHALLONGE] Exceção:', e);
+                mostrarToast('⚠ Erro ao enviar para Challonge', 'error');
+            }
             setTimeout(() => {
+                if (typeof carregarResultadoQualificacaoInline === 'function') carregarResultadoQualificacaoInline(etapaId);
+                if (typeof carregarChaveamentoBatalhasInline === 'function') carregarChaveamentoBatalhasInline(etapaId);
                 atualizarTabelaVoltasAdmin();
-            }, 1000);
+            }, 500);
         } else {
             mostrarToast('❌ ' + data.erro, 'error');
         }
@@ -1762,6 +1803,279 @@ async function finalizarQualificacao() {
 
 // Tornar função global para acesso do HTML
 window.finalizarQualificacao = finalizarQualificacao;
+
+function escapeHtml(s) {
+    if (s == null) return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+/** Carrega resultado da qualificação na seção inline da página admin Fazer Etapa. */
+async function carregarResultadoQualificacaoInline(etapaId) {
+    const secao = document.getElementById('secaoResultadoQualificacao');
+    const lista = document.getElementById('listaResultadoQualificacao');
+    if (!secao || !lista) return;
+    try {
+        const resp = await fetch(`/api/etapas/${etapaId}/classificacao-final`);
+        const data = await resp.json();
+        if (!data.sucesso || !data.classificacao || !data.classificacao.length) {
+            lista.innerHTML = '<p class="text-muted p-3 mb-0">Nenhum resultado ainda.</p>';
+            secao.style.display = 'block';
+            return;
+        }
+        let html = '<table class="table table-dark table-striped table-sm mb-0"><thead><tr><th>#</th><th>Equipe</th><th>Piloto</th><th>Linha</th><th>Ângulo</th><th>Estilo</th><th>Total</th></tr></thead><tbody>';
+        data.classificacao.forEach((item, i) => {
+            html += `<tr><td>${i + 1}</td><td>${escapeHtml(item.equipe_nome || '-')}</td><td>${escapeHtml(item.piloto_nome || '-')}</td><td>${item.nota_linha}</td><td>${item.nota_angulo}</td><td>${item.nota_estilo}</td><td><strong>${item.total_notas}</strong></td></tr>`;
+        });
+        html += '</tbody></table>';
+        lista.innerHTML = html;
+        secao.style.display = 'block';
+    } catch (e) {
+        lista.innerHTML = '<p class="text-danger p-3 mb-0">Erro ao carregar classificação.</p>';
+        secao.style.display = 'block';
+    }
+}
+
+/** Carrega chaveamento via bracket-challonge na seção inline, com cards. */
+async function carregarChaveamentoBatalhasInline(etapaId) {
+    if (typeof carregarResultadoQualificacaoInline === 'function') carregarResultadoQualificacaoInline(etapaId);
+    const secao = document.getElementById('secaoChaveamentoBatalhas');
+    const container = document.getElementById('chaveamentoBatalhasInline');
+    if (!secao || !container) return;
+    try {
+        const respCh = await fetch(`/api/etapas/${etapaId}/bracket-challonge`);
+        const dataCh = await respCh.json();
+        if (dataCh.sucesso && dataCh.bracket && dataCh.bracket.length > 0) {
+            const bracketData = { bracket: dataCh.bracket, url: dataCh.challonge_url, etapaId };
+            container.innerHTML = renderizarBracketChallonge(bracketData);
+        } else if (dataCh.challonge_url) {
+            container.innerHTML = '<p class="text-muted mb-0">Chaveamento será carregado do Challonge após iniciar o torneio. <a href="' + escapeHtml(dataCh.challonge_url) + '" target="_blank">Abrir no Challonge</a></p>';
+        } else {
+            container.innerHTML = '<p class="text-muted mb-0">Finalize a qualificação e envie para o Challonge para ver o chaveamento.</p>';
+        }
+        secao.style.display = 'block';
+    } catch (e) {
+        container.innerHTML = '<p class="text-danger mb-0">Erro ao carregar chaveamento.</p>';
+        secao.style.display = 'block';
+    }
+}
+
+function calcularColocacoesBracket(bracket) {
+    if (!bracket || bracket.length === 0) return [];
+    const partMap = {};
+    (bracket || []).forEach(fase => {
+        (fase.matches || []).forEach(m => {
+            const p1 = m.player1 || {}; const p2 = m.player2 || {};
+            if (p1.id) partMap[String(p1.id)] = p1.name || 'TBD';
+            if (p2.id) partMap[String(p2.id)] = p2.name || 'TBD';
+        });
+    });
+    const ultimaFase = bracket[bracket.length - 1];
+    const ultimoTemVencedor = ultimaFase && (ultimaFase.matches || []).some(m => !!m.winner_id);
+    if (!ultimoTemVencedor) return [];
+    const col = [];
+    const used = new Set();
+    for (let i = bracket.length - 1; i >= 0; i--) {
+        const fase = bracket[i];
+        (fase.matches || []).forEach(m => {
+            if (i === bracket.length - 1) {
+                if (m.winner_id) { col.push({ posicao: 1, name: partMap[String(m.winner_id)] || 'TBD' }); used.add(String(m.winner_id)); }
+                const loserId = String(m.winner_id) === String(m.player1_id) ? m.player2_id : m.player1_id;
+                if (loserId) { col.push({ posicao: 2, name: partMap[String(loserId)] || 'TBD' }); used.add(String(loserId)); }
+            } else {
+                const loserId = m.winner_id ? (String(m.winner_id) === String(m.player1_id) ? m.player2_id : m.player1_id) : null;
+                if (loserId && !used.has(String(loserId))) { col.push({ posicao: col.length + 1, name: partMap[String(loserId)] || 'TBD' }); used.add(String(loserId)); }
+            }
+        });
+    }
+    return col.sort((a, b) => a.posicao - b.posicao);
+}
+
+function renderizarBracketChallonge(bracketData) {
+    const { bracket, url, etapaId } = bracketData;
+    let html = '';
+    if (url) html += `<p class="mb-3"><a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="text-info"><i class="fas fa-external-link-alt me-1"></i>Abrir no Challonge</a> <small class="text-muted">(dados do Challonge • clique no card para definir vencedor)</small></p>`;
+    html += '<div class="bracket-challonge-vertical" style="display: inline-flex; flex-direction: row; gap: 24px; align-items: stretch; min-width: max-content;">';
+    (bracket || []).forEach(fase => {
+        html += '<div class="bracket-coluna" style="display: flex; flex-direction: column; gap: 16px; flex-shrink: 0; min-width: 240px;">';
+        html += `<div class="bracket-fase-titulo" style="text-align: center; color: #ffc107; font-weight: bold; font-size: 0.95rem; padding: 6px 0;">${escapeHtml(fase.label || '')}</div>`;
+        (fase.matches || []).forEach((m, idx) => {
+            const p1 = m.player1 || {};
+            const p2 = m.player2 || {};
+            const w1 = m.winner_id && String(m.winner_id) === String(p1.id);
+            const w2 = m.winner_id && String(m.winner_id) === String(p2.id);
+            const batalhaNum = (fase.matches || []).length > 1 ? ` ${idx + 1}` : '';
+            const matchJson = JSON.stringify({ match_id: m.match_id, player1: p1, player2: p2, winner_id: m.winner_id }).replace(/"/g, '&quot;');
+            html += `
+            <div class="card border-warning batalha-card batalha-card-clickable" data-etapa-id="${escapeHtml(etapaId || '')}" data-match="${matchJson}" style="min-width: 220px; background: #1e1e1e; border-width: 2px; flex-shrink: 0; cursor: pointer;">
+                <div class="card-header py-2 text-center" style="background: linear-gradient(135deg, #2d2d2d, #1a1a1a); color: #ffc107; font-weight: bold; font-size: 0.85rem;">
+                    &#x2694; ${escapeHtml(fase.label || '')}${batalhaNum}
+                </div>
+                <div class="card-body p-2">
+                    <div class="d-flex align-items-center justify-content-between py-2 px-2 rounded ${w1 ? 'bg-warning bg-opacity-25 border border-warning' : 'bg-dark'}" style="min-height: 38px;">
+                        <span class="badge bg-secondary me-2">${p1.seed || '-'}</span>
+                        <span class="flex-grow-1 text-truncate" style="color: #fff;" title="${escapeHtml(p1.name || 'TBD')}">${escapeHtml(p1.name || 'TBD')}</span>
+                        <span class="ms-2 fw-bold text-end" style="min-width: 24px; color: #fff;">${p1.score != null ? p1.score : '-'}</span>
+                    </div>
+                    <div class="text-center my-1" style="color: #999; font-size: 0.7rem;">VS</div>
+                    <div class="d-flex align-items-center justify-content-between py-2 px-2 rounded ${w2 ? 'bg-warning bg-opacity-25 border border-warning' : 'bg-dark'}" style="min-height: 38px;">
+                        <span class="badge bg-secondary me-2">${p2.seed || '-'}</span>
+                        <span class="flex-grow-1 text-truncate" style="color: #fff;" title="${escapeHtml(p2.name || 'TBD')}">${escapeHtml(p2.name || 'TBD')}</span>
+                        <span class="ms-2 fw-bold text-end" style="min-width: 24px; color: #fff;">${p2.score != null ? p2.score : '-'}</span>
+                    </div>
+                </div>
+            </div>`;
+        });
+        html += '</div>';
+    });
+    html += '</div>';
+    const colocações = calcularColocacoesBracket(bracket);
+    if (colocações.length > 0) {
+        html += '<div class="mt-4 pt-3" style="border-top: 1px solid rgba(255,193,7,0.3);">';
+        html += '<h6 class="mb-2" style="color: #ffc107;">🏆 Colocações (1º ao último)</h6>';
+        html += '<table class="table table-dark table-striped table-bordered tabela-colocacoes" style="color: #fff; max-width: 400px;"><thead><tr><th>Posição</th><th>Equipe</th></tr></thead><tbody>';
+        colocações.forEach((c) => {
+            const medal = c.posicao === 1 ? '🥇' : (c.posicao === 2 ? '🥈' : (c.posicao === 3 ? '🥉' : ''));
+            html += `<tr><td style="color: #fff;">${medal} ${c.posicao}º</td><td style="color: #fff;">${escapeHtml(c.name)}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+    }
+    return html;
+}
+
+function abrirModalPartidaBatalha(el) {
+    const etapaId = el.dataset.etapaId;
+    const match = JSON.parse(el.dataset.match || '{}');
+    if (!etapaId || !match.match_id) return;
+    abrirModalPartida(etapaId, match);
+}
+
+function abrirModalPartida(etapaId, match) {
+    const p1 = match.player1 || {};
+    const p2 = match.player2 || {};
+    const temVencedor = !!match.winner_id;
+    let bodyHtml = `
+        <div class="mb-3" style="color: #fff;">
+            <div class="mb-2 p-2 rounded bg-dark" style="color: #fff;"><strong style="color: #fff;">${escapeHtml(p1.name || 'TBD')}</strong> <span style="color: #999;">(seed ${p1.seed || '-'})</span><div class="small mt-1" id="modalP1Piloto" style="color: #ccc;">Piloto: carregando...</div></div>
+            <div class="text-center text-muted small">VS</div>
+            <div class="mb-2 p-2 rounded bg-dark" style="color: #fff;"><strong style="color: #fff;">${escapeHtml(p2.name || 'TBD')}</strong> <span style="color: #999;">(seed ${p2.seed || '-'})</span><div class="small mt-1" id="modalP2Piloto" style="color: #ccc;">Piloto: carregando...</div></div>
+        </div>`;
+    if (temVencedor) {
+        bodyHtml += `<button type="button" class="btn btn-warning w-100" onclick="desfazerResultadoPartida('${etapaId}', ${match.match_id})"><i class="fas fa-undo me-1"></i> Desfazer resultado</button>`;
+    } else {
+        bodyHtml += `
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-success flex-fill" onclick="reportarVencedorPartida('${etapaId}', ${match.match_id}, ${p1.id || 'null'}, this)"><i class="fas fa-trophy me-1"></i> ${escapeHtml((p1.name || 'P1').substring(0, 15))} vence</button>
+            <button type="button" class="btn btn-success flex-fill" onclick="reportarVencedorPartida('${etapaId}', ${match.match_id}, ${p2.id || 'null'}, this)"><i class="fas fa-trophy me-1"></i> ${escapeHtml((p2.name || 'P2').substring(0, 15))} vence</button>
+        </div>`;
+    }
+    const modalDiv = document.createElement('div');
+    modalDiv.className = 'modal fade';
+    modalDiv.id = 'modalPartidaBatalha';
+    modalDiv.style.zIndex = '10010';
+    modalDiv.setAttribute('tabindex', '-1');
+    modalDiv.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered" style="z-index: 10011;">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header">
+                    <h5 class="modal-title">Definir vencedor</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">${bodyHtml}</div>
+            </div>
+        </div>`;
+    document.body.appendChild(modalDiv);
+    const modal = new bootstrap.Modal(modalDiv);
+    modal.show();
+    modalDiv.dataset.etapaId = etapaId;
+    modalDiv.addEventListener('hidden.bs.modal', () => modalDiv.remove());
+
+    carregarPilotosNoModal(etapaId, p1.name, p2.name);
+}
+
+async function carregarPilotosNoModal(etapaId, nome1, nome2) {
+    try {
+        const r = await fetch(`/api/admin/etapas/${etapaId}/equipes-pilotos`, { credentials: 'include' });
+        const data = await r.json();
+        if (!data.sucesso || !Array.isArray(data.equipes)) return;
+        const eq1 = data.equipes.find(e => (e.equipe_nome || '').trim() === (nome1 || '').trim() || (nome1 && (e.equipe_nome || '').includes(nome1)));
+        const eq2 = data.equipes.find(e => (e.equipe_nome || '').trim() === (nome2 || '').trim() || (nome2 && (e.equipe_nome || '').includes(nome2)));
+        const el1 = document.getElementById('modalP1Piloto');
+        const el2 = document.getElementById('modalP2Piloto');
+        if (el1) el1.innerHTML = '<span style="color: #fff;">Equipe: ' + escapeHtml(nome1 || 'TBD') + ' | Piloto: ' + escapeHtml(eq1?.piloto_nome || '-') + '</span>';
+        if (el2) el2.innerHTML = '<span style="color: #fff;">Equipe: ' + escapeHtml(nome2 || 'TBD') + ' | Piloto: ' + escapeHtml(eq2?.piloto_nome || '-') + '</span>';
+    } catch (e) { console.warn('Erro ao carregar pilotos no modal:', e); }
+}
+
+async function reportarVencedorPartida(etapaId, matchId, winnerId, btn) {
+    const scores = '1-0';
+    if (!btn) btn = document.querySelector('[data-bs-dismiss="modal"]');
+    if (btn) btn.disabled = true;
+    try {
+        const r = await fetch(`/api/etapas/${etapaId}/challonge-match-report`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ match_id: matchId, winner_id: winnerId, scores_csv: scores })
+        });
+        const d = await r.json();
+        if (d.sucesso) {
+            bootstrap.Modal.getInstance(document.getElementById('modalPartidaBatalha')).hide();
+            await recarregarBracketChallonge(etapaId);
+            if (typeof mostrarToast === 'function') mostrarToast('Vencedor registrado!', 'success');
+        } else {
+            if (typeof mostrarToast === 'function') mostrarToast('Erro: ' + (d.erro || 'Falha'), 'error');
+        }
+    } catch (e) {
+        if (typeof mostrarToast === 'function') mostrarToast('Erro ao registrar', 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function desfazerResultadoPartida(etapaId, matchId) {
+    try {
+        const r = await fetch(`/api/etapas/${etapaId}/challonge-match-reopen`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ match_id: matchId })
+        });
+        const d = await r.json();
+        if (d.sucesso) {
+            bootstrap.Modal.getInstance(document.getElementById('modalPartidaBatalha')).hide();
+            await recarregarBracketChallonge(etapaId);
+            if (typeof mostrarToast === 'function') mostrarToast('Resultado desfeito!', 'success');
+        } else {
+            if (typeof mostrarToast === 'function') mostrarToast('Erro: ' + (d.erro || 'Falha'), 'error');
+        }
+    } catch (e) {
+        if (typeof mostrarToast === 'function') mostrarToast('Erro ao desfazer', 'error');
+    }
+}
+
+function initBracketCardClicks() {
+    if (window._bracketClicksInit) return;
+    window._bracketClicksInit = true;
+    document.addEventListener('click', function(e) {
+        const card = e.target.closest('.batalha-card-clickable');
+        if (card) abrirModalPartidaBatalha(card);
+    });
+}
+
+async function recarregarBracketChallonge(etapaId) {
+    try {
+        const resp = await fetch(`/api/etapas/${etapaId}/bracket-challonge`);
+        const data = await resp.json();
+        if (!data.sucesso || !data.bracket) return;
+        const html = renderizarBracketChallonge({ bracket: data.bracket, url: data.challonge_url, etapaId });
+        const container = document.getElementById('chaveamentoBatalhasInline');
+        if (container) container.innerHTML = html;
+        const modalBody = document.querySelector('#modalChaveamentoBatalhas .modal-body');
+        if (modalBody) modalBody.innerHTML = html;
+    } catch (e) { console.error('Erro ao recarregar bracket:', e); }
+}
 
 async function verResultadoQualificacao(etapaId) {
     try {
@@ -1832,7 +2146,6 @@ async function entrarBatalhas(etapaId) {
         
         if (data.sucesso) {
             mostrarToast('✅ Bem-vindo às batalhas!', 'success');
-            // Talvez recarregar ou redirecionar
             setTimeout(() => location.reload(), 1000);
         } else {
             mostrarToast('❌ ' + data.erro, 'error');
@@ -1843,6 +2156,84 @@ async function entrarBatalhas(etapaId) {
     }
 }
 
-// Tornar globais
+async function mostrarChaveamentoBatalhas(etapaId) {
+    const isAdminFazerEtapa = (window.location.pathname === '/admin/fazer-etapa' || (window.location.pathname || '').indexOf('fazer-etapa') !== -1) && document.getElementById('secaoChaveamentoBatalhas');
+    if (isAdminFazerEtapa) {
+        await carregarChaveamentoBatalhasInline(etapaId);
+        const secao = document.getElementById('secaoChaveamentoBatalhas');
+        if (secao) secao.scrollIntoView({ behavior: 'smooth' });
+        return;
+    }
+    try {
+        const resp = await fetch(`/api/etapas/${etapaId}/bracket-challonge`);
+        const data = await resp.json();
+        let html;
+        if (data.sucesso && data.bracket && data.bracket.length > 0) {
+            html = renderizarBracketChallonge({ bracket: data.bracket, url: data.challonge_url, etapaId });
+        } else {
+            html = '<p class="text-muted mb-0">Conecte o Challonge em Configurações e finalize a qualificação.</p>';
+        }
+        const modalDiv = document.createElement('div');
+        modalDiv.className = 'modal fade';
+        modalDiv.id = 'modalChaveamentoBatalhas';
+        modalDiv.innerHTML = `
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content bg-dark text-white">
+                    <div class="modal-header" style="border-bottom: 1px solid #444;">
+                        <h5 class="modal-title">⚔️ Chaveamento das Batalhas</h5>
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-sm btn-success" id="btnEnviarChallonge" onclick="enviarParaChallonge('${etapaId}')">
+                                <i class="fas fa-external-link-alt"></i> Enviar para Challonge
+                            </button>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                    </div>
+                    <div class="modal-body" style="max-height: 70vh; overflow-x: auto; overflow-y: auto;">
+                        ${html}
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(modalDiv);
+        const modal = new bootstrap.Modal(modalDiv);
+        modal.show();
+        modalDiv.addEventListener('hidden.bs.modal', () => modalDiv.remove());
+    } catch (e) {
+        console.error('Erro:', e);
+        mostrarToast('Erro ao carregar chaveamento', 'error');
+    }
+}
+
+async function enviarParaChallonge(etapaId) {
+    const btn = document.getElementById('btnEnviarChallonge');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+    try {
+        const resp = await fetch(`/api/etapas/${etapaId}/enviar-challonge`, { method: 'POST', credentials: 'include' });
+        const data = await resp.json();
+        if (data.sucesso) {
+            mostrarToast(data.bracket_pendente ? 'Torneio criado. Inicie manualmente no Challonge (link aberto).' : 'Torneio enviado para o Challonge!', data.bracket_pendente ? 'warning' : 'success');
+            if (data.url) window.open(data.url, '_blank');
+        } else {
+            mostrarToast('Erro: ' + (data.erro || 'Falha ao enviar'), 'error');
+        }
+    } catch (e) {
+        mostrarToast('Erro ao enviar para Challonge', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-external-link-alt"></i> Enviar para Challonge';
+    }
+}
+
+// Tornar globais e inicializar clique nos cards
 window.verResultadoQualificacao = verResultadoQualificacao;
 window.entrarBatalhas = entrarBatalhas;
+window.mostrarChaveamentoBatalhas = mostrarChaveamentoBatalhas;
+window.enviarParaChallonge = enviarParaChallonge;
+window.reportarVencedorPartida = reportarVencedorPartida;
+window.desfazerResultadoPartida = desfazerResultadoPartida;
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initBracketCardClicks);
+} else {
+    initBracketCardClicks();
+}

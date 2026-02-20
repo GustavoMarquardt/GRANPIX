@@ -371,30 +371,19 @@
   }
   }
   async function atualizarContadoresSolicitacoes() {
+  if (typeof window.atualizarContadoresSolicitacoesAdmin === 'function') return window.atualizarContadoresSolicitacoesAdmin();
   try {
-  // Contar solicitações de peça pendentes
   const respPecas = await fetch('/api/admin/solicitacoes-pecas');
   const pecas = await respPecas.json();
-  const pecasPendentes = Array.isArray(pecas)
-  ? pecas.filter(s => s.status === 'pendente').length
-  : 0;
+  const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
   const elemPecas = document.getElementById('solicitacoesPecasPendentes');
-  if (elemPecas) {
-  elemPecas.textContent = pecasPendentes;
-  }
-  // Contar solicitações de carro pendentes
+  if (elemPecas) elemPecas.textContent = pecasPendentes;
   const respCarros = await fetch('/api/admin/solicitacoes-carros');
   const carros = await respCarros.json();
-  const carrosPendentes = Array.isArray(carros)
-  ? carros.filter(s => s.status === 'pendente').length
-  : 0;
+  const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
   const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
-  if (elemCarros) {
-  elemCarros.textContent = carrosPendentes;
-  }
-  } catch (e) {
-  console.error('Erro ao atualizar contadores de solicitações:', e);
-  }
+  if (elemCarros) elemCarros.textContent = carrosPendentes;
+  } catch (e) { console.error('Erro ao atualizar contadores:', e); }
   }
   async function carregarCarros() {
   try {
@@ -483,6 +472,17 @@
   alert('Erro ao cadastrar: ' + e.message);
   }
   }
+  function fecharModalEditarCarro() {
+  const modalEl = document.getElementById('modalEditarCarro');
+  if (!modalEl) return;
+  if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+  bootstrap.Modal.getInstance(modalEl)?.hide();
+  } else {
+  modalEl.classList.remove('show'); modalEl.style.display = 'none';
+  document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+  document.body.classList.remove('modal-open');
+  }
+  }
   function abrirEdicaoCarro(carro) {
   document.getElementById('editCarroId').value = carro.id || '';
   document.getElementById('editCarroMarca').value = carro.marca || '';
@@ -501,8 +501,14 @@
   if (btnDel) btnDel.style.display = carro.imagem ? 'inline-block' : 'none';
   }
   document.getElementById('editCarroImagem').value = '';
-  const modal = new bootstrap.Modal(document.getElementById('modalEditarCarro'));
-  modal.show();
+  const modalEl = document.getElementById('modalEditarCarro');
+  if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+  new bootstrap.Modal(modalEl).show();
+  } else {
+  modalEl.classList.add('show'); modalEl.style.display = 'block';
+  document.body.classList.add('modal-open');
+  const backdrop = document.createElement('div'); backdrop.className = 'modal-backdrop fade show'; document.body.appendChild(backdrop);
+  }
   }
   async function salvarEdicaoCarro() {
   const id = document.getElementById('editCarroId')?.value;
@@ -523,7 +529,7 @@
   const r = await fetch('/api/admin/editar-carro', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   const data = await r.json();
   if (data.sucesso) {
-  bootstrap.Modal.getInstance(document.getElementById('modalEditarCarro'))?.hide();
+  fecharModalEditarCarro();
   carregarCarros();
   alert('Carro atualizado.');
   } else {
@@ -541,7 +547,7 @@
   const r = await fetch('/api/admin/deletar-carro', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
   const data = await r.json();
   if (data.sucesso) {
-  bootstrap.Modal.getInstance(document.getElementById('modalEditarCarro'))?.hide();
+  fecharModalEditarCarro();
   carregarCarros();
   alert('Carro deletado.');
   } else {

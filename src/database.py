@@ -311,6 +311,23 @@ class DatabaseManager:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ''')
 
+        # Tabela de Voltas (qualificação: notas por equipe/etapa)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS volta (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                id_piloto VARCHAR(64),
+                id_equipe VARCHAR(64) NOT NULL,
+                id_etapa VARCHAR(64) NOT NULL,
+                nota_linha INT DEFAULT 0,
+                nota_angulo INT DEFAULT 0,
+                nota_estilo INT DEFAULT 0,
+                status VARCHAR(20) DEFAULT 'aguardando',
+                UNIQUE KEY unique_equipe_etapa (id_equipe, id_etapa),
+                INDEX idx_etapa (id_etapa),
+                INDEX idx_equipe (id_equipe)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ''')
+
         # Tabela de Candidatos Pilotos para Equipes em Etapas (Inscrições de Pilotos)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS candidatos_piloto_etapa (
@@ -652,6 +669,33 @@ class DatabaseManager:
         self._migrar_etapas_temporada()
         # Migração para adicionar ordem de qualificação
         self._migrar_ordem_qualificacao()
+        # Migração para cadastro de pilotos sem equipe (senha + equipe_id nullable)
+        self._migrar_pilotos_cadastro()
+
+    def _migrar_pilotos_cadastro(self) -> None:
+        """Migração: adiciona senha aos pilotos e permite equipe_id NULL (pilotos sem equipe)."""
+        if not self._table_exists('pilotos'):
+            return
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        try:
+            if not self._column_exists('pilotos', 'senha'):
+                cursor.execute(
+                    "ALTER TABLE pilotos ADD COLUMN senha VARCHAR(255) DEFAULT '' AFTER nome"
+                )
+                print("[DB] Adicionando coluna senha à tabela pilotos...")
+            if self.is_mysql:
+                cursor.execute("""
+                    ALTER TABLE pilotos MODIFY COLUMN equipe_id VARCHAR(64) NULL
+                """)
+                print("[DB] pilotos.equipe_id agora permite NULL")
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"[DB] Erro na migração pilotos cadastro: {e}")
+        finally:
+            cursor.close()
+            conn.close()
 
     def _migrar_etapas_temporada(self) -> None:
         """Migração: adiciona campos de temporada às etapas"""
@@ -5095,17 +5139,9 @@ class DatabaseManager:
             ''', (novo_saldo_pix, equipe_id))
             
             # 5. Registrar a participação
-            # Definir piloto_id baseado no tipo de participação
+            # piloto_id: FK referência pilotos(id). Para dono_vai_andar o dono pilota mas
+            # não há piloto cadastrado em pilotos - tipo_participacao já indica o caso.
             piloto_id = None
-            if tipo_participacao == 'dono_vai_andar':
-                # Piloto é a equipe
-                piloto_id = equipe_id
-            elif tipo_participacao == 'tenho_piloto':
-                # Vai ser atribuído depois (quando o piloto for selecionado)
-                piloto_id = None
-            elif tipo_participacao == 'precisa_piloto':
-                # Piloto será atribuído por admin
-                piloto_id = None
             
             cursor.execute('''
                 INSERT INTO participacoes_etapas (id, etapa_id, equipe_id, carro_id, piloto_id, tipo_participacao, status)

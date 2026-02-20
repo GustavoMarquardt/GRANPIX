@@ -220,7 +220,7 @@
   <div id="loadingSolicitacoesCarros" class="text-center py-4 text-muted"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>
   <div id="listaSolicitacoesCarros" style="display: none;">
   <div id="cardsPorEquipeCarros"></div>
-  <p id="nenhumaSolicitacaoCarros" class="text-muted mb-0" style="display: none;">Nenhuma solicitação de carro encontrada.</p>
+  <p id="nenhumaSolicitacaoCarros" class="text-muted mb-0" style="display: none;">Nenhuma solicitação encontrada.</p>
   </div>
   <div id="erroSolicitacoesCarros" class="alert alert-danger" style="display: none;"></div>
   </div>
@@ -235,6 +235,10 @@
   const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
   return v ? v[2] : null;
   }
+  function formatarMoedaLocal(valor) {
+    if (valor == null || valor === '') return '—';
+    return 'R$ ' + Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  }
   async function carregarSolicitacoesCarros() {
   const loading = document.getElementById('loadingSolicitacoesCarros');
   const lista = document.getElementById('listaSolicitacoesCarros');
@@ -245,46 +249,63 @@
   lista.style.display = 'none';
   erro.style.display = 'none';
   try {
-  const r = await fetch('/api/admin/solicitacoes-carros', { credentials: 'include' });
-  const data = await r.json();
-  if (!r.ok) {
-  erro.textContent = data.erro || 'Erro ao carregar solicitações.';
-  erro.style.display = 'block';
-  return;
-  }
-  const solicitacoes = Array.isArray(data) ? data : [];
+  var solicitacoesPecas = [];
+  var solicitacoesCarros = [];
+  const rPecas = await fetch('/api/admin/solicitacoes-pecas', { credentials: 'include' });
+  const dataPecas = await rPecas.json();
+  if (rPecas.ok && Array.isArray(dataPecas)) solicitacoesPecas = dataPecas;
+  const rCarros = await fetch('/api/admin/solicitacoes-carros', { credentials: 'include' });
+  const dataCarros = await rCarros.json();
+  if (rCarros.ok && Array.isArray(dataCarros)) solicitacoesCarros = dataCarros;
+  var itens = solicitacoesPecas.map(function(s) { return { tipo: 'peca', data: s }; });
+  solicitacoesCarros.forEach(function(s) { itens.push({ tipo: 'carro', data: s }); });
   container.innerHTML = '';
-  if (solicitacoes.length === 0) {
+  if (itens.length === 0) {
   nenhuma.style.display = 'block';
   lista.style.display = 'block';
   } else {
   nenhuma.style.display = 'none';
   var porEquipe = {};
-  solicitacoes.forEach(function(sol) {
+  itens.forEach(function(item) {
+  var sol = item.data;
   var key = String(sol.equipe_id || '');
   if (!porEquipe[key]) porEquipe[key] = { nome: sol.equipe_nome || 'Equipe ' + key || '—', itens: [] };
-  porEquipe[key].itens.push(sol);
+  porEquipe[key].itens.push(item);
   });
-  const tipoSolLabel = function(t) { return (t === 'ativacao') ? 'Ativação de carro' : (t || '—'); };
+  const tipoLabels = { motor: 'Motor', cambio: 'Câmbio', suspensao: 'Suspensão', kit_angulo: 'Kit Ângulo', diferencial: 'Diferencial' };
   Object.keys(porEquipe).forEach(function(equipeKey) {
   const grupo = porEquipe[equipeKey];
   const card = document.createElement('div');
   card.className = 'card mb-3';
-  const pendentes = grupo.itens.filter(function(s) { return s.status === 'pendente'; }).length;
-  card.innerHTML = '<div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center"><span><i class="fas fa-users me-2"></i>' + (grupo.nome || '—') + '</span><span class="badge bg-light text-dark">' + grupo.itens.length + ' solicitaç' + (grupo.itens.length === 1 ? 'ão' : 'ões') + (pendentes ? ' · ' + pendentes + ' pendente(s)' : '') + '</span></div><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover table-striped mb-0"><thead class="table-light"><tr><th>Carro</th><th>Tipo</th><th>Status</th><th>Ações</th></tr></thead><tbody class="tbody-equipe-carros"></tbody></table></div></div>';
+  const pendentes = grupo.itens.filter(function(i) { return i.data.status === 'pendente'; }).length;
+  card.innerHTML = '<div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center"><span><i class="fas fa-users me-2"></i>' + (grupo.nome || '—') + '</span><span class="badge bg-light text-dark">' + grupo.itens.length + ' solicitaç' + (grupo.itens.length === 1 ? 'ão' : 'ões') + (pendentes ? ' · ' + pendentes + ' pendente(s)' : '') + '</span></div><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover table-striped mb-0"><thead class="table-light"><tr><th>Peça a instalar</th><th>Carro</th><th>Preço</th><th>Status</th><th>Ações</th></tr></thead><tbody class="tbody-equipe-carros"></tbody></table></div></div>';
   const tbody = card.querySelector('.tbody-equipe-carros');
-  grupo.itens.forEach(function(sol) {
-  const carroStr = (sol.marca && sol.modelo) ? (sol.marca + ' ' + sol.modelo) : (sol.tipo_carro || ('Carro #' + (sol.carro_id || '—')));
-  const statusBadge = sol.status === 'pendente' ? '<span class="badge bg-warning text-dark">Pendente</span>' : (sol.status === 'aprovado' || sol.status === 'aprovada') ? '<span class="badge bg-success">Aprovado</span>' : '<span class="badge bg-secondary">' + (sol.status || '') + '</span>';
-  const tr = document.createElement('tr');
-  tr.innerHTML = '<td>' + carroStr + '</td><td>' + tipoSolLabel(sol.tipo_solicitacao) + '</td><td class="status-cell-carro">' + statusBadge + '</td><td class="acoes-sol-carro"></td>';
+  grupo.itens.forEach(function(item) {
+  var sol = item.data;
+  var tr = document.createElement('tr');
+  var pecaStr, carroStr, precoStr, statusBadge;
+  if (item.tipo === 'peca') {
+  pecaStr = (sol.peca_nome || '—') + ((sol.peca_tipo && tipoLabels[sol.peca_tipo]) ? ' <small class="text-muted">(' + tipoLabels[sol.peca_tipo] + ')</small>' : '');
+  carroStr = sol.carro ? (sol.carro.marca + ' ' + sol.carro.modelo + (sol.carro.status ? ' (' + sol.carro.status + ')' : '')) : (sol.carro_id ? 'Carro #' + sol.carro_id : '—');
+  precoStr = formatarMoedaLocal(sol.preco);
+  statusBadge = sol.status === 'pendente' ? '<span class="badge bg-warning text-dark">Pendente</span>' : sol.status === 'instalado' ? '<span class="badge bg-success">Instalado</span>' : '<span class="badge bg-secondary">' + (sol.status || '') + '</span>';
+  } else {
+  pecaStr = '—';
+  carroStr = (sol.marca && sol.modelo) ? (sol.marca + ' ' + sol.modelo) : (sol.tipo_carro || ('Carro #' + (sol.carro_id || '—')));
+  precoStr = '—';
+  statusBadge = sol.status === 'pendente' ? '<span class="badge bg-warning text-dark">Pendente</span>' : (sol.status === 'aprovado' || sol.status === 'aprovada') ? '<span class="badge bg-success">Aprovado</span>' : '<span class="badge bg-secondary">' + (sol.status || '') + '</span>';
+  }
+  tr.innerHTML = '<td>' + pecaStr + '</td><td>' + carroStr + '</td><td>' + precoStr + '</td><td class="status-cell-carro">' + statusBadge + '</td><td class="acoes-sol-carro"></td>';
   const acoes = tr.querySelector('.acoes-sol-carro');
   if (sol.status === 'pendente') {
   const btn = document.createElement('button');
   btn.className = 'btn btn-sm btn-success';
   btn.innerHTML = '<i class="fas fa-check"></i> Aprovar';
   btn.type = 'button';
-  btn.addEventListener('click', function() { aprovarSolicitacaoCarro(sol, btn, tr); });
+  btn.addEventListener('click', function() {
+  if (item.tipo === 'peca') aprovarSolicitacaoPecaNaPaginaCarros(sol, btn, tr);
+  else aprovarSolicitacaoCarro(sol, btn, tr);
+  });
   acoes.appendChild(btn);
   } else {
   acoes.textContent = '—';
@@ -300,6 +321,39 @@
   erro.style.display = 'block';
   } finally {
   loading.style.display = 'none';
+  }
+  }
+  async function aprovarSolicitacaoPecaNaPaginaCarros(sol, btn, tr) {
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
+  try {
+  const payload = { solicitacao_id: sol.id, status: 'instalado', tipo: 'peca' };
+  if (sol.carro_id) payload.carro_id = sol.carro_id;
+  const r = await fetch('/api/admin/processar-solicitacao', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrf_token') || '' },
+  body: JSON.stringify(payload),
+  credentials: 'include'
+  });
+  const data = await r.json();
+  if (r.ok && data.sucesso) {
+  const statusCell = tr.querySelector('.status-cell-carro');
+  if (statusCell) statusCell.innerHTML = '<span class="badge bg-success">Instalado</span>';
+  const acoesCell = tr.querySelector('.acoes-sol-carro');
+  if (acoesCell) acoesCell.textContent = '—';
+  atualizarContadoresSolicitacoes();
+  if (typeof mostrarToast === 'function') mostrarToast(data.mensagem || 'Peça aprovada e instalada no carro.', 'success'); else alert(data.mensagem || 'Peça aprovada e instalada no carro.');
+  carregarSolicitacoesCarros();
+  } else {
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-check"></i> Aprovar';
+  const msg = (data && data.erro) ? data.erro : 'Erro ao processar.';
+  if (typeof mostrarToast === 'function') mostrarToast(msg, 'danger'); else alert(msg);
+  }
+  } catch (e) {
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-check"></i> Aprovar';
+  if (typeof mostrarToast === 'function') mostrarToast('Erro: ' + e.message, 'danger'); else alert('Erro: ' + e.message);
   }
   }
   async function aprovarSolicitacaoCarro(sol, btn, tr) {
@@ -320,6 +374,7 @@
   if (acoesCell) acoesCell.textContent = '—';
   atualizarContadoresSolicitacoes();
   if (typeof mostrarToast === 'function') mostrarToast(data.mensagem || 'Solicitação aprovada. Carro ativado.', 'success'); else alert(data.mensagem || 'Solicitação aprovada.');
+  carregarSolicitacoesCarros();
   } else {
   btn.disabled = false;
   btn.innerHTML = '<i class="fas fa-check"></i> Aprovar';
@@ -352,15 +407,16 @@
   } catch (e) { console.log('Erro ao atualizar status'); }
   }
   async function atualizarContadoresSolicitacoes() {
+  if (typeof window.atualizarContadoresSolicitacoesAdmin === 'function') return window.atualizarContadoresSolicitacoesAdmin();
   try {
   const respPecas = await fetch('/api/admin/solicitacoes-pecas');
   const pecas = await respPecas.json();
-  const pecasPendentes = Array.isArray(pecas) ? pecas.filter(function(s) { return s.status === 'pendente'; }).length : 0;
+  const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
   const elemPecas = document.getElementById('solicitacoesPecasPendentes');
   if (elemPecas) elemPecas.textContent = pecasPendentes;
   const respCarros = await fetch('/api/admin/solicitacoes-carros');
   const carros = await respCarros.json();
-  const carrosPendentes = Array.isArray(carros) ? carros.filter(function(s) { return s.status === 'pendente'; }).length : 0;
+  const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
   const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
   if (elemCarros) elemCarros.textContent = carrosPendentes;
   } catch (e) { console.error('Erro ao atualizar contadores:', e); }
