@@ -1423,7 +1423,8 @@ class TestE2ECampeonatoEtapas:
             async () => {
                 const r = await fetch('/api/admin/listar-campeonatos', { credentials: 'include' });
                 const data = await r.json();
-                return { ok: r.ok, campeonatos: Array.isArray(data) ? data : [] };
+                const campeonatos = (data && data.campeonatos) ? data.campeonatos : (Array.isArray(data) ? data : []);
+                return { ok: r.ok, campeonatos };
             }
             """
         )

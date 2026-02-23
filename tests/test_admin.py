@@ -395,7 +395,8 @@ class TestCriarCampeonato:
         assert campeonato_id
         listagem = client_admin.get("/api/admin/listar-campeonatos")
         assert listagem.status_code == 200
-        campeonatos = listagem.get_json()
+        data = listagem.get_json()
+        campeonatos = data.get("campeonatos", data) if isinstance(data, dict) else data
         assert isinstance(campeonatos, list)
         encontrado = next((c for c in campeonatos if c.get("nome") == nome), None)
         assert encontrado is not None, f"Campeonato '{nome}' deve aparecer na listagem."
@@ -422,7 +423,8 @@ class TestCadastrarEtapa:
 
     def test_cadastrar_etapa_campeonato_e_etapa_persistem(self, client_admin):
         """Cria campeonato, cria etapa nele e verifica que ambos aparecem nas listagens."""
-        nome_camp = "Campeonato E2E Etapas"
+        import uuid
+        nome_camp = f"Campeonato Etapas {uuid.uuid4().hex[:8]}"
         r_camp = client_admin.post(
             "/api/admin/criar-campeonato",
             json={"nome": nome_camp, "serie": "A", "numero_etapas": 5},

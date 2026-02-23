@@ -1896,8 +1896,8 @@ function renderizarBracketChallonge(bracketData) {
     const { bracket, url, etapaId } = bracketData;
     let html = '';
     if (url) html += `<p class="mb-3"><a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="text-info"><i class="fas fa-external-link-alt me-1"></i>Abrir no Challonge</a> <small class="text-muted">(dados do Challonge • clique no card para definir vencedor)</small></p>`;
-    html += '<div class="bracket-challonge-vertical" style="display: inline-flex; flex-direction: row; gap: 24px; align-items: stretch; min-width: max-content;">';
-    (bracket || []).forEach(fase => {
+    html += '<div class="bracket-challonge-vertical" style="display: inline-flex; flex-direction: row; gap: 8px; align-items: stretch; min-width: max-content;">';
+    (bracket || []).forEach((fase, faseIdx) => {
         html += '<div class="bracket-coluna" style="display: flex; flex-direction: column; gap: 16px; flex-shrink: 0; min-width: 240px;">';
         html += `<div class="bracket-fase-titulo" style="text-align: center; color: #ffc107; font-weight: bold; font-size: 0.95rem; padding: 6px 0;">${escapeHtml(fase.label || '')}</div>`;
         (fase.matches || []).forEach((m, idx) => {
@@ -1906,7 +1906,16 @@ function renderizarBracketChallonge(bracketData) {
             const w1 = m.winner_id && String(m.winner_id) === String(p1.id);
             const w2 = m.winner_id && String(m.winner_id) === String(p2.id);
             const batalhaNum = (fase.matches || []).length > 1 ? ` ${idx + 1}` : '';
-            const matchJson = JSON.stringify({ match_id: m.match_id, player1: p1, player2: p2, winner_id: m.winner_id }).replace(/"/g, '&quot;');
+            const matchJson = JSON.stringify({ match_id: m.match_id, player1: p1, player2: p2, winner_id: m.winner_id, round: m.round || 1 }).replace(/"/g, '&quot;');
+            const proxFase = bracket[faseIdx + 1];
+            let linhaAvanca = '';
+            if (proxFase && (proxFase.matches || []).length > 0) {
+                const proxIdx = Math.floor(idx / 2);
+                const proxLabel = (proxFase.matches || []).length > 1 ? (proxFase.label || '') + ' ' + (proxIdx + 1) : (proxFase.label || '');
+                linhaAvanca = '<div class="mt-1 pt-1" style="font-size: 0.75rem; color: #ffc107; border-top: 1px dashed rgba(255,193,7,0.4); text-align: center;">→ Vencedor avança para: ' + escapeHtml(proxLabel) + '</div>';
+            } else if (faseIdx === bracket.length - 1) {
+                linhaAvanca = '<div class="mt-1 pt-1" style="font-size: 0.75rem; color: #ffc107; border-top: 1px dashed rgba(255,193,7,0.4); text-align: center;">🏆 Final</div>';
+            }
             html += `
             <div class="card border-warning batalha-card batalha-card-clickable" data-etapa-id="${escapeHtml(etapaId || '')}" data-match="${matchJson}" style="min-width: 220px; background: #1e1e1e; border-width: 2px; flex-shrink: 0; cursor: pointer;">
                 <div class="card-header py-2 text-center" style="background: linear-gradient(135deg, #2d2d2d, #1a1a1a); color: #ffc107; font-weight: bold; font-size: 0.85rem;">
@@ -1924,10 +1933,20 @@ function renderizarBracketChallonge(bracketData) {
                         <span class="flex-grow-1 text-truncate" style="color: #fff;" title="${escapeHtml(p2.name || 'TBD')}">${escapeHtml(p2.name || 'TBD')}</span>
                         <span class="ms-2 fw-bold text-end" style="min-width: 24px; color: #fff;">${p2.score != null ? p2.score : '-'}</span>
                     </div>
+                    ${linhaAvanca}
                 </div>
             </div>`;
         });
         html += '</div>';
+        if (faseIdx < (bracket || []).length - 1) {
+            const numMatches = (fase.matches || []).length;
+            let connectorHtml = '<div class="bracket-connector" style="display: flex; flex-direction: column; justify-content: space-around; width: 24px; flex-shrink: 0; padding: 8px 0;">';
+            for (let i = 0; i < numMatches; i++) {
+                connectorHtml += '<div style="display: flex; align-items: center;"><div style="width: 100%; height: 2px; background: rgba(255,193,7,0.5);"></div><span style="color: #ffc107; font-size: 0.7rem; margin-left: 2px;">→</span></div>';
+            }
+            connectorHtml += '</div>';
+            html += connectorHtml;
+        }
     });
     html += '</div>';
     const colocações = calcularColocacoesBracket(bracket);
@@ -1956,18 +1975,43 @@ function abrirModalPartida(etapaId, match) {
     const p2 = match.player2 || {};
     const temVencedor = !!match.winner_id;
     let bodyHtml = `
-        <div class="mb-3" style="color: #fff;">
-            <div class="mb-2 p-2 rounded bg-dark" style="color: #fff;"><strong style="color: #fff;">${escapeHtml(p1.name || 'TBD')}</strong> <span style="color: #999;">(seed ${p1.seed || '-'})</span><div class="small mt-1" id="modalP1Piloto" style="color: #ccc;">Piloto: carregando...</div></div>
-            <div class="text-center text-muted small">VS</div>
-            <div class="mb-2 p-2 rounded bg-dark" style="color: #fff;"><strong style="color: #fff;">${escapeHtml(p2.name || 'TBD')}</strong> <span style="color: #999;">(seed ${p2.seed || '-'})</span><div class="small mt-1" id="modalP2Piloto" style="color: #ccc;">Piloto: carregando...</div></div>
+        <div class="row g-2 mb-3">
+            <div class="col-6">
+                <div class="card bg-dark border-warning h-100">
+                    <div class="card-header py-2"><strong style="color:#fff;">${escapeHtml(p1.name || 'TBD')}</strong></div>
+                    <div class="card-body py-2 small">
+                        <div id="modalP1Piloto" style="color:#ccc;">Piloto: carregando...</div>
+                        <div id="modalP1Vida" class="mt-2" style="color:#ddd;">Vida: carregando...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card bg-dark border-warning h-100">
+                    <div class="card-header py-2"><strong style="color:#fff;">${escapeHtml(p2.name || 'TBD')}</strong></div>
+                    <div class="card-body py-2 small">
+                        <div id="modalP2Piloto" style="color:#ccc;">Piloto: carregando...</div>
+                        <div id="modalP2Vida" class="mt-2" style="color:#ddd;">Vida: carregando...</div>
+                    </div>
+                </div>
+            </div>
         </div>`;
     if (temVencedor) {
         bodyHtml += `<button type="button" class="btn btn-warning w-100" onclick="desfazerResultadoPartida('${etapaId}', ${match.match_id})"><i class="fas fa-undo me-1"></i> Desfazer resultado</button>`;
     } else {
         bodyHtml += `
         <div class="d-flex gap-2">
-            <button type="button" class="btn btn-success flex-fill" onclick="reportarVencedorPartida('${etapaId}', ${match.match_id}, ${p1.id || 'null'}, this)"><i class="fas fa-trophy me-1"></i> ${escapeHtml((p1.name || 'P1').substring(0, 15))} vence</button>
-            <button type="button" class="btn btn-success flex-fill" onclick="reportarVencedorPartida('${etapaId}', ${match.match_id}, ${p2.id || 'null'}, this)"><i class="fas fa-trophy me-1"></i> ${escapeHtml((p2.name || 'P2').substring(0, 15))} vence</button>
+            <button type="button" class="btn btn-success flex-fill" onclick="reportarVencedorPartida('${etapaId}', ${match.match_id}, ${p1.id || 'null'}, this, ${match.round || 1})"><i class="fas fa-trophy me-1"></i> ${escapeHtml((p1.name || 'P1').substring(0, 15))} vence</button>
+            <button type="button" class="btn btn-success flex-fill" onclick="reportarVencedorPartida('${etapaId}', ${match.match_id}, ${p2.id || 'null'}, this, ${match.round || 1})"><i class="fas fa-trophy me-1"></i> ${escapeHtml((p2.name || 'P2').substring(0, 15))} vence</button>
+        </div>
+        <div class="mt-3">
+            <button type="button" class="btn btn-outline-warning w-100" id="btnExecutarPassada">
+                <i class="fas fa-dice me-1"></i> Executar passada <span id="passadaCount">(0/2)</span>
+            </button>
+            <small class="text-muted d-block mt-1">Roda 1 dado de dano para Motor, Câmbio, Suspensão, Kit-ângulo e Diferencial de ambos os carros. Máx. 2 vezes.</small>
+            <div id="resultadoPassada" class="mt-2 p-2 rounded bg-secondary" style="display:none; max-height:180px; overflow-y:auto;">
+                <div class="small fw-bold text-warning mb-1">Resultado da passada:</div>
+                <div id="resultadoPassadaConteudo" class="small" style="color:#ddd;"></div>
+            </div>
         </div>`;
     }
     const modalDiv = document.createElement('div');
@@ -1976,7 +2020,7 @@ function abrirModalPartida(etapaId, match) {
     modalDiv.style.zIndex = '10010';
     modalDiv.setAttribute('tabindex', '-1');
     modalDiv.innerHTML = `
-        <div class="modal-dialog modal-dialog-centered" style="z-index: 10011;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" style="z-index: 10011; max-width: 90%;">
             <div class="modal-content bg-dark text-white">
                 <div class="modal-header">
                     <h5 class="modal-title">Definir vencedor</h5>
@@ -1989,9 +2033,27 @@ function abrirModalPartida(etapaId, match) {
     const modal = new bootstrap.Modal(modalDiv);
     modal.show();
     modalDiv.dataset.etapaId = etapaId;
+    modalDiv.dataset.eq1Nome = p1.name || '';
+    modalDiv.dataset.eq2Nome = p2.name || '';
+    modalDiv.dataset.passadaCount = '0';
     modalDiv.addEventListener('hidden.bs.modal', () => modalDiv.remove());
 
     carregarPilotosNoModal(etapaId, p1.name, p2.name);
+
+    const btnPassada = modalDiv.querySelector('#btnExecutarPassada');
+    if (btnPassada) {
+        btnPassada.addEventListener('click', function() {
+            const modal = document.getElementById('modalPartidaBatalha');
+            const count = parseInt(modal?.dataset?.passadaCount || '0', 10);
+            if (count >= 2) return;
+            executarPassada(etapaId, {
+                equipe1_id: modal?.dataset?.equipe1Id || '',
+                equipe2_id: modal?.dataset?.equipe2Id || '',
+                equipe1_nome: modal?.dataset?.eq1Nome || '',
+                equipe2_nome: modal?.dataset?.eq2Nome || ''
+            }, btnPassada, modal);
+        });
+    }
 }
 
 async function carregarPilotosNoModal(etapaId, nome1, nome2) {
@@ -2005,19 +2067,132 @@ async function carregarPilotosNoModal(etapaId, nome1, nome2) {
         const el2 = document.getElementById('modalP2Piloto');
         if (el1) el1.innerHTML = '<span style="color: #fff;">Equipe: ' + escapeHtml(nome1 || 'TBD') + ' | Piloto: ' + escapeHtml(eq1?.piloto_nome || '-') + '</span>';
         if (el2) el2.innerHTML = '<span style="color: #fff;">Equipe: ' + escapeHtml(nome2 || 'TBD') + ' | Piloto: ' + escapeHtml(eq2?.piloto_nome || '-') + '</span>';
+        const modal = document.getElementById('modalPartidaBatalha');
+        if (modal) {
+            modal.dataset.equipe1Id = eq1?.equipe_id || '';
+            modal.dataset.equipe2Id = eq2?.equipe_id || '';
+            carregarVidaPecasModal(etapaId, eq1?.equipe_id || '', eq2?.equipe_id || '');
+        }
     } catch (e) { console.warn('Erro ao carregar pilotos no modal:', e); }
 }
 
-async function reportarVencedorPartida(etapaId, matchId, winnerId, btn) {
+async function carregarVidaPecasModal(etapaId, equipe1Id, equipe2Id) {
+    const el1 = document.getElementById('modalP1Vida');
+    const el2 = document.getElementById('modalP2Vida');
+    if (!el1 || !el2) return;
+    if (!equipe1Id && !equipe2Id) {
+        el1.innerHTML = '<span class="text-muted">Vida: equipes não identificadas</span>';
+        el2.innerHTML = '<span class="text-muted">Vida: equipes não identificadas</span>';
+        return;
+    }
+    try {
+        const url = `/api/etapas/${etapaId}/pecas-batalha?equipe1_id=${encodeURIComponent(equipe1Id)}&equipe2_id=${encodeURIComponent(equipe2Id)}`;
+        const r = await fetch(url, { credentials: 'include' });
+        const data = await r.json();
+        if (!data.sucesso || !Array.isArray(data.carros)) {
+            el1.innerHTML = '<span class="text-muted">Vida: erro ao carregar</span>';
+            el2.innerHTML = '<span class="text-muted">Vida: erro ao carregar</span>';
+            return;
+        }
+        const car1 = data.carros[0] || { pecas: [] };
+        const car2 = data.carros[1] || { pecas: [] };
+        el1.innerHTML = formatarVidaPecas(car1.pecas);
+        el2.innerHTML = formatarVidaPecas(car2.pecas);
+    } catch (e) {
+        console.warn('Erro ao carregar vida das peças:', e);
+        el1.innerHTML = '<span class="text-muted">Vida: erro</span>';
+        el2.innerHTML = '<span class="text-muted">Vida: erro</span>';
+    }
+}
+
+function formatarVidaPecas(pecas) {
+    if (!pecas || pecas.length === 0) return '<span class="text-muted">Nenhuma peça instalada</span>';
+    return pecas.map(p => {
+        const pct = p.percentual ?? Math.round((p.durabilidade_atual || 0) / (p.durabilidade_maxima || 100) * 100);
+        const tipo = (p.tipo || p.nome || '?').replace('_', '-');
+        const cor = pct > 60 ? '#4ade80' : pct > 30 ? '#fbbf24' : '#f87171';
+        return `<div><span style="color:${cor}">${tipo}: ${pct}%</span> (${p.durabilidade_atual ?? '-'}/${p.durabilidade_maxima ?? '-'})</div>`;
+    }).join('');
+}
+
+function renderizarResultadoPassada(d) {
+    const box = document.getElementById('resultadoPassada');
+    const content = document.getElementById('resultadoPassadaConteudo');
+    if (!box || !content) return;
+    const lancamentos = d.lancamentos || [];
+    const dadoFaces = d.dado_faces || 6;
+    if (lancamentos.length === 0) {
+        content.textContent = d.resumo || 'Passada executada.';
+    } else {
+        const linhas = [];
+        const porCarro = {};
+        lancamentos.forEach(l => {
+            const cid = l.carro_id || '?';
+            if (!porCarro[cid]) porCarro[cid] = [];
+            porCarro[cid].push(l);
+        });
+        Object.keys(porCarro).forEach((cid, idx) => {
+            const carLabel = 'Carro ' + (idx + 1);
+            porCarro[cid].forEach(l => {
+                const tipo = (l.tipo || '?').replace('_', '-');
+                const maxS = l.max ? ' (MAX!)' : '';
+                linhas.push(`${carLabel} | ${tipo}: dado=${l.dado}/${dadoFaces}${maxS} → dano ${l.dano}`);
+            });
+        });
+        const total = (d.detalhes || []).reduce((s, x) => s + (x.dano || 0), 0);
+        content.innerHTML = linhas.join('<br>') + '<br><strong class="text-warning mt-1">Total: ' + total.toFixed(1) + '</strong>';
+    }
+    box.style.display = 'block';
+}
+
+async function executarPassada(etapaId, dados, btn, modal) {
+    const count = parseInt(modal?.dataset?.passadaCount || '0', 10);
+    if (count >= 2) return;
+    if (btn) btn.disabled = true;
+    const payload = {};
+    if (dados.equipe1_id) payload.equipe1_id = dados.equipe1_id;
+    if (dados.equipe2_id) payload.equipe2_id = dados.equipe2_id;
+    if (dados.equipe1_nome) payload.equipe1_nome = dados.equipe1_nome;
+    if (dados.equipe2_nome) payload.equipe2_nome = dados.equipe2_nome;
+    try {
+        const r = await fetch(`/api/etapas/${etapaId}/executar-passada`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+        });
+        const d = await r.json();
+        if (d.sucesso) {
+            const novoCount = count + 1;
+            if (modal) modal.dataset.passadaCount = String(novoCount);
+            const span = document.getElementById('passadaCount');
+            if (span) span.textContent = '(' + novoCount + '/2)';
+            if (novoCount >= 2 && btn) btn.disabled = true;
+            if (typeof mostrarToast === 'function') mostrarToast('Passada executada! ' + (d.resumo || ''), 'success');
+            renderizarResultadoPassada(d);
+            carregarVidaPecasModal(etapaId, dados.equipe1_id || '', dados.equipe2_id || '');
+        } else {
+            if (typeof mostrarToast === 'function') mostrarToast('Erro: ' + (d.erro || 'Falha'), 'error');
+        }
+    } catch (e) {
+        if (typeof mostrarToast === 'function') mostrarToast('Erro ao executar passada', 'error');
+    } finally {
+        if (btn && parseInt(modal?.dataset?.passadaCount || '0', 10) < 2) btn.disabled = false;
+    }
+}
+
+async function reportarVencedorPartida(etapaId, matchId, winnerId, btn, round) {
     const scores = '1-0';
     if (!btn) btn = document.querySelector('[data-bs-dismiss="modal"]');
     if (btn) btn.disabled = true;
+    const payload = { match_id: matchId, winner_id: winnerId, scores_csv: scores };
+    if (round != null) payload.round = round;
     try {
         const r = await fetch(`/api/etapas/${etapaId}/challonge-match-report`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ match_id: matchId, winner_id: winnerId, scores_csv: scores })
+            body: JSON.stringify(payload)
         });
         const d = await r.json();
         if (d.sucesso) {

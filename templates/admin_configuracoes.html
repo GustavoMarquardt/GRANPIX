@@ -177,6 +177,9 @@
   <a class="nav-link" href="/admin/comissoes">
   <i class="fas fa-money-bill"></i> Comissões
   </a>
+  <a class="nav-link" href="/admin/campeonatos">
+  <i class="fas fa-trophy"></i> Colocações / Histórico
+  </a>
   <a class="nav-link active" href="/admin/configuracoes">
   <i class="fas fa-cog"></i> Configurações
   </a>
@@ -249,6 +252,42 @@
   <input type="number" class="form-control" id="cfgValorPecaAtivacao" step="0.01" min="0" placeholder="Ex: 10">
   <small class="text-muted">Valor por peça não paga ao ativar carro</small>
   </div>
+  <h6 class="text-muted mb-3 mt-3">Dano nas batalhas</h6>
+  <div class="mb-3">
+  <label class="form-label">Valor do dado de dano (faces)</label>
+  <input type="number" class="form-control" id="cfgDadoDano" min="2" max="100" step="1" placeholder="Ex: 20">
+  <small class="text-muted">Número de faces do dado de dano (ex: 20 = D20). Usado no botão "Executar passada" dos cards de batalha.</small>
+  </div>
+  <h6 class="text-muted mb-3 mt-4">Remuneração por série (doricoins)</h6>
+  <div class="row">
+  <div class="col-md-6 mb-3">
+  <label class="form-label">Participar etapa – Série A</label>
+  <input type="number" class="form-control" id="cfgParticipacaoA" min="0" step="1" placeholder="3000">
+  <small class="text-muted">Doricoins por participar da etapa</small>
+  </div>
+  <div class="col-md-6 mb-3">
+  <label class="form-label">Participar etapa – Série B</label>
+  <input type="number" class="form-control" id="cfgParticipacaoB" min="0" step="1" placeholder="2000">
+  </div>
+  <div class="col-md-6 mb-3">
+  <label class="form-label">Vitória batalha (fase 2+) – Série A</label>
+  <input type="number" class="form-control" id="cfgVitoriaA" min="0" step="1" placeholder="1500">
+  <small class="text-muted">Doricoins por vencer batalha a partir da fase 2</small>
+  </div>
+  <div class="col-md-6 mb-3">
+  <label class="form-label">Vitória batalha (fase 2+) – Série B</label>
+  <input type="number" class="form-control" id="cfgVitoriaB" min="0" step="1" placeholder="1000">
+  </div>
+  </div>
+  <h6 class="text-muted mb-3 mt-3">Premiação final do campeonato (doricoins)</h6>
+  <p class="small text-muted">Atribuída automaticamente ao final do campeonato (quando todas as etapas forem concluídas).</p>
+  <div class="row">
+  <div class="col mb-2"><label class="form-label">1º</label><input type="number" class="form-control" id="cfgPremio1" min="0" step="1" placeholder="0"></div>
+  <div class="col mb-2"><label class="form-label">2º</label><input type="number" class="form-control" id="cfgPremio2" min="0" step="1" placeholder="0"></div>
+  <div class="col mb-2"><label class="form-label">3º</label><input type="number" class="form-control" id="cfgPremio3" min="0" step="1" placeholder="0"></div>
+  <div class="col mb-2"><label class="form-label">4º</label><input type="number" class="form-control" id="cfgPremio4" min="0" step="1" placeholder="0"></div>
+  <div class="col mb-2"><label class="form-label">5º</label><input type="number" class="form-control" id="cfgPremio5" min="0" step="1" placeholder="0"></div>
+  </div>
   </div>
   </div>
   </div>
@@ -276,6 +315,16 @@
   if (el('cfgTrocaCarro')) el('cfgTrocaCarro').value = cfg('valor_ativacao_carro') || '30';
   if (el('cfgParticiparEtapa')) el('cfgParticiparEtapa').value = cfg('valor_etapa') || '1000';
   if (el('cfgValorPecaAtivacao')) el('cfgValorPecaAtivacao').value = cfg('valor_instalacao_peca') || '10';
+  if (el('cfgDadoDano')) el('cfgDadoDano').value = cfg('dado_dano') || '20';
+  if (el('cfgParticipacaoA')) el('cfgParticipacaoA').value = cfg('participacao_etapa_A') || '3000';
+  if (el('cfgParticipacaoB')) el('cfgParticipacaoB').value = cfg('participacao_etapa_B') || '2000';
+  if (el('cfgVitoriaA')) el('cfgVitoriaA').value = cfg('vitoria_batalha_A') || '1500';
+  if (el('cfgVitoriaB')) el('cfgVitoriaB').value = cfg('vitoria_batalha_B') || '1000';
+  if (el('cfgPremio1')) el('cfgPremio1').value = cfg('premio_campeonato_1') || '0';
+  if (el('cfgPremio2')) el('cfgPremio2').value = cfg('premio_campeonato_2') || '0';
+  if (el('cfgPremio3')) el('cfgPremio3').value = cfg('premio_campeonato_3') || '0';
+  if (el('cfgPremio4')) el('cfgPremio4').value = cfg('premio_campeonato_4') || '0';
+  if (el('cfgPremio5')) el('cfgPremio5').value = cfg('premio_campeonato_5') || '0';
   } catch (e) { console.error('Erro ao carregar configurações:', e); }
   }
   async function salvarConfiguracoes() {
@@ -284,7 +333,17 @@
   { chave: 'preco_instalacao_warehouse', valor: parseFloat(el('cfgInstalacaoPeca')?.value) || 50, descricao: 'Preço para instalar peça do armazém' },
   { chave: 'valor_ativacao_carro', valor: parseFloat(el('cfgTrocaCarro')?.value) || 30, descricao: 'Valor para troca/ativação de carro' },
   { chave: 'valor_etapa', valor: parseFloat(el('cfgParticiparEtapa')?.value) || 1000, descricao: 'Valor para participar da etapa' },
-  { chave: 'valor_instalacao_peca', valor: parseFloat(el('cfgValorPecaAtivacao')?.value) || 10, descricao: 'Valor por peça na ativação de carro' }
+  { chave: 'valor_instalacao_peca', valor: parseFloat(el('cfgValorPecaAtivacao')?.value) || 10, descricao: 'Valor por peça na ativação de carro' },
+  { chave: 'dado_dano', valor: parseInt(el('cfgDadoDano')?.value, 10) || 20, descricao: 'Número de faces do dado de dano nas passadas' },
+  { chave: 'participacao_etapa_A', valor: parseInt(el('cfgParticipacaoA')?.value, 10) || 3000, descricao: 'Doricoins por participar etapa Série A' },
+  { chave: 'participacao_etapa_B', valor: parseInt(el('cfgParticipacaoB')?.value, 10) || 2000, descricao: 'Doricoins por participar etapa Série B' },
+  { chave: 'vitoria_batalha_A', valor: parseInt(el('cfgVitoriaA')?.value, 10) || 1500, descricao: 'Doricoins por vitória batalha fase 2+ Série A' },
+  { chave: 'vitoria_batalha_B', valor: parseInt(el('cfgVitoriaB')?.value, 10) || 1000, descricao: 'Doricoins por vitória batalha fase 2+ Série B' },
+  { chave: 'premio_campeonato_1', valor: parseInt(el('cfgPremio1')?.value, 10) || 0, descricao: 'Premiação 1º lugar campeonato' },
+  { chave: 'premio_campeonato_2', valor: parseInt(el('cfgPremio2')?.value, 10) || 0, descricao: 'Premiação 2º lugar campeonato' },
+  { chave: 'premio_campeonato_3', valor: parseInt(el('cfgPremio3')?.value, 10) || 0, descricao: 'Premiação 3º lugar campeonato' },
+  { chave: 'premio_campeonato_4', valor: parseInt(el('cfgPremio4')?.value, 10) || 0, descricao: 'Premiação 4º lugar campeonato' },
+  { chave: 'premio_campeonato_5', valor: parseInt(el('cfgPremio5')?.value, 10) || 0, descricao: 'Premiação 5º lugar campeonato' }
   ];
   try {
   for (const c of configs) {

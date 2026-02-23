@@ -120,7 +120,7 @@ class GerenciadorEquipes:
             tipo="motor",
             durabilidade_maxima=100.0,
             preco=500.0,
-            coeficiente_quebra=1.2  # Motores são mais sensíveis
+            coeficiente_quebra=0.35
         )
         
         cambio = Peca(
@@ -129,7 +129,7 @@ class GerenciadorEquipes:
             tipo="cambio",
             durabilidade_maxima=100.0,
             preco=300.0,
-            coeficiente_quebra=1.1  # Câmbios sofrem desgaste moderado
+            coeficiente_quebra=0.4
         )
         
         kit_angulo = Peca(
@@ -138,7 +138,7 @@ class GerenciadorEquipes:
             tipo="kit_angulo",
             durabilidade_maxima=100.0,
             preco=400.0,
-            coeficiente_quebra=0.9  # Kit de ângulo resiste bem
+            coeficiente_quebra=0.3
         )
         
         suspensao = Peca(
@@ -147,7 +147,7 @@ class GerenciadorEquipes:
             tipo="suspensao",
             durabilidade_maxima=100.0,
             preco=350.0,
-            coeficiente_quebra=1.0  # Suspensão tem desgaste padrão
+            coeficiente_quebra=0.45
         )
         
         # Criar 2 diferenciais por padrão
@@ -158,7 +158,7 @@ class GerenciadorEquipes:
                 tipo="diferencial",
                 durabilidade_maxima=100.0,
                 preco=200.0,
-                coeficiente_quebra=0.85  # Diferenciais sofrem pouco desgaste
+                coeficiente_quebra=0.4
             ),
             Peca(
                 id=str(uuid.uuid4()),
@@ -166,7 +166,7 @@ class GerenciadorEquipes:
                 tipo="diferencial",
                 durabilidade_maxima=100.0,
                 preco=200.0,
-                coeficiente_quebra=0.85  # Diferenciais sofrem pouco desgaste
+                coeficiente_quebra=0.4
             )
         ]
         

@@ -2,6 +2,7 @@
 Sistema de persistência de dados usando JSON e SQLite
 """
 import json
+import random
 import sqlite3
 import pymysql
 from pymysql.cursors import DictCursor
@@ -3769,6 +3770,85 @@ class DatabaseManager:
             print(f"Erro ao listar configurações: {e}")
             return []
 
+    def aplicar_desgaste_passada(self, carro_ids: List[str], dado_faces: int = 6) -> Dict[str, Any]:
+        """
+        Aplica desgaste de uma passada nos carros.
+        Cada peça rola 1dN: Motor, Câmbio, Suspensão, Kit-ângulo, Diferencial.
+        Se sair valor máximo, multiplica pelo coeficiente de quebra.
+        O carro pode ter mais de 1 diferencial: rola 1 dado e divide o dano entre todos.
+        Retorna resumo dos danos aplicados.
+        """
+        if dado_faces < 2:
+            dado_faces = 50
+        resumo = []
+        lancamentos = []  # [{carro_id, tipo, dado, dano, max}] para exibir no E2E/UI
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            for carro_id in carro_ids:
+                if not carro_id:
+                    continue
+                cursor.execute('''
+                    SELECT id, tipo, nome, durabilidade_maxima, durabilidade_atual, coeficiente_quebra
+                    FROM pecas WHERE carro_id = %s AND instalado = 1
+                ''', (carro_id,))
+                rows = cursor.fetchall()
+                pecas = {}  # tipo -> (id, dur_max, dur_atual, coef)
+                diferenciais = []
+                for row in rows:
+                    pid, tipo, nome, dur_max, dur_atual, coef = row[0], row[1], row[2], row[3], row[4], (row[5] or 1.0)
+                    if tipo == 'diferencial':
+                        diferenciais.append((pid, coef))
+                    elif tipo in ('motor', 'cambio', 'suspensao', 'kit_angulo'):
+                        pecas[tipo] = (pid, dur_max, dur_atual, coef)
+
+                danos_aplicados = {}  # peca_id -> delta (quanto subtrair)
+                tipo_por_pid = {}  # peca_id -> tipo para o resumo
+
+                # Parte 1: cada peça principal rola seu dado
+                for tipo in ('motor', 'cambio', 'suspensao', 'kit_angulo'):
+                    if tipo not in pecas:
+                        continue
+                    pid, dur_max, dur_atual, coef = pecas[tipo]
+                    roll = random.randint(1, dado_faces)
+                    dano = float(roll)
+                    foi_max = (roll == dado_faces)
+                    if foi_max:
+                        dano *= coef
+                    danos_aplicados[pid] = danos_aplicados.get(pid, 0) + dano
+                    tipo_por_pid[pid] = tipo
+                    lancamentos.append({'carro_id': carro_id, 'tipo': tipo, 'dado': roll, 'dano': round(dano, 2), 'max': foi_max})
+
+                # Parte 2: diferencial - rola 1 dado e divide o dano entre todos os diferenciais do carro
+                if diferenciais:
+                    coef_dif = diferenciais[0][1]  # usa o coeficiente do primeiro
+                    roll_dif = random.randint(1, dado_faces)
+                    dano_dif_total = float(roll_dif)
+                    foi_max_dif = (roll_dif == dado_faces)
+                    if foi_max_dif:
+                        dano_dif_total *= coef_dif
+                    qtd_dif = len(diferenciais)
+                    dano_por_diferencial = dano_dif_total / qtd_dif if qtd_dif > 0 else 0
+                    for pid_dif, _ in diferenciais:
+                        danos_aplicados[pid_dif] = danos_aplicados.get(pid_dif, 0) + dano_por_diferencial
+                        tipo_por_pid[pid_dif] = 'diferencial'
+                    lancamentos.append({'carro_id': carro_id, 'tipo': 'diferencial', 'dado': roll_dif, 'dano': round(dano_por_diferencial, 2), 'max': foi_max_dif})
+
+                for pid, delta in danos_aplicados.items():
+                    cursor.execute('''
+                        UPDATE pecas SET durabilidade_atual = GREATEST(0, durabilidade_atual - %s)
+                        WHERE id = %s
+                    ''', (delta, pid))
+                    resumo.append({'peca_id': pid, 'tipo': tipo_por_pid.get(pid, '?'), 'dano': round(delta, 2)})
+            conn.commit()
+            conn.close()
+            return {'sucesso': True, 'resumo': resumo, 'lancamentos': lancamentos}
+        except Exception as e:
+            print(f"[DB] Erro ao aplicar desgaste passada: {e}")
+            import traceback
+            traceback.print_exc()
+            return {'sucesso': False, 'erro': str(e), 'resumo': [], 'lancamentos': []}
+
     def registrar_comissao(self, tipo: str, valor: float, equipe_id: str = '', equipe_nome: str = '', descricao: str = '') -> bool:
         """Registra uma comissão/pagamento"""
         try:
@@ -4680,7 +4760,7 @@ class DatabaseManager:
             return False
     
     def obter_pontuacoes_campeonato(self, campeonato_id: str) -> list:
-        """Obtém todas as pontuações de um campeonato ordenadas por colocação"""
+        """Obtém todas as pontuações de um campeonato ordenadas por colocação, com piloto da última etapa."""
         try:
             conn = self._get_conn()
             cursor = conn.cursor(dictionary=True)
@@ -4704,6 +4784,17 @@ class DatabaseManager:
             
             cursor.execute(query, (campeonato_id,))
             pontuacoes = cursor.fetchall()
+            # Enriquecer com piloto da última etapa em que a equipe participou
+            for p in pontuacoes:
+                cursor.execute('''
+                    SELECT p2.nome as piloto_nome FROM participacoes_etapas pe
+                    LEFT JOIN pilotos p2 ON pe.piloto_id = p2.id
+                    JOIN etapas e ON pe.etapa_id = e.id
+                    WHERE pe.equipe_id = %s AND e.campeonato_id = %s AND pe.piloto_id IS NOT NULL
+                    ORDER BY e.data_etapa DESC, e.numero DESC LIMIT 1
+                ''', (p['equipe_id'], campeonato_id))
+                row = cursor.fetchone()
+                p['piloto_nome'] = (row or {}).get('piloto_nome') or '-'
             
             cursor.close()
             conn.close()
@@ -4776,6 +4867,21 @@ class DatabaseManager:
             print(f"[DB] Erro ao atualizar colocações: {e}")
             return False
     
+    def marcar_etapa_concluida(self, etapa_id: str) -> bool:
+        """Marca a etapa como concluída."""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE etapas SET status = 'concluida' WHERE id = %s", (etapa_id,))
+            conn.commit()
+            ok = cursor.rowcount > 0
+            cursor.close()
+            conn.close()
+            return ok
+        except Exception as e:
+            print(f"[DB] Erro marcar etapa concluída: {e}")
+            return False
+
     def cadastrar_etapa(self, etapa_id: str, campeonato_id: str, numero: int, nome: str, descricao: str, data_etapa: str, hora_etapa: str, serie: str) -> bool:
         """Cadastra uma nova etapa de temporada"""
         try:
@@ -5314,6 +5420,53 @@ class DatabaseManager:
         except Exception as e:
             print(f"[DB] Erro ao obter equipes precisando piloto: {e}")
             return []
+
+    def creditar_doricoins_equipe(self, equipe_id: str, valor: float) -> bool:
+        """Adiciona doricoins a uma equipe. Retorna True se sucesso."""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            cursor.execute('UPDATE equipes SET doricoins = doricoins + %s WHERE id = %s', (float(valor), equipe_id))
+            conn.commit()
+            ok = cursor.rowcount > 0
+            cursor.close()
+            conn.close()
+            return ok
+        except Exception as e:
+            print(f"[DB] Erro ao creditar doricoins: {e}")
+            return False
+
+    def obter_equipe_id_por_nome_na_etapa(self, etapa_id: str, equipe_nome: str) -> Optional[str]:
+        """Retorna equipe_id da equipe com o nome dado que participa da etapa."""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute('''
+                SELECT pe.equipe_id FROM participacoes_etapas pe
+                JOIN equipes e ON pe.equipe_id = e.id
+                WHERE pe.etapa_id = %s AND TRIM(e.nome) = TRIM(%s) LIMIT 1
+            ''', (etapa_id, equipe_nome))
+            row = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            return row['equipe_id'] if row else None
+        except Exception as e:
+            print(f"[DB] Erro obter equipe por nome: {e}")
+            return None
+
+    def obter_serie_equipe(self, equipe_id: str) -> str:
+        """Retorna a série da equipe (A ou B)."""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute('SELECT serie FROM equipes WHERE id = %s', (equipe_id,))
+            row = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            s = (row or {}).get('serie', 'A') or 'A'
+            return s.strip().upper() if s else 'A'
+        except Exception:
+            return 'A'
 
     def obter_pontos_por_colocacao(self, colocacao: int) -> int:
         """Retorna os pontos baseado na colocacao"""

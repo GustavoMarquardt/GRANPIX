@@ -5218,7 +5218,8 @@ async function carregarCampeonatos() {
             headers: obterHeaders()
         });
 
-        const campeonatos = await resp.json();
+        const data = await resp.json();
+        const campeonatos = (data && data.campeonatos) ? data.campeonatos : (Array.isArray(data) ? data : []);
 
         // Preencher dropdown de seleção
         const select = document.getElementById('etapaCampeonato');
