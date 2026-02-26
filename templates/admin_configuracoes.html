@@ -56,6 +56,12 @@
                 <span id="challongeStatus" class="small text-muted"></span>
                 <small class="d-block text-muted">Configure CHALLONGE_API_KEY no .env (challonge.com/settings/developer)</small>
               </div>
+              <h6 class="text-muted mb-3">Transferências</h6>
+              <div class="mb-3">
+                <label class="form-label">Taxa de transferência (%)</label>
+                <input type="number" class="form-control" id="cfgTaxaTransferencia" min="0" max="100" step="0.5" placeholder="10">
+                <small class="text-muted">Percentual cobrado ao transferir dinheiro entre equipes (ex: 10 = 10%)</small>
+              </div>
               <h6 class="text-muted mb-3">Comissões PIX (R$)</h6>
               <div class="row">
                 <div class="col-md-4 mb-3">
@@ -142,6 +148,7 @@ async function carregarConfiguracoes() {
     if (el('cfgInstalacaoPeca')) el('cfgInstalacaoPeca').value = cfg('preco_instalacao_warehouse') || '50';
     if (el('cfgTrocaCarro')) el('cfgTrocaCarro').value = cfg('valor_ativacao_carro') || '30';
     if (el('cfgParticiparEtapa')) el('cfgParticiparEtapa').value = cfg('valor_etapa') || '1000';
+    if (el('cfgTaxaTransferencia')) el('cfgTaxaTransferencia').value = cfg('taxa_transferencia') || '10';
     if (el('cfgComissaoCarro')) el('cfgComissaoCarro').value = cfg('comissao_carro') || '10';
     if (el('cfgComissaoPeca')) el('cfgComissaoPeca').value = cfg('comissao_peca') || '10';
     if (el('cfgComissaoWarehouse')) el('cfgComissaoWarehouse').value = cfg('comissao_warehouse') || '50';
@@ -162,6 +169,7 @@ async function carregarConfiguracoes() {
 async function salvarConfiguracoes() {
   const el = (id) => document.getElementById(id);
   const configs = [
+    { chave: 'taxa_transferencia', valor: parseFloat(el('cfgTaxaTransferencia')?.value) || 10, descricao: 'Taxa de transferência entre equipes (%)' },
     { chave: 'comissao_carro', valor: parseFloat(el('cfgComissaoCarro')?.value) || 10, descricao: 'Comissão por carro (R$)' },
     { chave: 'comissao_peca', valor: parseFloat(el('cfgComissaoPeca')?.value) || 10, descricao: 'Comissão por peça (R$)' },
     { chave: 'comissao_warehouse', valor: parseFloat(el('cfgComissaoWarehouse')?.value) || 50, descricao: 'Comissão warehouse (R$)' },

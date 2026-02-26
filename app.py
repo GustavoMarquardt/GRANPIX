@@ -4438,7 +4438,7 @@ def get_historico_compras():
 @app.route('/api/transferencia', methods=['POST'])
 @requer_login_api
 def transferencia_dinheiro():
-    """Transferir dinheiro entre equipes com taxa bancária fixa de 20%"""
+    """Transferir dinheiro entre equipes (taxa configurável em Configurações)"""
     equipe_id_origem = obter_equipe_id_request()
     if not equipe_id_origem:
         return jsonify({'erro': 'Não autenticado'}), 401
@@ -4447,7 +4447,7 @@ def transferencia_dinheiro():
         dados = request.get_json()
         equipe_id_destino = dados.get('equipe_id_destino')
         valor = float(dados.get('valor', 0))
-        taxa_bancaria = 20  # Taxa fixa de 20%
+        taxa_bancaria = float(api.db.obter_configuracao('taxa_transferencia') or '10')
         
         print(f"[TRANSFERÊNCIA] Origem: {equipe_id_origem}, Destino: {equipe_id_destino}, Valor: {valor}")
         
@@ -4544,6 +4544,13 @@ def transferencia_dinheiro():
         import traceback
         traceback.print_exc()
         return jsonify({'erro': f'Erro ao processar transferência: {str(e)}'}), 500
+
+@app.route('/api/taxa-transferencia', methods=['GET'])
+@requer_login_api
+def obter_taxa_transferencia():
+    """Retorna a taxa de transferência configurada (para preview no frontend)"""
+    taxa = float(api.db.obter_configuracao('taxa_transferencia') or '10')
+    return jsonify({'taxa': taxa})
 
 @app.route('/api/transferencias/historico', methods=['GET'])
 @requer_login_api
@@ -5458,13 +5465,17 @@ def editar_carro():
         )
         
         if sucesso:
-            # Salvar no banco
+            # Salvar no banco e propagar preço para variações
             carro = None
             for c in api.loja_carros.modelos:
                 if c.id == carro_id:
                     carro = c
                     break
             if carro:
+                preco_novo = float(preco) if preco else carro.preco
+                # Atualizar valor das variações para refletir o novo preço (loja e variações)
+                for v in getattr(carro, 'variacoes', []):
+                    v.valor = preco_novo
                 api.db.salvar_modelo_loja(carro, imagem_base64=imagem_base64)
                 # Recarregar do banco para garantir sincronização
                 modelos_db = api.db.carregar_modelos_loja()
@@ -7764,6 +7775,7 @@ def listar_transacoes_pix():
 def inicializar_configuracoes_padrao():
     """Inicializa as configurações padrão de comissão se não existirem"""
     configs_padrao = {
+        'taxa_transferencia': ('10', 'Taxa de transferência entre equipes (em %)'),
         'comissao_carro': ('10', 'Comissão para cada carro comprado (em reais)'),
         'comissao_peca': ('10', 'Comissão para cada peça comprada (em reais)'),
         'comissao_warehouse': ('50', 'Comissão warehouse (em reais)'),

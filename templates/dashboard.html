@@ -198,12 +198,12 @@
                                             <input type="number" id="valorTransferencia" class="form-control" min="1" placeholder="Ex: 1000">
                                         </div>
                                         <div class="alert alert-info mb-3">
-                                            <small><strong>Taxa Bancária Fixa: 20%</strong></small>
+                                            <small>Taxa configurável em <strong>Configurações</strong> (padrão 10%)</small>
                                         </div>
                                         <div class="alert alert-info mb-3" id="previewTransferencia" style="display:none;">
                                             <small>
                                                 Valor a enviar: <strong id="previewEnvio">0</strong> 💰<br>
-                                                Taxa (20%): <strong id="previewTaxa">0</strong> 💰<br>
+                                                <span id="previewTaxaLabel">Taxa (10%):</span> <strong id="previewTaxa">0</strong> 💰<br>
                                                 Equipe receberá: <strong id="previewRecebe" class="text-success">0</strong> 💰
                                             </small>
                                         </div>
@@ -280,47 +280,40 @@
         </div>
     </div>
 
-    <!-- Modal QR Code PIX -->
+    <!-- Modal QR Code PIX (compacto - botão de pagamento sempre visível) -->
     <div class="modal fade" id="pixModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered" style="max-width: 500px;">
+        <div class="modal-dialog modal-dialog-centered modal-sm" style="max-width: 380px;">
             <div class="modal-content">
-                <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title">💰 Pagamento PIX</h5>
+                <div class="modal-header bg-success text-white py-2">
+                    <h5 class="modal-title mb-0">💰 Pagamento PIX</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body text-center" style="max-height: 85vh; overflow-y: auto;">
-                    <p class="text-muted mb-3">Escaneie o código QR com seu celular para pagar</p>
+                <div class="modal-body text-center py-2" style="max-height: 70vh; overflow-y: auto;">
+                    <p class="text-muted mb-2 small">Escaneie o QR Code para pagar</p>
                     
-                    <div id="pixQrCodeContainer" class="mb-4 text-center" style="padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 380px;">
-                        <img id="pixQrCode" src="" alt="QR Code PIX" style="display: block; margin: 0 auto; max-width: 95%; max-height: 400px; width: auto; height: auto; min-width: 280px; object-fit: contain; image-rendering: pixelated;">
+                    <div id="pixQrCodeContainer" class="mb-2 text-center" style="padding: 10px; display: flex; justify-content: center; align-items: center; min-height: 180px;">
+                        <img id="pixQrCode" src="" alt="QR Code PIX" style="display: block; margin: 0 auto; max-width: 100%; max-height: 200px; width: auto; height: auto; object-fit: contain; image-rendering: pixelated;">
                     </div>
                     
-                    <div class="card bg-light mb-3">
-                        <div class="card-body">
-                            <p class="mb-3"><strong>Item:</strong> <span id="pixItemNome">-</span></p>
-                            <div class="mb-3 border-top pt-2">
-                                <div class="d-flex justify-content-between mb-2">
-                                    <span>Valor do item:</span>
-                                    <strong>R$ <span id="pixValorItem">0.00</span></strong>
-                                </div>
-                                <div class="d-flex justify-content-between text-danger">
-                                    <span>Taxa MercadoPago (1%):</span>
-                                    <strong>+ R$ <span id="pixTaxaValor">0.00</span></strong>
-                                </div>
-                            </div>
-                            <div class="d-flex justify-content-between align-items-center border-top pt-2">
-                                <span class="h6 mb-0">Total:</span>
-                                <span class="text-success h5 mb-0">R$ <span id="pixValorTotal">0.00</span></span>
-                            </div>
+                    <div class="card bg-light mb-2 py-2 px-2">
+                        <p class="mb-1 small"><strong>Item:</strong> <span id="pixItemNome">-</span></p>
+                        <div class="d-flex justify-content-between small">
+                            <span>Item:</span><strong>R$ <span id="pixValorItem">0.00</span></strong>
+                        </div>
+                        <div class="d-flex justify-content-between small text-danger">
+                            <span>Taxa:</span><strong>+ R$ <span id="pixTaxaValor">0.00</span></strong>
+                        </div>
+                        <div class="d-flex justify-content-between border-top pt-1">
+                            <span class="fw-bold">Total:</span>
+                            <span class="text-success fw-bold">R$ <span id="pixValorTotal">0.00</span></span>
                         </div>
                     </div>
                     
-                    <div id="pixStatus" class="alert alert-info">
-                        ⏳ Aguardando confirmação do pagamento...
-                    </div>
-                    <div class="d-grid gap-2">
-                        <button type="button" class="btn btn-primary" id="botaoConfirmarManual" onclick="confirmarPagamentoManual()">✓ Confirmar Pagamento (Testes)</button>
-                        <button type="button" class="btn btn-secondary" id="botaoFecharPix" data-bs-dismiss="modal">Fechar</button>
+                    <div id="pixStatus" class="alert alert-info py-2 mb-2 small">⏳ Aguardando confirmação...</div>
+                    
+                    <div class="d-grid gap-2 mb-0">
+                        <button type="button" class="btn btn-success btn-lg" id="botaoConfirmarManual" onclick="confirmarPagamentoManual()">✓ Confirmar Pagamento</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="botaoFecharPix" data-bs-dismiss="modal">Fechar</button>
                     </div>
                 </div>
             </div>

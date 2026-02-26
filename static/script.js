@@ -2033,9 +2033,14 @@ async function carregarEquipesParaTransferencia() {
     }
 }
 
-function atualizarPreviewTransferencia() {
+async function atualizarPreviewTransferencia() {
     const valor = parseFloat(document.getElementById('valorTransferencia').value) || 0;
-    const taxa = 20; // Taxa fixa de 20%
+    let taxa = 10;
+    try {
+        const r = await fetch('/api/taxa-transferencia', { headers: obterHeaders() });
+        const d = await r.json();
+        if (d.taxa != null) taxa = parseFloat(d.taxa);
+    } catch (e) {}
 
     if (valor <= 0) {
         document.getElementById('previewTransferencia').style.display = 'none';
@@ -2048,6 +2053,8 @@ function atualizarPreviewTransferencia() {
     document.getElementById('previewEnvio').textContent = formatarMoeda(valor);
     document.getElementById('previewTaxa').textContent = formatarMoeda(taxaValor);
     document.getElementById('previewRecebe').textContent = formatarMoeda(recebe);
+    const taxaPreviewLabel = document.getElementById('previewTaxaLabel');
+    if (taxaPreviewLabel) taxaPreviewLabel.textContent = 'Taxa (' + taxa + '%):';
 
     document.getElementById('previewTransferencia').style.display = 'block';
 }
@@ -2055,7 +2062,12 @@ function atualizarPreviewTransferencia() {
 async function executarTransferencia() {
     const equipeDestino = document.getElementById('equipeDestino').value;
     const valor = parseFloat(document.getElementById('valorTransferencia').value) || 0;
-    const taxa = 20; // Taxa fixa de 20%
+    let taxa = 10;
+    try {
+        const r = await fetch('/api/taxa-transferencia', { headers: obterHeaders() });
+        const d = await r.json();
+        if (d.taxa != null) taxa = parseFloat(d.taxa);
+    } catch (e) {}
 
     if (!equipeDestino) {
         mostrarToast('Selecione uma equipe destino', 'error');
@@ -2073,8 +2085,7 @@ async function executarTransferencia() {
             headers: { ...obterHeaders(), 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 equipe_id_destino: equipeDestino,
-                valor: valor,
-                taxa_bancaria: taxa
+                valor: valor
             })
         });
 
@@ -3191,17 +3202,17 @@ function atualizarDestinoPecasArmazem(pecaKey, novoDestino) {
         
         // Se selecionou repouso, filtrar para mostrar apenas carros em repouso
         if (novoDestino === 'repouso') {
+            const carrosEmRepouso = (window.garagemAtual?.carros || []).filter(c => c && !c.carro_ativo);
             const selectElement = carroSelect.querySelector('select');
             if (selectElement) {
                 const opcoes = selectElement.querySelectorAll('option');
+                let carrosRepousoHabilitados = [];
                 opcoes.forEach(opcao => {
                     if (opcao.value === '') return; // Manter placeholder
                     
-                    // Encontrar o carro correspondente
                     const carro = window.garagemAtual?.carros?.find(c => String(c.id) === String(opcao.value));
                     
                     if (carro && carro.carro_ativo) {
-                        // Carro está ativo, desabilitar
                         opcao.disabled = true;
                         opcao.style.opacity = '0.5';
                         opcao.style.cursor = 'not-allowed';
@@ -3209,13 +3220,19 @@ function atualizarDestinoPecasArmazem(pecaKey, novoDestino) {
                             opcao.textContent = opcao.textContent.split(' (')[0] + ' (Ativo - não disponível)';
                         }
                     } else {
-                        // Carro está em repouso, habilitar
                         opcao.disabled = false;
                         opcao.style.opacity = '1';
                         opcao.style.cursor = 'pointer';
-                        opcao.textContent = opcao.textContent.split(' (')[0]; // Remover labels
+                        opcao.textContent = opcao.textContent.split(' (')[0];
+                        if (carro) carrosRepousoHabilitados.push({ id: carro.id });
                     }
                 });
+                // Se só tem 1 carro em repouso, auto-selecionar
+                if (carrosRepousoHabilitados.length === 1) {
+                    const carroUnico = carrosRepousoHabilitados[0];
+                    selectElement.value = carroUnico.id;
+                    window.selecaoAdicaoPecas[pecaKey].destino_carro_id = carroUnico.id;
+                }
             }
         } else {
             // Se selecionou ativo, habilitar todos os carros ativos
