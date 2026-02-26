@@ -2980,14 +2980,17 @@ class DatabaseManager:
             return False
 
     def obter_pecas_carro_com_compatibilidade(self, carro_id):
-        """Obtém todas as peças base instaladas no carro + upgrades instalados em cada uma (nome + id)"""
+        """Obtém todas as peças base instaladas no carro + upgrades instalados em cada uma.
+        Usa durabilidade da tabela PECAS (instalada no carro), não de pecas_loja."""
         try:
             conn = self._get_conn()
-            cursor = conn.cursor()
+            cursor = conn.cursor(dictionary=True)
 
-            # Apenas peças base (não upgrades): upgrade_id IS NULL
+            # Durabilidade vem da tabela PECAS (p), não de pecas_loja (pl)
             cursor.execute('''
-                SELECT p.id, p.peca_loja_id, p.nome, p.tipo, p.durabilidade_maxima, p.durabilidade_atual, pl.compatibilidade,
+                SELECT p.id AS id, p.peca_loja_id AS peca_loja_id, p.nome AS nome, p.tipo AS tipo,
+                       p.durabilidade_maxima AS durabilidade_maxima, p.durabilidade_atual AS durabilidade_atual,
+                       pl.compatibilidade AS compatibilidade,
                        COALESCE(pl.preco, p.preco, 0) AS preco_loja
                 FROM pecas p
                 LEFT JOIN pecas_loja pl ON p.peca_loja_id = pl.id
@@ -2996,11 +2999,17 @@ class DatabaseManager:
             ''', (carro_id,))
 
             rows = cursor.fetchall()
-            # Máximo 1 base por tipo: deduplicar por tipo (evita múltiplos motores/câmbios etc.)
             seen_tipos = set()
             pecas_com_compat = []
             for row in rows:
-                peca_id, peca_loja_id, nome, tipo_peca, durabilidade_maxima, durabilidade_atual, compatibilidade_json, preco_loja = row
+                peca_id = row['id']
+                peca_loja_id = row['peca_loja_id']
+                nome = row['nome']
+                tipo_peca = row['tipo']
+                durabilidade_maxima = row.get('durabilidade_maxima')
+                durabilidade_atual = row.get('durabilidade_atual')
+                compatibilidade_json = row.get('compatibilidade')
+                preco_loja = row.get('preco_loja')
                 tipo_peca_lower = (tipo_peca or '').lower()
                 if tipo_peca_lower in seen_tipos:
                     continue
@@ -3023,26 +3032,33 @@ class DatabaseManager:
                 if compatibilidades and all(str(c).lower() == 'universal' for c in compatibilidades):
                     compatibilidades = []
 
-                v_atual = durabilidade_atual if (durabilidade_atual is not None and str(durabilidade_atual) != '') else 100
+                try:
+                    v_atual = float(durabilidade_atual) if (durabilidade_atual is not None and str(durabilidade_atual).strip() != '') else 100.0
+                except (TypeError, ValueError):
+                    v_atual = 100.0
+                try:
+                    v_max = float(durabilidade_maxima) if (durabilidade_maxima is not None and str(durabilidade_maxima).strip() != '') else 100.0
+                except (TypeError, ValueError):
+                    v_max = 100.0
                 item = {
                     'id': peca_id,
                     'peca_loja_id': peca_loja_id,
                     'nome': nome,
                     'tipo': tipo_peca,
-                    'durabilidade_maxima': durabilidade_maxima or 100,
+                    'durabilidade_maxima': v_max,
                     'durabilidade_atual': v_atual,
                     'preco_loja': float(preco_loja or 0),
                     'compatibilidades': compatibilidades,
                     'upgrades': []
                 }
-                # Upgrades instalados nesta peça (pecas com instalado_em_peca_id = esta peça)
+                # Upgrades instalados nesta peça (para custo retífica = (peça + upgrades)/2)
                 if self._column_exists('pecas', 'instalado_em_peca_id'):
                     cursor.execute('''
-                        SELECT id, nome FROM pecas
+                        SELECT id, nome, COALESCE(preco, 0) AS preco FROM pecas
                         WHERE instalado_em_peca_id = %s AND upgrade_id IS NOT NULL AND upgrade_id != ''
                     ''', (peca_id,))
                     for up_row in cursor.fetchall():
-                        item['upgrades'].append({'id': up_row[0], 'nome': up_row[1]})
+                        item['upgrades'].append({'id': up_row[0], 'nome': up_row[1], 'preco': float(up_row[2] or 0)})
                 pecas_com_compat.append(item)
             conn.close()
             return pecas_com_compat
@@ -4463,9 +4479,11 @@ class DatabaseManager:
             for carro_id in carro_ids:
                 if not carro_id:
                     continue
+                # Apenas peças base recebem desgaste; upgrades não sofrem dano
                 cursor.execute('''
                     SELECT id, tipo, nome, durabilidade_maxima, durabilidade_atual, coeficiente_quebra
-                    FROM pecas WHERE carro_id = %s AND instalado = 1
+                    FROM pecas
+                    WHERE carro_id = %s AND instalado = 1 AND (upgrade_id IS NULL OR upgrade_id = '')
                 ''', (carro_id,))
                 rows = cursor.fetchall()
                 pecas = {}  # tipo -> (id, dur_max, dur_atual, coef)
@@ -6230,28 +6248,38 @@ class DatabaseManager:
 
     def recuperar_peca_vida(self, peca_id: str, equipe_id: str) -> tuple:
         """
-        Recupera a durabilidade de uma peça para 100%.
-        Custo = metade do preço da peça na loja (doricoins).
+        Recupera a durabilidade de uma peça base para 100% (retífica).
+        Upgrades não recebem dano; o custo é (peça + soma dos upgrades instalados nela) / 2.
         Retorna (True, custo) ou (False, mensagem_erro).
         """
         try:
             conn = self._get_conn()
             cursor = conn.cursor()
-            # Obter peça, carro e preço
+            # Apenas peça base (não upgrade)
             cursor.execute('''
                 SELECT p.id, p.carro_id, p.durabilidade_maxima, p.durabilidade_atual,
                        COALESCE(pl.preco, p.preco, 0) AS preco_loja
                 FROM pecas p
                 LEFT JOIN pecas_loja pl ON p.peca_loja_id = pl.id
-                WHERE p.id = %s AND p.instalado = 1
+                WHERE p.id = %s AND p.instalado = 1 AND (p.upgrade_id IS NULL OR p.upgrade_id = '')
             ''', (peca_id,))
             row = cursor.fetchone()
             if not row:
                 conn.close()
                 return False, 'Peça não encontrada ou não instalada'
             _, carro_id, durab_max, durab_atual, preco_loja = row
-            preco_loja = float(preco_loja or 0)
-            custo = preco_loja / 2
+            preco_base = float(preco_loja or 0)
+            # Soma dos preços dos upgrades instalados nesta peça
+            soma_upgrades = 0.0
+            if self._column_exists('pecas', 'instalado_em_peca_id'):
+                cursor.execute('''
+                    SELECT COALESCE(SUM(COALESCE(preco, 0)), 0) FROM pecas
+                    WHERE instalado_em_peca_id = %s AND upgrade_id IS NOT NULL AND upgrade_id != ''
+                ''', (peca_id,))
+                up_row = cursor.fetchone()
+                if up_row:
+                    soma_upgrades = float(up_row[0] or 0)
+            custo = (preco_base + soma_upgrades) / 2
             if custo <= 0:
                 conn.close()
                 return False, 'Preço da peça não definido'

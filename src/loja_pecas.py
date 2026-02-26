@@ -49,19 +49,11 @@ class LojaPecas:
     def adicionar_peca(self, nome: str, tipo: str, preco: float,
                       descricao: str, compatibilidade: str,
                       durabilidade: float = 100.0, coeficiente_quebra: float = 1.0) -> PecaLoja:
-        """Adiciona uma nova peca à loja com coeficiente de quebra
-        
-        Se já existe uma peça com mesmo nome + tipo, retorna a existente
+        """Adiciona uma nova peça à loja com coeficiente de quebra.
+        Permite várias peças com mesmo nome/tipo desde que tenham id diferente (ex.: compatibilidade ou preço diferente).
         """
         import uuid
-        
-        # Verificar se já existe peça com mesmo nome e tipo
-        for peca in self.pecas:
-            if peca.nome.lower() == nome.lower() and peca.tipo.lower() == tipo.lower():
-                print(f"[LOJA_PECAS] Peça '{nome}' ({tipo}) já existe! Retornando existente: {peca.id}")
-                return peca
-        
-        # Se não existe, criar nova
+
         peca_id = str(uuid.uuid4())
         
         nova_peca = PecaLoja(

@@ -1094,10 +1094,10 @@ function renderizarGaragem(garagem, armazem = { pecas_guardadas: [], total: 0 },
         const carrosAtivos = (garagem.carros || []).filter(c => c && c.status === 'ativo');
         const carrosRepouso = (garagem.carros || []).filter(c => c && c.status !== 'ativo');
 
-        // Renderizar carros ativos primeiro (em coluna cheia)
+        // Renderizar carros ativos: metade tela = card, metade = imagem do carro
         if (carrosAtivos.length > 0) {
             const divAtivos = document.createElement('div');
-            divAtivos.className = 'row mb-4';
+            divAtivos.className = 'row mb-4 align-items-stretch';
 
             carrosAtivos.forEach(carro => {
                 const condicaoGeral = carro.condicao_geral || 100;
@@ -1105,7 +1105,6 @@ function renderizarGaragem(garagem, armazem = { pecas_guardadas: [], total: 0 },
                 const statusBadgeClass = 'bg-success';
                 const statusText = '🏁 Ativo';
 
-                // Apelido e imagem do carro
                 const apelido = carro.apelido || '';
                 const nomeCarro = `${carro.marca} ${carro.modelo}`;
                 const imagemUrl = carro.imagem_url || '';
@@ -1113,49 +1112,60 @@ function renderizarGaragem(garagem, armazem = { pecas_guardadas: [], total: 0 },
 
                 let htmlPecas = gerarHtmlPecas(carro);
 
-                const card = document.createElement('div');
-                card.className = 'col-12 mb-3';
-                card.innerHTML = `
-                    <div class="card border-success border-2 card-garagem-compact">
-                        <div class="card-header py-2 bg-success text-white">
-                            <div class="d-flex justify-content-between align-items-start">
-                                <div class="flex-grow-1">
-                                    ${imagemUrl ? `<img src="${imagemUrl}" alt="${nomeCarro}" class="rounded me-2 float-start" style="width:56px;height:42px;object-fit:cover;">` : ''}
-                                    <h6 class="mb-0">${nomeCarro}</h6>
-                                    ${apelido ? `<div class="small"><strong>${apelido}</strong></div>` : ''}
-                                    <small style="cursor: pointer; opacity: 0.9;" onclick="editarApelidoCarro('${carro.id}', '${escApelido}', this)">✏️ Editar apelido</small>
-                                    <br><small style="cursor: pointer; opacity: 0.9;" onclick="document.getElementById('fileImagem_${carro.id}').click()">📷 Carregar imagem</small>
-                                    <input type="file" accept="image/*" style="display:none" id="fileImagem_${carro.id}" onchange="enviarImagemCarro('${carro.id}', this)">
+                const wrapper = document.createElement('div');
+                wrapper.className = 'col-12';
+                wrapper.innerHTML = `
+                    <div class="row g-3 align-items-stretch">
+                        <div class="col-md-6">
+                            <div class="card border-success border-2 card-garagem-compact h-100">
+                                <div class="card-header py-2 bg-success text-white">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-0">${nomeCarro}</h6>
+                                            ${apelido ? `<div class="small"><strong>${apelido}</strong></div>` : ''}
+                                            <small style="cursor: pointer; opacity: 0.9;" onclick="editarApelidoCarro('${carro.id}', '${escApelido}', this)">✏️ Editar apelido</small>
+                                            <br><small style="cursor: pointer; opacity: 0.9;" onclick="document.getElementById('fileImagem_${carro.id}').click()">📷 Carregar imagem</small>
+                                            <input type="file" accept="image/*" style="display:none" id="fileImagem_${carro.id}" onchange="enviarImagemCarro('${carro.id}', this)">
+                                        </div>
+                                        <span class="badge ${statusBadgeClass}">${statusText}</span>
+                                    </div>
                                 </div>
-                                <span class="badge ${statusBadgeClass}">${statusText}</span>
+                                <div class="card-body py-2 px-3">
+                                    <div class="mb-2 pb-2 border-bottom">
+                                        <small class="text-muted">Status</small>
+                                        <div><span class="badge ${statusBadgeClass}">${statusText}</span></div>
+                                    </div>
+                                    <div class="row mb-2">
+                                        <div class="col-6">
+                                            <small class="text-muted">Condição</small>
+                                            <div class="progress" style="height: 10px;">
+                                                <div class="progress-bar bg-${corCondicao}" style="width: ${condicaoGeral}%"></div>
+                                            </div>
+                                            <div class="small">${condicaoGeral.toFixed(1)}%</div>
+                                        </div>
+                                        <div class="col-6">
+                                            <small class="text-muted">Classe</small>
+                                            <div class="badge bg-info">${carro.classe || 'N/A'}</div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-2">
+                                        <h6 class="small mb-1">Peças Instaladas:</h6>
+                                        ${htmlPecas}
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div class="card-body py-2 px-3">
-                            <div class="mb-2 pb-2 border-bottom">
-                                <small class="text-muted">Status</small>
-                                <div><span class="badge ${statusBadgeClass}">${statusText}</span></div>
-                            </div>
-                            <div class="row mb-2">
-                                <div class="col-6">
-                                    <small class="text-muted">Condição</small>
-                                    <div class="progress" style="height: 10px;">
-                                        <div class="progress-bar bg-${corCondicao}" style="width: ${condicaoGeral}%"></div>
-                                    </div>
-                                    <div class="small">${condicaoGeral.toFixed(1)}%</div>
-                                </div>
-                                <div class="col-6">
-                                    <small class="text-muted">Classe</small>
-                                    <div class="badge bg-info">${carro.classe || 'N/A'}</div>
-                                </div>
-                            </div>
-                            <div class="mt-2">
-                                <h6 class="small mb-1">Peças Instaladas:</h6>
-                                ${htmlPecas}
-                            </div>
+                        <div class="col-md-6 d-flex align-items-center justify-content-center bg-dark bg-opacity-10 rounded overflow-hidden" style="min-height: 280px;">
+                            ${imagemUrl
+                                ? `<img src="${imagemUrl}" alt="${nomeCarro}" class="img-fluid w-100 h-100" style="object-fit: contain; max-height: 320px;">`
+                                : `<div class="text-center text-muted py-5 px-3">
+                                    <p class="mb-2">📷 Nenhuma foto do carro</p>
+                                    <small style="cursor: pointer;" onclick="document.getElementById('fileImagem_${carro.id}').click()">Clique para carregar imagem</small>
+                                   </div>`}
                         </div>
                     </div>
                 `;
-                divAtivos.appendChild(card);
+                divAtivos.appendChild(wrapper);
             });
             secaoCarros.appendChild(divAtivos);
         }
@@ -1825,22 +1835,28 @@ function gerarHtmlPecas(carro) {
     /**Gera HTML das peças do carro em ordem específica, mostrando "sem [tipo]" se faltar */
     let htmlPecas = '';
 
+    // Usar durabilidade_atual do backend (0-100 ou valor real); só usar 100 se ausente/NaN
+    function durabilidadeAtual(peca) {
+        const v = peca.durabilidade_atual;
+        if (typeof v === 'number' && !Number.isNaN(v)) return v;
+        const n = Number(v);
+        if (!Number.isNaN(n)) return n;
+        return 100;
+    }
+
     // Ordem padrão das peças
     const ordemPecas = ['motor', 'cambio', 'suspensao', 'kit_angulo', 'diferencial'];
     
-    // Criar mapa de peças para acesso rápido
+    // Criar mapa de peças para acesso rápido (por tipo; normalizar tipo para minúscula para lookup)
     const mapaPecas = {};
     if (carro.pecas && Array.isArray(carro.pecas)) {
         carro.pecas.forEach(peca => {
-            if (peca.tipo === 'diferencial') {
-                // Diferenciais podem ser múltiplos, armazenar em array
-                if (!mapaPecas['diferencial']) {
-                    mapaPecas['diferencial'] = [];
-                }
+            const tipo = (peca.tipo || '').toLowerCase();
+            if (tipo === 'diferencial') {
+                if (!mapaPecas['diferencial']) mapaPecas['diferencial'] = [];
                 mapaPecas['diferencial'].push(peca);
             } else {
-                // Outros tipos são únicos
-                mapaPecas[peca.tipo] = peca;
+                mapaPecas[tipo] = peca;
             }
         });
     }
@@ -1862,12 +1878,13 @@ function gerarHtmlPecas(carro) {
             if (diferenciais.length > 0) {
                 // Renderizar cada diferencial
                 diferenciais.forEach((peca, idx) => {
-                    const durabilidade = (peca.durabilidade_atual != null && peca.durabilidade_atual !== '') ? peca.durabilidade_atual : 100;
-                    const durabilidadeMax = peca.durabilidade_maxima || 100;
+                    const durabilidade = durabilidadeAtual(peca);
+                    const durabilidadeMax = Number(peca.durabilidade_maxima) || 100;
                     const percentual = durabilidadeMax > 0 ? (durabilidade / durabilidadeMax * 100) : 0;
                     const corDesgaste = percentual > 75 ? 'success' : percentual > 50 ? 'warning' : percentual > 25 ? 'danger' : 'danger';
-                    const custoRecuperar = ((peca.preco_loja || 0) / 2).toFixed(2);
-                    const btnRecuperar = percentual < 100 ? `<button class="btn btn-sm btn-outline-success ms-1" onclick="recuperarPecaVida('${peca.id}', ${peca.preco_loja || 0})" title="Recuperar para 100% (${custoRecuperar} doricoins)">🔧 Recuperar</button>` : '';
+                    const somaUpgrades = (peca.upgrades && Array.isArray(peca.upgrades)) ? peca.upgrades.reduce((s, u) => s + (Number(u.preco) || 0), 0) : 0;
+                    const custoRetifica = ((Number(peca.preco_loja) || 0) + somaUpgrades) / 2;
+                    const btnRetifica = percentual < 100 ? `<button class="btn btn-sm btn-outline-success me-2" onclick="recuperarPecaVida('${peca.id}', ${custoRetifica})" title="Fazer retífica: 100% (${custoRetifica.toFixed(2)} doricoins)">🔧 Fazer retífica</button>` : '';
                     const upgradesDiferencial = (peca.upgrades && Array.isArray(peca.upgrades) && peca.upgrades.length) ? ' + ' + peca.upgrades.map(u => u.nome).join(', ') : '';
                     htmlPecas += `
                         <div class="peca-item mb-3">
@@ -1876,7 +1893,7 @@ function gerarHtmlPecas(carro) {
                                     <strong>${peca.nome}${upgradesDiferencial}</strong>
                                 </div>
                                 <div>
-                                    <span class="badge bg-${corDesgaste} me-2">${percentual.toFixed(1)}%</span>${btnRecuperar}
+                                    ${btnRetifica}<span class="badge bg-${corDesgaste} me-2">${percentual.toFixed(1)}%</span>
                                     <button class="btn btn-sm btn-outline-danger ms-1" onclick="abrirModalRemoverPeca('${carro.id}', '${peca.tipo}', '${peca.nome}')">✕</button>
                                 </div>
                             </div>
@@ -1907,13 +1924,14 @@ function gerarHtmlPecas(carro) {
             const peca = mapaPecas[tipo];
             
             if (peca) {
-                // Peça instalada (pode ter upgrades: peca.upgrades = [{id, nome}, ...])
-                const durabilidade = (peca.durabilidade_atual != null && peca.durabilidade_atual !== '') ? peca.durabilidade_atual : 100;
-                const durabilidadeMax = peca.durabilidade_maxima || 100;
+                // Peça instalada (usa durabilidade_atual do backend; 0 é válido)
+                const durabilidade = durabilidadeAtual(peca);
+                const durabilidadeMax = Number(peca.durabilidade_maxima) || 100;
                 const percentual = durabilidadeMax > 0 ? (durabilidade / durabilidadeMax * 100) : 0;
                 const corDesgaste = percentual > 75 ? 'success' : percentual > 50 ? 'warning' : percentual > 25 ? 'danger' : 'danger';
-                const custoRecuperar = ((peca.preco_loja || 0) / 2).toFixed(2);
-                const btnRecuperar = percentual < 100 ? `<button class="btn btn-sm btn-outline-success ms-1" onclick="recuperarPecaVida('${peca.id}', ${peca.preco_loja || 0})" title="Recuperar para 100% (${custoRecuperar} doricoins)">🔧 Recuperar</button>` : '';
+                const somaUpgrades = (peca.upgrades && Array.isArray(peca.upgrades)) ? peca.upgrades.reduce((s, u) => s + (Number(u.preco) || 0), 0) : 0;
+                const custoRetifica = ((Number(peca.preco_loja) || 0) + somaUpgrades) / 2;
+                const btnRetifica = percentual < 100 ? `<button class="btn btn-sm btn-outline-success me-2" onclick="recuperarPecaVida('${peca.id}', ${custoRetifica})" title="Fazer retífica: 100% (${custoRetifica.toFixed(2)} doricoins)">🔧 Fazer retífica</button>` : '';
                 const upgradesTxt = (peca.upgrades && Array.isArray(peca.upgrades) && peca.upgrades.length) ? ' + ' + peca.upgrades.map(u => u.nome).join(', ') : '';
                 htmlPecas += `
                     <div class="peca-item mb-3">
@@ -1922,7 +1940,7 @@ function gerarHtmlPecas(carro) {
                                 <strong>${peca.nome}${upgradesTxt}</strong>
                             </div>
                             <div>
-                                <span class="badge bg-${corDesgaste} me-2">${percentual.toFixed(1)}%</span>${btnRecuperar}
+                                ${btnRetifica}<span class="badge bg-${corDesgaste} me-2">${percentual.toFixed(1)}%</span>
                                 <button class="btn btn-sm btn-outline-danger ms-1" onclick="abrirModalRemoverPeca('${carro.id}', '${peca.tipo}', '${peca.nome}')">✕</button>
                             </div>
                         </div>
@@ -2774,7 +2792,7 @@ async function processarCarrinhoArmazemAtivo() {
         mostrarToast('⏳ Gerando PIX...', 'info');
         
         // Chamar backend para criar transação PIX
-        const respPix = await fetch('/api/garagem/instalar-multiplas-pecas-armazem-ativo', {
+        const respPix = await fetch('/api/instalar-multiplas-pecas-no-carro-ativo', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -3406,7 +3424,7 @@ async function processarPecasParaAtivoModal(pecas) {
         const carroAtivoId = equipeAtual.carro_ativo.id;
         mostrarToast('⏳ Gerando PIX...', 'info');
 
-        const respPix = await fetch('/api/garagem/instalar-multiplas-pecas-armazem-ativo', {
+        const respPix = await fetch('/api/instalar-multiplas-pecas-no-carro-ativo', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...obterHeaders() },
             body: JSON.stringify({
@@ -4854,14 +4872,14 @@ function confirmarEditarApelido() {
         });
 }
 
-// ====== RECUPERAR VIDA DA PEÇA (GARAGEM) ======
-async function recuperarPecaVida(pecaId, precoLoja) {
-    const custo = (precoLoja || 0) / 2;
+// ====== FAZER RETÍFICA (GARAGEM) – vida da peça para 100% ======
+async function recuperarPecaVida(pecaId, custoRetifica) {
+    const custo = Number(custoRetifica) || 0;
     if (custo <= 0) {
-        mostrarToast('Preço da peça não definido', 'error');
+        mostrarToast('Custo de retífica não definido', 'error');
         return;
     }
-    if (!confirm(`Recuperar peça para 100%?\n\nCusto: ${custo.toFixed(2)} doricoins`)) return;
+    if (!confirm(`Fazer retífica: colocar vida da peça em 100%?\n\nCusto: ${custo.toFixed(2)} doricoins`)) return;
     try {
         const resp = await fetch('/api/garagem/recuperar-peca', {
             method: 'POST',
@@ -4871,14 +4889,14 @@ async function recuperarPecaVida(pecaId, precoLoja) {
         });
         const data = await resp.json();
         if (resp.ok && data.sucesso) {
-            mostrarToast('Peça recuperada para 100%!', 'success');
+            mostrarToast('Retífica feita: peça em 100%!', 'success');
             if (typeof carregarGaragem === 'function') carregarGaragem();
         } else {
-            mostrarToast(data.erro || 'Erro ao recuperar peça', 'error');
+            mostrarToast(data.erro || 'Erro ao fazer retífica', 'error');
         }
     } catch (e) {
         console.error('Erro:', e);
-        mostrarToast('Erro ao recuperar peça', 'error');
+        mostrarToast('Erro ao fazer retífica', 'error');
     }
 }
 

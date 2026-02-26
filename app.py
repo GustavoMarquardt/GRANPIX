@@ -64,6 +64,59 @@ def disable_cache(response):
     response.headers['Expires'] = '0'
     return response
 
+
+@app.before_request
+def log_request_incoming():
+    """Log de toda requisição /api/* para debug (Docker/tunnel)."""
+    path = getattr(request, 'path', '')
+    if path.startswith('/api/'):
+        method = getattr(request, 'method', '?')
+        full_url = getattr(request, 'url', path)
+        print(f"[REQ] >>> {method} {path} (url={full_url})", flush=True)
+
+
+@app.after_request
+def log_response_api(response):
+    """Log status de respostas /api/* para debug."""
+    path = getattr(request, 'path', '')
+    if path.startswith('/api/'):
+        endpoint = getattr(request, 'endpoint', None)
+        print(f"[REQ] <<< {request.method} {path} -> {response.status_code} endpoint={endpoint}", flush=True)
+    return response
+
+
+def _rotas_contendo(texto):
+    """Lista regras do url_map que contêm o texto (para log de debug)."""
+    return [f"  {r.rule} | methods={sorted(r.methods - {'HEAD', 'OPTIONS'})}" for r in app.url_map.iter_rules() if texto in r.rule]
+
+
+@app.errorhandler(404)
+def log_404(e):
+    """Log 404 detalhado: path, method e rotas registradas que contêm 'instalar' ou 'garagem'."""
+    path = getattr(request, 'path', '?')
+    method = getattr(request, 'method', '?')
+    full_url = getattr(request, 'url', path)
+    print(f"[404] ========== ROTA NAO ENCONTRADA ==========", flush=True)
+    print(f"[404] method={method} path={path}", flush=True)
+    print(f"[404] url completa={full_url}", flush=True)
+    for line in _rotas_contendo('instalar'):
+        print(f"[404] {line}", flush=True)
+    if not _rotas_contendo('instalar'):
+        print("[404] (nenhuma rota com 'instalar' no path)", flush=True)
+    for line in _rotas_contendo('garagem'):
+        print(f"[404] {line}", flush=True)
+    print(f"[404] ========================================", flush=True)
+    if path.startswith('/api/'):
+        return jsonify({
+            'erro': 'Rota não encontrada',
+            'path': path,
+            'method': method,
+            'url': full_url,
+            'debug_rotas_instalar': _rotas_contendo('instalar')[:10],
+        }), 404
+    from flask import make_response
+    return make_response("<h1>404 Not Found</h1>", 404)
+
 # Configuração MySQL (variável de ambiente no Docker; fallback para desenvolvimento local)
 MYSQL_CONFIG = os.environ.get(
     "MYSQL_CONFIG",
@@ -1006,11 +1059,11 @@ def instalar_multiplas_pecas_armazem_repouso():
         traceback.print_exc()
         return jsonify({'sucesso': False, 'erro': str(e)}), 500
 
-@app.route('/api/garagem/instalar-multiplas-pecas-armazem-ativo', methods=['POST'])
+@app.route('/api/instalar-multiplas-pecas-no-carro-ativo', methods=['POST'], strict_slashes=False)
 def instalar_multiplas_pecas_armazem_ativo():
     """Cria transação PIX para instalar múltiplas peças do armazém no carro ativo via modal"""
+    print("[ATIVO MODAL PIX] ===== ROTA ATIVADA =====", flush=True)
     try:
-        print("[ATIVO MODAL PIX] ===== ROTA ATIVADA =====")
         
         # Auth check
         if 'equipe_id' not in session and not request.headers.get('X-Equipe-ID'):
@@ -1042,6 +1095,8 @@ def instalar_multiplas_pecas_armazem_ativo():
         print(f"[ATIVO MODAL PIX] Peças do armazém carregadas: {len(pecas_armazem)}")
         pecas_loja = api.db.carregar_pecas_loja()
         print(f"[ATIVO MODAL PIX] Peças da loja carregadas: {len(pecas_loja)}")
+        upgrades_loja = api.db.carregar_upgrades()
+        print(f"[ATIVO MODAL PIX] Upgrades da loja carregados: {len(upgrades_loja)}")
         
         # Validar upgrades: precisam da peça base no carro ou na seleção
         def achar_no_armazem(nome, tipo, eh_upgrade):
@@ -1086,27 +1141,35 @@ def instalar_multiplas_pecas_armazem_ativo():
                 'erro': f'Para instalar o(s) upgrade(s) "{nomes}" é necessário ter a peça base correspondente (ex.: motor) no carro ou selecionada para instalação.'
             }), 400
         
-        # Validar que todas as peças existem na loja OU no armazém (upgrades estão em upgrade_loja, não em pecas_loja)
+        # Validar que todas as peças existem: loja (base) OU upgrade_loja (upgrades) OU armazém
+        print(f"[ATIVO MODAL PIX] Validação: {len(pecas)} peça(s) pedida(s). Loja {len(pecas_loja)}. Upgrade_loja {len(upgrades_loja)}. Armazém {len(pecas_armazem)}.", flush=True)
         for peca_req in pecas:
             peca_nome = peca_req.get('nome')
-            peca_tipo = peca_req.get('tipo')
+            peca_tipo = (peca_req.get('tipo') or '').lower()
             
             # Buscar na loja (peças base)
             encontrada_loja = False
             for p in pecas_loja:
-                if p.nome.lower() == peca_nome.lower() and p.tipo.lower() == peca_tipo.lower():
+                if p.nome.lower() == peca_nome.lower() and (p.tipo or '').lower() == peca_tipo:
                     encontrada_loja = True
                     break
             if encontrada_loja:
                 continue
-            # Se não está na loja, pode ser upgrade: deve estar no armazém da equipe (já carregamos pecas_armazem)
+            # Se tipo é upgrade: verificar upgrade_loja
+            if peca_tipo == 'upgrade':
+                encontrada_upgrade_loja = any(u.get('nome', '').lower() == peca_nome.lower() for u in upgrades_loja)
+                if encontrada_upgrade_loja:
+                    continue
+            # Verificar armazém (peças e upgrades já comprados)
             encontrada_armazem = any(
-                p['nome'].lower() == peca_nome.lower() and p['tipo'].lower() == peca_tipo.lower()
+                (p.get('nome') or '').lower() == peca_nome.lower() and (p.get('tipo') or '').lower() == peca_tipo
                 for p in pecas_armazem
             )
             if not encontrada_armazem:
-                print(f"[ATIVO MODAL PIX] Peça não encontrada na loja nem no armazém: {peca_nome} ({peca_tipo})")
-                return jsonify({'sucesso': False, 'erro': f'Peça {peca_nome} não encontrada no armazém'}), 404
+                print(f"[ATIVO MODAL PIX] *** ERRO VALIDAÇÃO: peça não está na loja nem no armazém ***", flush=True)
+                print(f"[ATIVO MODAL PIX] peca_nome={repr(peca_nome)} peca_tipo={repr(peca_tipo)}", flush=True)
+                print(f"[ATIVO MODAL PIX] Retornando 400 (não 404). Peça precisa estar no catálogo (loja) ou já no armazém.", flush=True)
+                return jsonify({'sucesso': False, 'erro': f'Peça {peca_nome} não encontrada no armazém'}), 400
         
         # Calcular valor do PIX (uma instalação por peça)
         preco_config = float(api.db.obter_configuracao('preco_instalacao_warehouse') or '10')
@@ -1265,21 +1328,22 @@ def criar_multiplas_solicitacoes_armazem():
         traceback.print_exc()
         return jsonify({'sucesso': False, 'erro': str(e)}), 500
 
-@app.route('/api/garagem/<equipe_id>')
+@app.route('/api/garagem/<uuid:equipe_id>', methods=['GET'])
 @requer_login_api
 def get_garagem(equipe_id):
-    """Retorna dados da garagem da equipe (carros e peças)"""
+    """Retorna dados da garagem da equipe (carros e peças). UUID evita que paths como instalar-multiplas-pecas-armazem-ativo caiam aqui (404)."""
     try:
         auth_equipe_id = obter_equipe_id_request()
         if not auth_equipe_id:
             return jsonify({'erro': 'Não autenticado'}), 401
 
+        equipe_id_str = str(equipe_id)
         # Verificar se o equipe_id da URL corresponde ao usuário autenticado
-        if equipe_id != auth_equipe_id:
+        if equipe_id_str != auth_equipe_id:
             return jsonify({'erro': 'Acesso negado'}), 403
 
         # Carregar equipe do banco de dados (não da memória)
-        equipe = api.db.carregar_equipe(equipe_id)
+        equipe = api.db.carregar_equipe(equipe_id_str)
         if not equipe:
             return jsonify({'erro': 'Equipe não encontrada'}), 404
 
@@ -1293,8 +1357,22 @@ def get_garagem(equipe_id):
             carro_status_banco = getattr(carro, 'status', 'repouso')  # 'ativo' ou 'repouso'
             status_carro = carro_status_banco
 
-            # Buscar peças instaladas com compatibilidades
+            # Buscar peças instaladas com compatibilidades (durabilidade da tabela pecas, não pecas_loja)
             pecas_instaladas = api.db.obter_pecas_carro_com_compatibilidade(carro.id)
+
+            # Condição geral = média da durabilidade atual das peças (0-100%)
+            condicao_geral = 100.0
+            if pecas_instaladas:
+                total = 0
+                n = 0
+                for peca in pecas_instaladas:
+                    v_max = float(peca.get('durabilidade_maxima') or 100)
+                    v_atual = float(peca.get('durabilidade_atual') or 100)
+                    if v_max > 0:
+                        total += (v_atual / v_max) * 100
+                        n += 1
+                if n:
+                    condicao_geral = round(total / n, 1)
 
             carro_info = {
                 'id': carro.id,
@@ -1307,6 +1385,7 @@ def get_garagem(equipe_id):
                 'carro_ativo': status_carro == 'ativo',
                 'apelido': getattr(carro, 'apelido', None),
                 'imagem_url': getattr(carro, 'imagem_url', None),
+                'condicao_geral': condicao_geral,
                 'pecas': pecas_instaladas
             }
 
@@ -6787,7 +6866,9 @@ def _processar_multiplas_pecas_armazem_ativo_confirmacao(equipe_id, carro_id, pe
         if peca_id_origem:
             # Peça veio da loja (compra PIX): adicionar ao armazém
             if (peca_tipo or '').lower() == 'upgrade':
-                res = api.db.adicionar_upgrade_armazem(str(equipe_id), str(peca_id_origem))
+                # IDs de upgrades vêm como "upgrade_<uuid>" da loja; buscar_upgrade_por_id espera só o uuid
+                upgrade_id_real = str(peca_id_origem).replace('upgrade_', '', 1) if str(peca_id_origem).startswith('upgrade_') else str(peca_id_origem)
+                res = api.db.adicionar_upgrade_armazem(str(equipe_id), upgrade_id_real)
                 if not res:
                     return 0, f'Falha ao adicionar upgrade ao armazém: {peca_nome}'
                 peca_armazem_id = res
@@ -8444,6 +8525,23 @@ def listar_etapas_filtradas():
         import traceback
         traceback.print_exc()
         return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
+# Log no startup (visível no Docker com gunicorn/uwsgi) para confirmar rotas
+def _log_rotas_startup():
+    print("[APP] ========== ROTAS INSTALAR / GARAGEM (startup) ==========", flush=True)
+    alvo = "/api/instalar-multiplas-pecas-no-carro-ativo"
+    encontrada = False
+    for r in app.url_map.iter_rules():
+        if 'instalar' in r.rule or 'garagem' in r.rule:
+            met = sorted(r.methods - {'HEAD', 'OPTIONS'})
+            print(f"[APP]   {r.rule} -> {met}", flush=True)
+            if r.rule == alvo and 'POST' in r.methods:
+                encontrada = True
+    if not encontrada:
+        print(f"[APP] ATENÇÃO: Rota POST {alvo} NAO esta no url_map (rebuild da imagem?)", flush=True)
+    print("[APP] ==========================================================", flush=True)
+_log_rotas_startup()
 
 
 if __name__ == '__main__':
