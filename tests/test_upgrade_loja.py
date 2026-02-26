@@ -62,7 +62,7 @@ class TestUpgradeLoja:
         upgrade_id = str(uuid.uuid4())
         db.criar_upgrade(upgrade_id, pecas_loja[0].id, "Upgrade Armazém", 99.0, "", None)
         ok = db.adicionar_upgrade_armazem(equipes[0].id, upgrade_id)
-        assert ok is True
+        assert ok  # retorna peca_id (str) em sucesso
         conn = db._get_conn()
         cur = conn.cursor()
         cur.execute(
@@ -342,5 +342,45 @@ class TestUpgradeLoja:
             assert r[0] == 1 and r[1] == carro_id
         cur2 = db._get_conn().cursor()
         cur2.execute("DELETE FROM pecas WHERE id IN (%s, %s)", (peca_armazem_id, up_row[0]))
+        db._get_conn().commit()
+        db.deletar_upgrade(upgrade_id)
+
+    def test_instalar_peca_por_id_rejeita_upgrade(self, db):
+        """instalar_peca_por_id_no_carro rejeita quando a peça é um upgrade (não pode instalar upgrade direto no carro)."""
+        if not db._column_exists("pecas", "upgrade_id"):
+            pytest.skip("Coluna upgrade_id não existe")
+        pecas_loja = db.carregar_pecas_loja()
+        equipes = db.carregar_todas_equipes()
+        carros = []
+        for e in equipes or []:
+            conn = db._get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM carros WHERE equipe_id = %s LIMIT 1", (e.id,))
+            r = cur.fetchone()
+            conn.close()
+            if r:
+                carros.append((e.id, r[0]))
+                break
+        if not pecas_loja or not carros:
+            pytest.skip("Sem peças ou carro")
+        equipe_id, carro_id = carros[0]
+        peca_loja_id = pecas_loja[0].id
+        pl = next((p for p in pecas_loja if p.id == peca_loja_id), None)
+        upgrade_id = str(uuid.uuid4())
+        db.criar_upgrade(upgrade_id, peca_loja_id, "Kit Rejeitar", 10.0, "", None)
+        db.adicionar_upgrade_armazem(equipe_id, upgrade_id)
+        conn = db._get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM pecas WHERE upgrade_id = %s AND instalado = 0 LIMIT 1", (upgrade_id,))
+        up_row = cur.fetchone()
+        conn.close()
+        if not up_row:
+            db.deletar_upgrade(upgrade_id)
+            pytest.skip("Upgrade não no armazém")
+        ok, msg = db.instalar_peca_por_id_no_carro(up_row[0], carro_id, equipe_id)
+        assert ok is False
+        assert "upgrade" in msg.lower() or "peça base" in msg.lower()
+        cur2 = db._get_conn().cursor()
+        cur2.execute("DELETE FROM pecas WHERE upgrade_id = %s", (upgrade_id,))
         db._get_conn().commit()
         db.deletar_upgrade(upgrade_id)

@@ -336,7 +336,7 @@ async function mostrarPitsEtapa(etapaId) {
             const temPiloto = !!eq.piloto_nome;
             const borderColor = temPiloto ? '#ff0000' : '#cc0000';
             const piloIcon = temPiloto ? '🏎️' : '⚠️';
-            const piloColor = temPiloto ? '#00ff00' : '#ff6666';
+            const piloColor = temPiloto ? '#dc143c' : '#ff6666';
             const ordemQualif = eq.ordem_qualificacao ? String(eq.ordem_qualificacao).padStart(2, '0') : '—';
             
             pitsHtml += `
@@ -427,7 +427,7 @@ async function mostrarPitsEtapa(etapaId) {
 // ============= CARREGAMENTO DE DADOS =============
 
 // Variável global para armazenar preço de instalação warehouse
-let precoInstalacaoWarehouse = 50; // valor padrão
+let precoInstalacaoWarehouse = 10; // valor padrão (config admin)
 
 async function obterPrecoInstalacaoWarehouse() {
     /**Obtém o preço configurado para instalação de peças do warehouse*/
@@ -440,7 +440,7 @@ async function obterPrecoInstalacaoWarehouse() {
             if (configResult.configuracoes && Array.isArray(configResult.configuracoes)) {
                 const config = configResult.configuracoes.find(c => c.chave === 'preco_instalacao_warehouse');
                 if (config) {
-                    precoInstalacaoWarehouse = parseFloat(config.valor || '50');
+                    precoInstalacaoWarehouse = parseFloat(config.valor || '10');
                     console.log('[CONFIG] Preço instalação warehouse atualizado:', precoInstalacaoWarehouse);
                     return precoInstalacaoWarehouse;
                 }
@@ -752,7 +752,7 @@ function renderizarPecasAguardando(pecas) {
                             <small class="text-muted d-block">
                                 <strong>Tipo:</strong> ${tipoLabel}<br>
                                 <strong>Preço:</strong> ${formatarMoeda(p.preco)}<br>
-                                <strong style="color: #0d6efd;">🎯 Será instalado em:</strong> <span style="color: #0d6efd;">${carroDisplay}</span>
+                                <strong style="color: #dc143c;">🎯 Será instalado em:</strong> <span style="color: #dc143c;">${carroDisplay}</span>
                             </small>
                         </div>
                         <span class="badge bg-warning text-dark">Pendente</span>
@@ -780,6 +780,8 @@ async function carregarCarrosAguardando() {
     }
 }
 
+const tipoPecaLabel = { motor: 'Motor', cambio: 'Câmbio', suspensao: 'Suspensão', kit_angulo: 'Kit Ângulo', diferencial: 'Diferencial' };
+
 function renderizarCarrosAguardando(carros) {
     const container = document.getElementById('carrosAguardandoContainer');
     if (!container) return;
@@ -791,6 +793,13 @@ function renderizarCarrosAguardando(carros) {
 
     container.innerHTML = `<div class="list-group list-group-flush">
         ${carros.map(c => {
+        const pecasHtml = (c.pecas && Array.isArray(c.pecas) && c.pecas.length > 0)
+            ? `<div class="mt-2 small"><strong class="text-secondary">Peças no carro:</strong><ul class="mb-0 ps-3 mt-1">${c.pecas.map(p => {
+                const linhas = [`<li><strong>${tipoPecaLabel[p.tipo] || p.tipo}:</strong> ${p.nome || '—'}</li>`];
+                (p.upgrades || []).forEach(u => linhas.push(`<li class="ps-2"><em>Upgrade:</em> ${u || '—'}</li>`));
+                return linhas.join('');
+            }).join('')}</ul></div>`
+            : '<div class="mt-2 small text-muted">Nenhuma peça cadastrada</div>';
         return `
                 <div class="list-group-item p-2 mb-2 border rounded">
                     <div class="d-flex justify-content-between align-items-start">
@@ -799,6 +808,7 @@ function renderizarCarrosAguardando(carros) {
                             <small class="text-muted d-block">
                                 <strong style="color: #ff9800;">⏳ Aguardando Ativação</strong>
                             </small>
+                            ${pecasHtml}
                         </div>
                         <span class="badge bg-success">Aguardando</span>
                     </div>
@@ -991,44 +1001,6 @@ function renderizarPecas() {
 
     const filtroTipo = document.getElementById('filtroTipoPeca') ? document.getElementById('filtroTipoPeca').value : '';
 
-    // Filtro Upgrade: carregar e exibir upgrades da API
-    if (filtroTipo === 'upgrade') {
-        container.innerHTML = '<p class="text-muted">Carregando upgrades...</p>';
-        fetch('/api/loja/upgrades', { headers: obterHeaders() })
-            .then(r => r.json())
-            .then(upgrades => {
-                container.innerHTML = '';
-                if (!upgrades || upgrades.length === 0) {
-                    container.innerHTML = '<p class="text-muted">Nenhum upgrade disponível</p>';
-                    return;
-                }
-                upgrades.forEach(u => {
-                    const card = document.createElement('div');
-                    card.className = 'col-md-6 col-lg-4 mb-3';
-                    const nomeSeguro = String(u.nome || '').replace(/['"\\]/g, '');
-                    const preco = parseFloat(u.preco) || 0;
-                    card.innerHTML = `
-                        <div class="produto-card">
-                            <div class="produto-header">${u.nome}</div>
-                            <div class="produto-body">
-                                <p class="mb-2"><strong>Para peça:</strong> ${u.peca_nome || '-'}</p>
-                                <p class="mb-2"><strong>Descrição:</strong> ${u.descricao || '-'}</p>
-                                <div class="preco">${formatarMoeda(preco)}</div>
-                                <button class="btn-comprar w-100" data-id="upgrade_${u.id}" data-nome="${nomeSeguro}" data-preco="${preco}">🛒 Adicionar ao Carrinho</button>
-                            </div>
-                        </div>
-                    `;
-                    card.querySelector('button').addEventListener('click', () => adicionarAoCarrinho('upgrade_' + u.id, u.nome, preco, 'universal', 'upgrade'));
-                    container.appendChild(card);
-                });
-            })
-            .catch(e => {
-                container.innerHTML = '<p class="text-danger">Erro ao carregar upgrades.</p>';
-                console.error('[LOJA] Erro ao carregar upgrades:', e);
-            });
-        return;
-    }
-
     // Verificar se peças foram carregadas
     if (!pecas || pecas.length === 0) {
         container.innerHTML = '<p class="text-muted">Carregando peças...</p>';
@@ -1084,15 +1056,20 @@ function renderizarPecas() {
             imagemHTML = `<div style="margin-bottom: 10px;"><img src="${peca.imagem}" style="width: 100%; height: 400px; object-fit: cover; border-radius: 4px;" alt="${peca.nome}"></div>`;
         }
 
+        const isUpgrade = !!peca.is_upgrade;
+        const tipoCarrinho = isUpgrade ? 'upgrade' : peca.tipo;
+        const linhaParaPeca = isUpgrade ? `<p class="mb-2"><strong>Para peça:</strong> ${peca.peca_nome || '-'}</p>` : '';
+
         card.innerHTML = `
             <div class="produto-card${estilo_card}">
                 <div class="produto-header">${peca.nome}</div>
                 <div class="produto-body">
                     ${imagemHTML}
+                    ${linhaParaPeca}
                     <p class="mb-2"><strong>Descrição:</strong> ${peca.descricao || '-'}</p>
                     <p class="mb-2"><small class="text-info">${textoCompatibilidade}</small></p>
                     <div class="preco">${formatarMoeda(peca.preco)}</div>
-                    <button class="btn-comprar w-100" onclick="adicionarAoCarrinho('${peca.id}', '${peca.nome}', ${peca.preco}, '${peca.compatibilidade}', '${peca.tipo}')" ${!podeComprar ? 'disabled' : ''}>
+                    <button class="btn-comprar w-100" onclick="adicionarAoCarrinho('${peca.id}', '${peca.nome.replace(/'/g, "\\'")}', ${peca.preco}, '${peca.compatibilidade}', '${tipoCarrinho}')" ${!podeComprar ? 'disabled' : ''}>
                         🛒 Adicionar ao Carrinho
                     </button>
                 </div>
@@ -1128,37 +1105,40 @@ function renderizarGaragem(garagem, armazem = { pecas_guardadas: [], total: 0 },
                 const statusBadgeClass = 'bg-success';
                 const statusText = '🏁 Ativo';
 
-                // Apelido do carro
+                // Apelido e imagem do carro
                 const apelido = carro.apelido || '';
                 const nomeCarro = `${carro.marca} ${carro.modelo}`;
+                const imagemUrl = carro.imagem_url || '';
+                const escApelido = (apelido || '').replace(/'/g, "\\'");
 
                 let htmlPecas = gerarHtmlPecas(carro);
 
                 const card = document.createElement('div');
-                card.className = 'col-12 mb-4';
+                card.className = 'col-12 mb-3';
                 card.innerHTML = `
-                    <div class="card border-success border-3">
-                        <div class="card-header bg-success text-white">
-                            <div class="d-flex justify-content-between align-items-center">
+                    <div class="card border-success border-2 card-garagem-compact">
+                        <div class="card-header py-2 bg-success text-white">
+                            <div class="d-flex justify-content-between align-items-start">
                                 <div class="flex-grow-1">
-                                    <h5 class="mb-1">${nomeCarro}</h5>
-                                    ${apelido ? `<div class="mb-2"><strong style="color: #fff; font-size: 1.1em;">${apelido}</strong></div>` : ''}
-                                    <small style="cursor: pointer; opacity: 0.8;" onclick="editarApelidoCarro('${carro.id}', '${apelido}', this)">✏️ Editar apelido</small>
+                                    ${imagemUrl ? `<img src="${imagemUrl}" alt="${nomeCarro}" class="rounded me-2 float-start" style="width:56px;height:42px;object-fit:cover;">` : ''}
+                                    <h6 class="mb-0">${nomeCarro}</h6>
+                                    ${apelido ? `<div class="small"><strong>${apelido}</strong></div>` : ''}
+                                    <small style="cursor: pointer; opacity: 0.9;" onclick="editarApelidoCarro('${carro.id}', '${escApelido}', this)">✏️ Editar apelido</small>
+                                    <br><small style="cursor: pointer; opacity: 0.9;" onclick="document.getElementById('fileImagem_${carro.id}').click()">📷 Carregar imagem</small>
+                                    <input type="file" accept="image/*" style="display:none" id="fileImagem_${carro.id}" onchange="enviarImagemCarro('${carro.id}', this)">
                                 </div>
                                 <span class="badge ${statusBadgeClass}">${statusText}</span>
                             </div>
                         </div>
-                        <div class="card-body">
-                            <div class="mb-3 pb-3 border-bottom">
+                        <div class="card-body py-2 px-3">
+                            <div class="mb-2 pb-2 border-bottom">
                                 <small class="text-muted">Status</small>
-                                <div>
-                                    <span class="badge ${statusBadgeClass}">${statusText}</span>
-                                </div>
+                                <div><span class="badge ${statusBadgeClass}">${statusText}</span></div>
                             </div>
-                            <div class="row mb-3">
+                            <div class="row mb-2">
                                 <div class="col-6">
-                                    <small class="text-muted">Condição Geral</small>
-                                    <div class="progress" style="height: 15px;">
+                                    <small class="text-muted">Condição</small>
+                                    <div class="progress" style="height: 10px;">
                                         <div class="progress-bar bg-${corCondicao}" style="width: ${condicaoGeral}%"></div>
                                     </div>
                                     <div class="small">${condicaoGeral.toFixed(1)}%</div>
@@ -1168,9 +1148,8 @@ function renderizarGaragem(garagem, armazem = { pecas_guardadas: [], total: 0 },
                                     <div class="badge bg-info">${carro.classe || 'N/A'}</div>
                                 </div>
                             </div>
-                            
-                            <div class="mt-3">
-                                <h6>Peças Instaladas:</h6>
+                            <div class="mt-2">
+                                <h6 class="small mb-1">Peças Instaladas:</h6>
                                 ${htmlPecas}
                             </div>
                         </div>
@@ -1228,32 +1207,35 @@ function renderizarGaragem(garagem, armazem = { pecas_guardadas: [], total: 0 },
                     btnTitle = 'Gerar QR Code PIX para ativar este carro';
                 }
                 const btnClass = (carro.status === 'ativo' || temSolicitacaoPendente || !pecasCompletas) ? 'btn-secondary' : 'btn-primary';
+                const imagemUrlRepouso = carro.imagem_url || '';
+                const escApelidoRepouso = (apelido || '').replace(/'/g, "\\'");
 
                 const card = document.createElement('div');
-                card.className = 'col-md-6 mb-4';
+                card.className = 'col-md-6 mb-3';
                 card.innerHTML = `
-                    <div class="card">
-                        <div class="card-header bg-dark text-white">
-                            <div class="d-flex justify-content-between align-items-center">
+                    <div class="card card-garagem-compact">
+                        <div class="card-header py-2 bg-dark text-white">
+                            <div class="d-flex justify-content-between align-items-start">
                                 <div class="flex-grow-1">
-                                    <h5 class="mb-1">${nomeCarro}</h5>
-                                    ${apelido ? `<div class="mb-2"><strong style="color: #fff; font-size: 1.1em;">${apelido}</strong></div>` : ''}
-                                    <small style="cursor: pointer; opacity: 0.8;" onclick="editarApelidoCarro('${carro.id}', '${apelido}', this)">✏️ Editar apelido</small>
+                                    ${imagemUrlRepouso ? `<img src="${imagemUrlRepouso}" alt="${nomeCarro}" class="rounded me-2 float-start" style="width:48px;height:36px;object-fit:cover;">` : ''}
+                                    <h6 class="mb-0">${nomeCarro}</h6>
+                                    ${apelido ? `<div class="small"><strong>${apelido}</strong></div>` : ''}
+                                    <small style="cursor: pointer; opacity: 0.9;" onclick="editarApelidoCarro('${carro.id}', '${escApelidoRepouso}', this)">✏️ Editar apelido</small>
+                                    <br><small style="cursor: pointer; opacity: 0.9;" onclick="document.getElementById('fileImagem_${carro.id}').click()">📷 Carregar imagem</small>
+                                    <input type="file" accept="image/*" style="display:none" id="fileImagem_${carro.id}" onchange="enviarImagemCarro('${carro.id}', this)">
                                 </div>
                                 <span class="badge ${statusBadgeClass}">${statusText}</span>
                             </div>
                         </div>
-                        <div class="card-body">
-                            <div class="mb-3 pb-3 border-bottom">
+                        <div class="card-body py-2 px-3">
+                            <div class="mb-2 pb-2 border-bottom">
                                 <small class="text-muted">Status</small>
-                                <div>
-                                    <span class="badge ${statusBadgeClass}">${statusText}</span>
-                                </div>
+                                <div><span class="badge ${statusBadgeClass}">${statusText}</span></div>
                             </div>
-                            <div class="row mb-3">
+                            <div class="row mb-2">
                                 <div class="col-6">
-                                    <small class="text-muted">Condição Geral</small>
-                                    <div class="progress" style="height: 15px;">
+                                    <small class="text-muted">Condição</small>
+                                    <div class="progress" style="height: 10px;">
                                         <div class="progress-bar bg-${corCondicao}" style="width: ${condicaoGeral}%"></div>
                                     </div>
                                     <div class="small">${condicaoGeral.toFixed(1)}%</div>
@@ -1263,18 +1245,15 @@ function renderizarGaragem(garagem, armazem = { pecas_guardadas: [], total: 0 },
                                     <div class="badge bg-info">${carro.classe || 'N/A'}</div>
                                 </div>
                             </div>
-                            
-                            <div class="mt-3">
-                                <h6>Peças Instaladas:</h6>
+                            <div class="mt-2">
+                                <h6 class="small mb-1">Peças Instaladas:</h6>
                                 ${htmlPecas}
                             </div>
-                            
-                           <button class="btn btn-sm btn-success mt-3 w-100"
+                            <button class="btn btn-sm btn-success mt-2 w-100"
                                 onclick="solicitarMudarCarro('${carro.id}', '${carro.marca} ${carro.modelo}')"
                                 title="Ativar carro">
                                 💳 Ativar Carro (PIX)
                             </button>
-
                         </div>
                     </div>
                 `;
@@ -1301,6 +1280,7 @@ function renderizarGaragem(garagem, armazem = { pecas_guardadas: [], total: 0 },
             <table class="table table-sm table-striped">
                 <thead class="table-dark">
                     <tr>
+                        <th></th>
                         <th>Peça</th>
                         <th>Tipo</th>
                         <th>Durabilidade</th>
@@ -1311,14 +1291,16 @@ function renderizarGaragem(garagem, armazem = { pecas_guardadas: [], total: 0 },
                 </thead>
                 <tbody>
                     ${armazem.pecas_guardadas.map((peca) => {
-            const durabilidade = peca.durabilidade_percentual || 0;
+            const durabilidade = peca.durabilidade_percentual != null ? peca.durabilidade_percentual : 100;
             const durabilidadeClass = durabilidade > 75 ? 'success' : durabilidade > 50 ? 'warning' : 'danger';
             const temPagamento = peca.pix_id ? '<span class="badge bg-success">✓ Pago</span>' : '<span class="badge bg-secondary">Pendente</span>';
-            
+            const thumb = peca.imagem ? `<img src="${peca.imagem}" alt="" class="rounded" style="width:36px;height:36px;object-fit:cover;">` : '<span class="text-muted">—</span>';
+            const tipoLabel = peca.upgrade_id ? '<span class="badge bg-warning text-dark">Upgrade</span>' : `<span class="badge bg-info">${peca.tipo}</span>`;
             return `
                             <tr>
+                                <td>${thumb}</td>
                                 <td><strong>${peca.nome}</strong></td>
-                                <td><span class="badge bg-info">${peca.tipo}</span></td>
+                                <td>${tipoLabel}</td>
                                 <td>
                                     <div class="d-flex align-items-center gap-2">
                                         <div class="progress" style="flex: 1; min-width: 100px; height: 20px;">
@@ -1886,11 +1868,12 @@ function gerarHtmlPecas(carro) {
                     const corDesgaste = percentual > 75 ? 'success' : percentual > 50 ? 'warning' : percentual > 25 ? 'danger' : 'danger';
                     const custoRecuperar = ((peca.preco_loja || 0) / 2).toFixed(2);
                     const btnRecuperar = percentual < 100 ? `<button class="btn btn-sm btn-outline-success ms-1" onclick="recuperarPecaVida('${peca.id}', ${peca.preco_loja || 0})" title="Recuperar para 100% (${custoRecuperar} doricoins)">🔧 Recuperar</button>` : '';
+                    const upgradesDiferencial = (peca.upgrades && Array.isArray(peca.upgrades) && peca.upgrades.length) ? ' + ' + peca.upgrades.map(u => u.nome).join(', ') : '';
                     htmlPecas += `
                         <div class="peca-item mb-3">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <div class="flex-grow-1">
-                                    <strong>${peca.nome}</strong>
+                                    <strong>${peca.nome}${upgradesDiferencial}</strong>
                                 </div>
                                 <div>
                                     <span class="badge bg-${corDesgaste} me-2">${percentual.toFixed(1)}%</span>${btnRecuperar}
@@ -1924,18 +1907,19 @@ function gerarHtmlPecas(carro) {
             const peca = mapaPecas[tipo];
             
             if (peca) {
-                // Peça instalada
+                // Peça instalada (pode ter upgrades: peca.upgrades = [{id, nome}, ...])
                 const durabilidade = (peca.durabilidade_atual != null && peca.durabilidade_atual !== '') ? peca.durabilidade_atual : 100;
                 const durabilidadeMax = peca.durabilidade_maxima || 100;
                 const percentual = durabilidadeMax > 0 ? (durabilidade / durabilidadeMax * 100) : 0;
                 const corDesgaste = percentual > 75 ? 'success' : percentual > 50 ? 'warning' : percentual > 25 ? 'danger' : 'danger';
                 const custoRecuperar = ((peca.preco_loja || 0) / 2).toFixed(2);
                 const btnRecuperar = percentual < 100 ? `<button class="btn btn-sm btn-outline-success ms-1" onclick="recuperarPecaVida('${peca.id}', ${peca.preco_loja || 0})" title="Recuperar para 100% (${custoRecuperar} doricoins)">🔧 Recuperar</button>` : '';
+                const upgradesTxt = (peca.upgrades && Array.isArray(peca.upgrades) && peca.upgrades.length) ? ' + ' + peca.upgrades.map(u => u.nome).join(', ') : '';
                 htmlPecas += `
                     <div class="peca-item mb-3">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <div class="flex-grow-1">
-                                <strong>${peca.nome}</strong>
+                                <strong>${peca.nome}${upgradesTxt}</strong>
                             </div>
                             <div>
                                 <span class="badge bg-${corDesgaste} me-2">${percentual.toFixed(1)}%</span>${btnRecuperar}
@@ -2010,8 +1994,8 @@ style.textContent = `
     }
     
     .transferencia-recebido {
-        background-color: #d4edda;
-        border-left: 4px solid #28a745;
+        background-color: #f5f5f5;
+        border-left: 4px solid #dc143c;
     }
 `;
 document.head.appendChild(style);
@@ -3056,7 +3040,7 @@ function abrirModalAdicionarPecasArmazem() {
         
         const itemHtml = `
             <div class="card mb-3 pecaArmazemItem" id="pecaItem_${pecaKey}">
-                <div class="card-body p-3">
+                <div class="card-body p-3 text-dark">
                     <div class="row align-items-center">
                         <div class="col-auto">
                             <input type="checkbox" class="form-check-input form-check-input-lg" 
@@ -3066,15 +3050,15 @@ function abrirModalAdicionarPecasArmazem() {
                         </div>
                         <div class="col">
                             <div class="form-check">
-                                <label class="form-check-label" for="selecionar_${pecaKey}">
-                                    <strong>${peca.nome}</strong>
+                                <label class="form-check-label text-dark" for="selecionar_${pecaKey}">
+                                    <strong class="text-dark">${peca.nome}</strong>
                                     <br>
-                                    <span class="badge bg-info">${peca.tipo}</span>
-                                    <span class="badge bg-secondary">${formatarMoeda(peca.preco)}</span>
-                                    ${peca.pix_id ? '<span class="badge bg-success">✓ Pago</span>' : '<span class="badge bg-warning">Não Pago</span>'}
+                                    <span class="badge bg-info text-dark">${peca.tipo}</span>
+                                    <span class="badge bg-secondary text-dark">${formatarMoeda(peca.preco)}</span>
+                                    ${peca.pix_id ? '<span class="badge bg-success text-dark">✓ Pago</span>' : '<span class="badge bg-warning text-dark">Não Pago</span>'}
                                 </label>
                             </div>
-                            <small class="text-muted d-block mt-2">
+                            <small class="d-block mt-2" style="color: #000 !important;">
                                 Durabilidade: ${durabilidade}% | Carro Original: ${peca.carro_nome}
                             </small>
                         </div>
@@ -3412,69 +3396,55 @@ async function confirmarAdicaoPecasArmazem() {
 }
 
 async function processarPecasParaAtivoModal(pecas) {
-    /**Processa peças para carro ativo (pode gerar PIX)*/
+    /**Peças para carro ativo: gera PIX (cobrança). Após pagamento, peças vão ao armazém e são criadas solicitações de instalação.*/
     try {
         if (!equipeAtual || !equipeAtual.carro_ativo) {
             mostrarToast('⚠️ Você não tem um carro ativo selecionado', 'warning');
             return;
         }
-        
+
         const carroAtivoId = equipeAtual.carro_ativo.id;
-        
         mostrarToast('⏳ Gerando PIX...', 'info');
-        
-        // TODAS as peças para ativo precisam de PIX
+
         const respPix = await fetch('/api/garagem/instalar-multiplas-pecas-armazem-ativo', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...obterHeaders()
-            },
+            headers: { 'Content-Type': 'application/json', ...obterHeaders() },
             body: JSON.stringify({
                 carro_id: carroAtivoId,
                 pecas: pecas.map(p => ({
                     nome: p.nome,
                     tipo: p.tipo,
-                    quantidade: p.quantidade
+                    quantidade: p.quantidade || 1,
+                    id: p.id
                 }))
             })
         });
-        
+
         const resultado = await respPix.json();
-        
         if (!resultado.sucesso) {
             mostrarToast('Erro: ' + (resultado.erro || 'Erro desconhecido'), 'error');
             return;
         }
-        
-        // Associar pix_id retornado a todas as peças
-        const pixId = resultado.pix_id;
-        pecas.forEach(p => p.pix_id = pixId);
-        
-        console.log('[ATIVO MODAL] PIX gerado:', pixId);
-        console.log('[ATIVO MODAL] Peças com pix_id:', pecas);
-        
-        // Armazenar dados para polling
+
+        pecas.forEach(p => { p.pix_id = resultado.pix_id; });
         window.compraPendentePix = {
             transacao_id: resultado.transacao_id,
             tipo: 'multiplas_pecas_armazem_ativo_modal',
             carro_id: carroAtivoId,
-            pecas: pecas // Incluir todas as peças com pix_id
+            pecas: pecas
         };
-        
+
         const dadosPix = {
             transacao_id: resultado.transacao_id,
             qr_code_url: resultado.qr_code_url,
-            item_nome: `${pecas.length} peça(s) do armazém`,
+            item_nome: resultado.item_nome || (pecas.length + ' peça(s) → Carro Ativo'),
             item_id: carroAtivoId,
             tipo_item: 'multiplas_pecas_armazem_ativo_modal',
             valor_item: resultado.valor_item,
             taxa: resultado.valor_taxa,
             valor_total: resultado.valor_total
         };
-        
         mostrarModalPix(dadosPix);
-        
     } catch (e) {
         console.error('Erro ao processar ativo:', e);
         mostrarToast('Erro: ' + e.message, 'error');
@@ -3787,24 +3757,21 @@ function abrirModalDestino() {
 }
 
 function verificarPecasDuplicadasNoCarroAtivo() {
-    /**Verifica se há peças do mesmo TIPO (compatibilidade) destinadas ao carro ativo*/
+    /**Verifica se há mais de 1 peça BASE do mesmo tipo destinada ao carro ativo. Upgrades não contam (1 base + N upgrades por slot).*/
     const pecasCarroAtivo = carrinho.filter(p => destinosPecas[p.id] === 'carro_ativo');
 
-    // Contar ocorrências de cada TIPO de peça (compatibilidade)
+    // Contar apenas peças BASE por tipo (upgrades têm tipo === 'upgrade' e não limitam)
     const contagemTipos = {};
     let temDuplicatas = false;
     const idsComDuplicatas = [];
 
     pecasCarroAtivo.forEach(peca => {
-        const tipo = peca.compatibilidade || 'desconhecido';
+        if (peca.tipo === 'upgrade') return; // upgrades não contam para o limite de 1 por slot
+        const tipo = peca.tipo || peca.compatibilidade || 'desconhecido';
         contagemTipos[tipo] = (contagemTipos[tipo] || 0) + 1;
-
-        // Se há mais de 1 peça do mesmo tipo, marcar como duplicata
         if (contagemTipos[tipo] > 1) {
             temDuplicatas = true;
-            if (!idsComDuplicatas.includes(peca.id)) {
-                idsComDuplicatas.push(peca.id);
-            }
+            if (!idsComDuplicatas.includes(peca.id)) idsComDuplicatas.push(peca.id);
         }
     });
 
@@ -3815,28 +3782,26 @@ function renderizarListaPecasDestino() {
     const container = document.getElementById('listaPecasDestino');
     const carroAtivo = equipeAtual?.carro_ativo;  // Usar carro_ativo (status='ativo' do banco)
 
-    // Contar tipos duplicados no carro ativo (usando 'tipo' em vez de 'compatibilidade')
+    // Contar apenas peças BASE por tipo; upgrades (tipo === 'upgrade') não limitam — 1 base + N upgrades por slot
     const pecasCarroAtivo = carrinho.filter(p => destinosPecas[p.id] === 'carro_ativo');
     const contagemTipos = {};
     const tiposComDuplicatas = [];
 
     pecasCarroAtivo.forEach(peca => {
-        const tipo = peca.tipo || 'desconhecido';  // Usar tipo, não compatibilidade
+        if (peca.tipo === 'upgrade') return;
+        const tipo = peca.tipo || 'desconhecido';
         contagemTipos[tipo] = (contagemTipos[tipo] || 0) + 1;
     });
 
-    // Identificar quais tipos têm mais de 1 peça
     Object.keys(contagemTipos).forEach(tipo => {
-        if (contagemTipos[tipo] > 1) {
-            tiposComDuplicatas.push(tipo);
-        }
+        if (contagemTipos[tipo] > 1) tiposComDuplicatas.push(tipo);
     });
 
     const temDuplicatas = tiposComDuplicatas.length > 0;
 
     let avisoHtml = '';
     if (temDuplicatas) {
-        avisoHtml = '<div style="background-color: #ffcccc; border: 2px solid #cc0000; color: #cc0000; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center;">⚠️ AVISO: Existem peças do mesmo tipo destinadas ao carro ativo! Cada tipo pode ter apenas 1 unidade no carro.</div>';
+        avisoHtml = '<div style="background-color: #ffcccc; border: 2px solid #cc0000; color: #cc0000; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; text-align: center;">⚠️ AVISO: Existem peças base do mesmo tipo destinadas ao carro ativo! Cada tipo pode ter apenas 1 peça base (e vários upgrades).</div>';
     }
 
     let html = avisoHtml;
@@ -3845,9 +3810,9 @@ function renderizarListaPecasDestino() {
         const destino = destinosPecas[peca.id] || 'armazem';
         const subtotal = peca.preco * (peca.quantidade || 1);
 
-        // Verificar se esta peça tem seu tipo duplicado no carro
+        // Verificar se esta peça é duplicata: apenas peças base contam; upgrades nunca são duplicata
         const tipo = peca.tipo || 'desconhecido';
-        const ehDuplicata = destino === 'carro_ativo' && tiposComDuplicatas.includes(tipo);
+        const ehDuplicata = destino === 'carro_ativo' && peca.tipo !== 'upgrade' && tiposComDuplicatas.includes(tipo);
         const bgColor = ehDuplicata ? 'background-color: #ffeeee;' : '';
         const borderColor = ehDuplicata ? 'border: 2px solid #ff6666;' : 'border: 1px solid #ddd;';
         
@@ -3959,19 +3924,15 @@ async function confirmarDistribuicaoPecas() {
     // Aguardar modal fechar antes de processar
     await new Promise(resolve => setTimeout(resolve, 300));
 
-    // Se tem peças para carro ativo, gerar PIX
+    // Se tem peças para carro ativo: enviar ao armazém + criar solicitação; se tem para armazém, enviar ao armazém
     if (pecasCarroAtivo.length > 0) {
-        // Salvar peças de carro para usar depois
         window.pecasCarrinho = carrinho;
         window.pecasCarroAtivo = pecasCarroAtivo;
         window.pecasArmazem = pecasArmazem;
-
         await processarPecasParaAtivoModal(pecasCarroAtivo);
-    } else if (pecasArmazem.length > 0) {
-        // Se só tem peças para armazém, enviar direto
-        window.pecasCarrinho = carrinho;
+    }
+    if (pecasArmazem.length > 0) {
         window.pecasArmazem = pecasArmazem;
-
         await enviarCarrinhoParaArmazemDividido();
     }
 }
@@ -4820,6 +4781,37 @@ function editarApelidoCarro(carroId, apelidoAtual, elemento) {
     modal.show();
 }
 
+async function enviarImagemCarro(carroId, fileInput) {
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    if (!file || !file.type.startsWith('image/')) {
+        mostrarToast('Selecione uma imagem (jpg, png, etc.)', 'warning');
+        return;
+    }
+    const formData = new FormData();
+    formData.append('imagem', file);
+    const headers = {};
+    const equipeId = typeof obterEquipeIdDaSession === 'function' ? obterEquipeIdDaSession() : null;
+    if (equipeId) headers['X-Equipe-ID'] = equipeId;
+    try {
+        const resp = await fetch(`/api/carro/${carroId}/imagem`, {
+            method: 'POST',
+            body: formData,
+            credentials: 'include',
+            headers
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok && data.sucesso) {
+            mostrarToast('✅ Imagem do carro atualizada!', 'success');
+            if (typeof carregarGaragem === 'function') setTimeout(carregarGaragem, 300);
+        } else {
+            mostrarToast('❌ ' + (data.erro || 'Erro ao enviar imagem'), 'error');
+        }
+    } catch (e) {
+        mostrarToast('❌ Erro ao enviar imagem', 'error');
+    }
+    fileInput.value = '';
+}
+
 function confirmarEditarApelido() {
     if (!apelidoEmEdicao) return;
 
@@ -4895,6 +4887,12 @@ let pecaEmRemocao = null;
 
 async function abrirModalRemoverPeca(carroId, tipoPeca, nomePeca) {
     pecaEmRemocao = { carroId, tipoPeca, nomePeca };
+
+    const btnConfirmar = document.getElementById('btnConfirmarRemoverPeca');
+    if (btnConfirmar) {
+        btnConfirmar.disabled = false;
+        btnConfirmar.innerHTML = 'Retirar Peça';
+    }
 
     document.getElementById('nomePecaRemover').textContent = nomePeca;
     document.getElementById('destinoArmazem').checked = true;
@@ -5018,8 +5016,8 @@ async function abrirModalRemoverPeca(carroId, tipoPeca, nomePeca) {
 function confirmarRemoverPeca() {
     if (!pecaEmRemocao) return;
 
-    // Fechar modal
-    bootstrap.Modal.getInstance(document.getElementById('removerPecaModal')).hide();
+    const btnConfirmar = document.getElementById('btnConfirmarRemoverPeca');
+    if (btnConfirmar && btnConfirmar.disabled) return; // já enviou, evita duplo clique
 
     // Obter destino escolhido
     const destino = document.querySelector('input[name="destino"]:checked').value;
@@ -5027,7 +5025,6 @@ function confirmarRemoverPeca() {
 
     let novoCarroId = null;
 
-    // Se destino é outro carro, obter o ID selecionado
     if (destino === 'carro') {
         novoCarroId = document.getElementById('carroDestSelect').value;
         if (!novoCarroId) {
@@ -5036,7 +5033,12 @@ function confirmarRemoverPeca() {
         }
     }
 
-    // Enviar requisição para remover/mover peça
+    // Desabilitar botão e mostrar "Processando..." para evitar enviar várias vezes
+    if (btnConfirmar) {
+        btnConfirmar.disabled = true;
+        btnConfirmar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
+    }
+
     fetch(`/api/remover-peca-carro`, {
         method: 'POST',
         headers: {
@@ -5046,7 +5048,7 @@ function confirmarRemoverPeca() {
         body: JSON.stringify({
             carro_id: carroId,
             tipo_peca: tipoPeca,
-            novo_carro_id: novoCarroId  // null se for armazém
+            novo_carro_id: novoCarroId
         })
     })
         .then(response => {
@@ -5056,15 +5058,14 @@ function confirmarRemoverPeca() {
             return response.json();
         })
         .then(data => {
+            bootstrap.Modal.getInstance(document.getElementById('removerPecaModal')).hide();
+            pecaEmRemocao = null;
             if (data.sucesso) {
                 const destinyText = novoCarroId ? 'outro carro' : 'armazém';
                 mostrarToast(`✅ Peça movida para ${destinyText} com sucesso!`, 'success');
-                // Recarregar garagem
-                setTimeout(() => {
-                    if (typeof carregarGaragem === 'function') {
-                        carregarGaragem();
-                    }
-                }, 500);
+                if (typeof carregarGaragem === 'function') {
+                    carregarGaragem();
+                }
             } else {
                 mostrarToast('❌ Erro ao mover peça: ' + (data.erro || 'Desconhecido'), 'error');
             }
@@ -5072,6 +5073,11 @@ function confirmarRemoverPeca() {
         .catch(error => {
             console.error('Erro ao mover peça:', error);
             mostrarToast('❌ Erro ao mover peça: ' + error.message, 'error');
+            const btn = document.getElementById('btnConfirmarRemoverPeca');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = 'Retirar Peça';
+            }
         });
 }
 
@@ -5733,7 +5739,7 @@ async function carregarInterfaceAlocacaoDragDrop(selectId = 'selectEtapa', conta
                     </div>
 
                     <div class="col-md-6 mb-4">
-                        <div class="card border-success h-100" style="background-color:#f0f8f5; min-height:400px;">
+                        <div class="card border-success h-100" style="background-color:#f5f5f5; min-height:400px;">
                             <div class="card-header bg-success text-white"><h6 class="mb-0">🏁 Equipes Pedindo Pilotos (${equipes.length})</h6></div>
                             <div class="card-body" style="max-height:600px; overflow-y:auto;">
                                 <div class="d-flex flex-column gap-3" id="equipesDropZones">
@@ -5741,10 +5747,10 @@ async function carregarInterfaceAlocacaoDragDrop(selectId = 'selectEtapa', conta
 
                 equipes.forEach(eq => {
                         html += `
-                            <div class="card border-success" id="dropZone-${eq.equipe_id}" data-equipe-nome="${(eq.equipe_nome||'').replace(/\"/g,'&quot;')}" style="min-height:140px; background:#fff; border:2px dashed #28a745;">
+                            <div class="card border-success" id="dropZone-${eq.equipe_id}" data-equipe-nome="${(eq.equipe_nome||'').replace(/\"/g,'&quot;')}" style="min-height:140px; background:#fff; border:2px dashed #dc143c;">
                                 <div class="card-body pb-2">
                                     <div class="d-flex justify-content-between align-items-start mb-2">
-                                        <h6 style="color:#28a745; margin:0;">🏁 ${eq.equipe_nome}</h6>
+                                        <h6 style="color:#dc143c; margin:0;">🏁 ${eq.equipe_nome}</h6>
                                         <span class="badge bg-warning text-dark">falta 1</span>
                                     </div>
                                     <div id="equipeDropZone-${eq.equipe_id}" style="min-height:60px; background:#f9f9f9; padding:12px; border-radius:4px; border:1px dashed #ccc; text-align:center;">
@@ -5824,7 +5830,7 @@ function handleDragOver(event) {
     const dropZone = event.target.closest('.drop-zone');
     if (dropZone) {
         dropZone.classList.add('drop-zone-active');
-        dropZone.style.backgroundColor = '#e8f5e9';
+        dropZone.style.backgroundColor = '#f0f0f0';
     }
 }
 

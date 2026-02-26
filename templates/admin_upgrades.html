@@ -29,6 +29,12 @@
             <label>Descrição (opcional)</label>
             <textarea class="form-control" id="upgradeDescricao" rows="2" placeholder="Ex: Aumenta potência do motor"></textarea>
           </div>
+          <div class="form-group mb-3">
+            <label>Imagem (opcional)</label>
+            <input type="file" class="form-control" id="upgradeImagem" accept="image/*">
+            <small class="text-muted">PNG ou JPG. Será exibida na loja e no armazém.</small>
+            <div id="upgradeImagemPreview" class="mt-2"></div>
+          </div>
           <button class="btn btn-primary w-100" type="button" onclick="window.cadastrarUpgrade()">Cadastrar Upgrade</button>
         </div>
       </div>
@@ -72,15 +78,22 @@
           div.innerHTML = '<p class="text-muted">Nenhum upgrade cadastrado.</p>';
           return;
         }
-        div.innerHTML = upgrades.map(u => `
+        div.innerHTML = upgrades.map(u => {
+          const nomeEsc = (u.nome || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+          const img = u.imagem ? `<img src="${u.imagem}" alt="" class="rounded me-2" style="width:40px;height:40px;object-fit:cover;">` : '';
+          return `
           <div class="d-flex justify-content-between align-items-center border-bottom py-2 mb-2">
-            <div>
-              <strong>${u.nome}</strong> <small class="text-muted">→ ${u.peca_nome}</small>
-              <br><small>R$ ${parseFloat(u.preco || 0).toFixed(2)}</small>
+            <div class="d-flex align-items-center">
+              ${img}
+              <div>
+                <strong>${u.nome}</strong> <small class="text-muted">→ ${u.peca_nome}</small>
+                <br><small>R$ ${parseFloat(u.preco || 0).toFixed(2)}</small>
+              </div>
             </div>
-            <button class="btn btn-sm btn-danger" onclick="window.deletarUpgrade('${u.id}', '${(u.nome || '').replace(/'/g, "\\'")}')">Excluir</button>
+            <button class="btn btn-sm btn-danger" onclick="window.deletarUpgrade('${u.id}', '${nomeEsc}')">Excluir</button>
           </div>
-        `).join('');
+        `;
+        }).join('');
       })
       .catch(e => {
         document.getElementById('listaUpgrades').innerHTML = '<p class="text-danger">Erro ao carregar upgrades.</p>';
@@ -88,11 +101,37 @@
       });
   }
 
-  window.cadastrarUpgrade = function() {
+  function lerArquivoBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  document.getElementById('upgradeImagem').addEventListener('change', function(e) {
+    const preview = document.getElementById('upgradeImagemPreview');
+    preview.innerHTML = '';
+    const file = e.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.style.maxWidth = '120px'; img.style.maxHeight = '80px'; img.className = 'rounded';
+      img.src = URL.createObjectURL(file);
+      preview.appendChild(img);
+    }
+  });
+
+  window.cadastrarUpgrade = async function() {
     const pecaLojaId = document.getElementById('upgradePecaLojaId').value;
     const nome = document.getElementById('upgradeNome').value.trim();
     const preco = parseFloat(document.getElementById('upgradePreco').value) || 0;
     const descricao = document.getElementById('upgradeDescricao').value.trim();
+    const inputImg = document.getElementById('upgradeImagem');
+    let imagem = null;
+    if (inputImg.files && inputImg.files[0]) {
+      try { imagem = await lerArquivoBase64(inputImg.files[0]); } catch (e) { console.error(e); }
+    }
     if (!pecaLojaId || !nome) {
       alert('Preencha a peça base e o nome do upgrade.');
       return;
@@ -100,7 +139,7 @@
     fetch('/api/admin/cadastrar-upgrade', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ peca_loja_id: pecaLojaId, nome, preco, descricao })
+      body: JSON.stringify({ peca_loja_id: pecaLojaId, nome, preco, descricao, imagem })
     })
       .then(r => r.json())
       .then(data => {
@@ -108,6 +147,8 @@
           document.getElementById('upgradeNome').value = '';
           document.getElementById('upgradePreco').value = '0';
           document.getElementById('upgradeDescricao').value = '';
+          document.getElementById('upgradeImagem').value = '';
+          document.getElementById('upgradeImagemPreview').innerHTML = '';
           carregarUpgrades();
           alert('Upgrade cadastrado com sucesso!');
         } else {

@@ -670,6 +670,7 @@ class DatabaseManager:
         self._migrar_coeficiente_quebra()
         # Executar migração para adicionar apelido aos carros
         self._migrar_apelido_carro()
+        self._migrar_imagem_carro()
         # Executar migração para permitir NULL em carro_id (para peças no armazém)
         self._migrar_carro_id_nullable()
         # Executar migração para adicionar equipe_id às peças
@@ -700,6 +701,31 @@ class DatabaseManager:
         self._criar_tabela_upgrade_loja()
         self._migrar_upgrades_para_upgrade_loja()
         self._migrar_pecas_instalado_em_peca_id()
+        # Permitir peca_id em solicitacoes_pecas referenciar pecas.id (armazém) além de pecas_loja.id
+        self._remover_fk_peca_id_solicitacoes_pecas()
+
+    def _remover_fk_peca_id_solicitacoes_pecas(self) -> None:
+        """Remove FK peca_id -> pecas_loja(id) para permitir peca_id = pecas.id (peça do armazém)."""
+        if not self._table_exists('solicitacoes_pecas'):
+            return
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'solicitacoes_pecas'
+                  AND COLUMN_NAME = 'peca_id' AND REFERENCED_TABLE_NAME IS NOT NULL
+            ''')
+            row = cursor.fetchone()
+            if row:
+                fk_name = row[0]
+                cursor.execute(f'ALTER TABLE solicitacoes_pecas DROP FOREIGN KEY `{fk_name}`')
+                conn.commit()
+                print(f"[DB] FK {fk_name} removida de solicitacoes_pecas.peca_id (permite peça do armazém).")
+        except Exception as e:
+            print(f"[DB] Aviso ao remover FK peca_id solicitacoes_pecas: {e}")
+        finally:
+            conn.close()
 
     def _migrar_pilotos_cadastro(self) -> None:
         """Migração: adiciona senha aos pilotos e permite equipe_id NULL (pilotos sem equipe)."""
@@ -1153,6 +1179,20 @@ class DatabaseManager:
             conn.close()
         except Exception as e:
             print(f"[DB] Erro na migracao de apelido: {e}")
+
+    def _migrar_imagem_carro(self) -> None:
+        """Migração: adiciona coluna imagem_url aos carros (foto do dono)"""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            if not self._column_exists('carros', 'imagem_url'):
+                print("[DB] Migrando: adicionando coluna imagem_url aos carros...")
+                cursor.execute('ALTER TABLE carros ADD COLUMN imagem_url VARCHAR(512) DEFAULT NULL')
+                conn.commit()
+                print("[DB] Coluna imagem_url adicionada.")
+            conn.close()
+        except Exception as e:
+            print(f"[DB] Erro na migração imagem_url: {e}")
 
     def _migrar_carro_id_nullable(self) -> None:
         """Migração: permite NULL em carro_id (para peças no armazém)"""
@@ -1625,17 +1665,23 @@ class DatabaseManager:
             conn = self._get_conn()
             cursor = conn.cursor()
 
-            # Carregar todos os carros da equipe (SEM colunas de ID de peças)
-            cursor.execute('''
-                SELECT id, numero_carro, marca, modelo, modelo_id, batidas_totais, vitoria, derrotas, empates, status, timestamp_ativo, timestamp_repouso
-                FROM carros WHERE equipe_id = %s
-            ''', (equipe_id,))
+            # Carregar todos os carros da equipe (inclui apelido e imagem_url se existirem)
+            cols = 'id, numero_carro, marca, modelo, modelo_id, batidas_totais, vitoria, derrotas, empates, status, timestamp_ativo, timestamp_repouso'
+            if self._column_exists('carros', 'apelido'):
+                cols += ', apelido'
+            if self._column_exists('carros', 'imagem_url'):
+                cols += ', imagem_url'
+            cursor.execute(f'SELECT {cols} FROM carros WHERE equipe_id = %s', (equipe_id,))
 
             carros_rows = cursor.fetchall()
             carros = []
+            idx_apelido = 12 if self._column_exists('carros', 'apelido') else None
+            idx_imagem = (13 if idx_apelido is not None else 12) if self._column_exists('carros', 'imagem_url') else None
 
             for carro_row in carros_rows:
-                carro_id, numero, marca, modelo, modelo_id, batidas, vit, der, emp, status, timestamp_ativo, timestamp_repouso = carro_row
+                carro_id, numero, marca, modelo, modelo_id, batidas, vit, der, emp, status, timestamp_ativo, timestamp_repouso = carro_row[:12]
+                apelido = carro_row[idx_apelido] if idx_apelido is not None and len(carro_row) > idx_apelido else None
+                imagem_url = carro_row[idx_imagem] if idx_imagem is not None and len(carro_row) > idx_imagem else None
 
                 # Carregar APENAS as peças instaladas (instalado = 1) do carro
                 cursor.execute('''
@@ -1692,7 +1738,11 @@ class DatabaseManager:
                 carro.vitoria = vit
                 carro.derrotas = der
                 carro.empates = emp
-                
+                if idx_apelido is not None:
+                    carro.apelido = apelido
+                if idx_imagem is not None:
+                    carro.imagem_url = imagem_url
+
                 # Reconstruir pecas_instaladas com os dados das peças instaladas
                 carro.pecas_instaladas = []
                 if carro.motor:
@@ -2839,6 +2889,7 @@ class DatabaseManager:
                     'durabilidade_maxima': row[3],
                     'durabilidade_atual': row[4],
                     'preco': row[5] or 0,
+                    'peca_loja_id': row[6] if len(row) > 6 else None,
                     'durabilidade_percentual': int((row[4] / row[3] * 100) if row[3] > 0 else 0),
                     'carro_nome': 'Armazém',
                     'compatibilidades': compatibilidades
@@ -2945,9 +2996,15 @@ class DatabaseManager:
             ''', (carro_id,))
 
             rows = cursor.fetchall()
+            # Máximo 1 base por tipo: deduplicar por tipo (evita múltiplos motores/câmbios etc.)
+            seen_tipos = set()
             pecas_com_compat = []
             for row in rows:
                 peca_id, peca_loja_id, nome, tipo_peca, durabilidade_maxima, durabilidade_atual, compatibilidade_json, preco_loja = row
+                tipo_peca_lower = (tipo_peca or '').lower()
+                if tipo_peca_lower in seen_tipos:
+                    continue
+                seen_tipos.add(tipo_peca_lower)
 
                 compatibilidades = []
                 if compatibilidade_json:
@@ -2994,6 +3051,34 @@ class DatabaseManager:
             import traceback
             traceback.print_exc()
             return []
+
+    def obter_valor_total_pecas_nao_pagas_carro(self, carro_id: str, equipe_id: str) -> tuple:
+        """Retorna (soma do preço das peças não pagas no carro, quantidade de peças).
+        Peças não pagas: instalado=1 e (pix_id IS NULL ou pix_id = ''). Usado no PIX de ativação."""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            if self._column_exists('pecas', 'pix_id'):
+                cursor.execute('''
+                    SELECT COALESCE(SUM(COALESCE(preco, 0)), 0), COUNT(*)
+                    FROM pecas
+                    WHERE carro_id = %s AND instalado = 1 AND equipe_id = %s
+                      AND (pix_id IS NULL OR pix_id = '')
+                ''', (str(carro_id), str(equipe_id)))
+            else:
+                cursor.execute('''
+                    SELECT COALESCE(SUM(COALESCE(preco, 0)), 0), COUNT(*)
+                    FROM pecas
+                    WHERE carro_id = %s AND instalado = 1 AND equipe_id = %s
+                ''', (str(carro_id), str(equipe_id)))
+            row = cursor.fetchone()
+            conn.close()
+            if row:
+                return float(row[0] or 0), int(row[1] or 0)
+            return 0.0, 0
+        except Exception as e:
+            print(f"[DB] Erro obter_valor_total_pecas_nao_pagas_carro: {e}")
+            return 0.0, 0
 
     def obter_peca_instalada_por_tipo(self, carro_id, tipo_peca):
         """Obtém a peça instalada de um tipo específico no carro (ou None se não houver)"""
@@ -3284,7 +3369,7 @@ class DatabaseManager:
             conn.commit()
             cursor.execute('SET FOREIGN_KEY_CHECKS=1')
             conn.close()
-            return True
+            return peca_id
         except Exception as e:
             print(f"[DB] Erro ao adicionar upgrade ao armazém: {e}")
             import traceback
@@ -3378,19 +3463,25 @@ class DatabaseManager:
 
     def instalar_peca_por_id_no_carro(self, peca_armazem_id: str, carro_id: str, equipe_id: str) -> tuple:
         """Instala a peça do armazém (por pecas.id) no carro, movendo também todas as peças com instalado_em_peca_id = peca_armazem_id.
-        Remove peça antiga do mesmo tipo antes. Retorna (True, msg) ou (False, erro)."""
+        Só aceita peça BASE (sem upgrade_id). Remove peça antiga do mesmo tipo antes. Retorna (True, msg) ou (False, erro)."""
         try:
             conn = self._get_conn()
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT id, peca_loja_id, tipo, nome, equipe_id, instalado, carro_id
-                FROM pecas WHERE id = %s AND equipe_id = %s
+            cols = 'id, peca_loja_id, tipo, nome, equipe_id, instalado, carro_id'
+            if self._column_exists('pecas', 'upgrade_id'):
+                cols += ', upgrade_id'
+            cursor.execute(f'''
+                SELECT {cols} FROM pecas WHERE id = %s AND equipe_id = %s
             ''', (peca_armazem_id, equipe_id))
             row = cursor.fetchone()
             if not row:
                 conn.close()
                 return False, 'Peça não encontrada no armazém da equipe'
-            pid, peca_loja_id, tipo_peca, nome_peca, eq_id, instalado, cid = row
+            upgrade_id = row[7] if len(row) > 7 and self._column_exists('pecas', 'upgrade_id') else None
+            if upgrade_id and str(upgrade_id).strip():
+                conn.close()
+                return False, 'Upgrade não pode ser instalado diretamente no carro. Instale primeiro a peça base (ex: motor) no carro ou adicione o upgrade à peça no armazém.'
+            pid, peca_loja_id, tipo_peca, nome_peca, eq_id, instalado, cid = row[0], row[1], row[2], row[3], row[4], row[5], row[6]
             if instalado and cid:
                 conn.close()
                 return False, 'Peça já está instalada em um carro'
@@ -3465,7 +3556,7 @@ class DatabaseManager:
             
             if result:
                 print(f"[DB ARMAZÉM] ✅ Peça adicionada ao armazém com sucesso!")
-                return True
+                return peca_id
             else:
                 print(f"[DB ARMAZÉM] ❌ ERRO: Peça não foi encontrada após salvar!")
                 return False
@@ -3593,10 +3684,18 @@ class DatabaseManager:
                 cursor.execute('UPDATE pecas SET carro_id = NULL, instalado = 0 WHERE id = %s', (str(peca_id),))
                 if self._column_exists('pecas', 'instalado_em_peca_id'):
                     cursor.execute('UPDATE pecas SET carro_id = NULL, instalado = 0 WHERE instalado_em_peca_id = %s', (str(peca_id),))
-            cursor.execute('''
-                UPDATE pecas SET instalado = 1, carro_id = %s
-                WHERE peca_loja_id = %s AND equipe_id = %s AND instalado = 0
-            ''', (str(carro_id), str(peca_loja_id), str(equipe_id)))
+            # Só instalar peças BASE (nunca upgrade): upgrade só vai no carro junto da peça base
+            if self._column_exists('pecas', 'upgrade_id'):
+                cursor.execute('''
+                    UPDATE pecas SET instalado = 1, carro_id = %s
+                    WHERE peca_loja_id = %s AND equipe_id = %s AND instalado = 0
+                      AND (upgrade_id IS NULL OR upgrade_id = '')
+                ''', (str(carro_id), str(peca_loja_id), str(equipe_id)))
+            else:
+                cursor.execute('''
+                    UPDATE pecas SET instalado = 1, carro_id = %s
+                    WHERE peca_loja_id = %s AND equipe_id = %s AND instalado = 0
+                ''', (str(carro_id), str(peca_loja_id), str(equipe_id)))
             linhas_afetadas = cursor.rowcount
             if linhas_afetadas > 0:
                 cursor.execute('SELECT id FROM pecas WHERE peca_loja_id = %s AND carro_id = %s AND equipe_id = %s LIMIT 1', (str(peca_loja_id), str(carro_id), str(equipe_id)))
@@ -3677,10 +3776,25 @@ class DatabaseManager:
             return None
 
     def salvar_solicitacao_peca(self, id, equipe_id, peca_id, quantidade, status, carro_id=None):
-        """Salva uma solicitação de peça no banco de dados"""
+        """Salva uma solicitação de peça no banco de dados.
+        Não permite duas solicitações pendentes da mesma peça (equipe + peca_id + carro_id)."""
         try:
             conn = self._get_conn()
             cursor = conn.cursor()
+            setattr(self, '_erro_solicitacao_peca', None)
+
+            if status == 'pendente':
+                cursor.execute('''
+                    SELECT id FROM solicitacoes_pecas
+                    WHERE equipe_id = %s AND peca_id = %s
+                      AND ((carro_id IS NULL AND %s IS NULL) OR (carro_id = %s))
+                      AND status = 'pendente'
+                    LIMIT 1
+                ''', (equipe_id, peca_id, carro_id, carro_id))
+                if cursor.fetchone():
+                    conn.close()
+                    setattr(self, '_erro_solicitacao_peca', 'duplicada')
+                    return False
 
             cursor.execute('''
                 INSERT INTO solicitacoes_pecas 
@@ -3700,6 +3814,7 @@ class DatabaseManager:
             print(f"Erro ao salvar solicitação de peça: {e}")
             import traceback
             traceback.print_exc()
+            setattr(self, '_erro_solicitacao_peca', None)
             return False
 
     def carregar_solicitacoes_pecas(self, equipe_id=None):
@@ -3708,15 +3823,18 @@ class DatabaseManager:
             conn = self._get_conn()
             cursor = conn.cursor()
 
-            # Query com JOINs; usar sp.tipo_peca como fallback quando p.tipo for NULL
+            # Query com JOINs; peca_id pode ser pecas_loja.id ou pecas.id (peça do armazém/upgrade)
             cols = [
                 'sp.id', 'sp.equipe_id', 'sp.peca_id', 'sp.carro_id', 'sp.quantidade', 'sp.status',
                 'sp.data_solicitacao', 'sp.data_atualizacao',
-                'e.nome as equipe_nome', 'p.nome as peca_nome', 'p.tipo as peca_tipo_join', 'p.preco',
+                'e.nome as equipe_nome',
+                'COALESCE(p.nome, p_arm.nome) as peca_nome',
+                'COALESCE(p.tipo, p_arm.tipo) as peca_tipo_join',
+                'COALESCE(p.preco, p_arm.preco) as preco',
                 'c.marca as carro_marca', 'c.modelo as carro_modelo', 'c.status as carro_status'
             ]
             if self._column_exists('solicitacoes_pecas', 'tipo_peca'):
-                cols.insert(cols.index('p.preco'), 'sp.tipo_peca')
+                cols.insert(cols.index('COALESCE(p.preco, p_arm.preco) as preco'), 'sp.tipo_peca')
             # Ocultar solicitações aprovadas (instalado) com mais de 72h
             filtro_72h = " (sp.status != 'instalado' OR sp.data_atualizacao >= NOW() - INTERVAL 72 HOUR) "
             query = '''
@@ -3724,6 +3842,7 @@ class DatabaseManager:
                 FROM solicitacoes_pecas sp
                 LEFT JOIN equipes e ON sp.equipe_id = e.id
                 LEFT JOIN pecas_loja p ON sp.peca_id = p.id
+                LEFT JOIN pecas p_arm ON sp.peca_id = p_arm.id AND p_arm.equipe_id = sp.equipe_id
                 LEFT JOIN carros c ON sp.carro_id = c.id
                 WHERE ''' + filtro_72h
             if equipe_id:
@@ -3766,7 +3885,23 @@ class DatabaseManager:
                 }
                 solicitacoes.append(solicitacao)
 
-            return solicitacoes
+            # Deduplicar: no máximo uma linha por (equipe_id, carro_id, peca_id); preferir pendente
+            chave = lambda s: (str(s.get('equipe_id') or ''), str(s.get('carro_id') or ''), str(s.get('peca_id') or ''))
+            por_chave = {}
+            for s in solicitacoes:
+                k = chave(s)
+                if k not in por_chave:
+                    por_chave[k] = s
+                else:
+                    existente = por_chave[k]
+                    if s.get('status') == 'pendente' and existente.get('status') != 'pendente':
+                        por_chave[k] = s
+                    elif s.get('status') == 'pendente' == existente.get('status') or (s.get('status') != 'pendente' and existente.get('status') != 'pendente'):
+                        if (s.get('data_solicitacao') or '') > (existente.get('data_solicitacao') or ''):
+                            por_chave[k] = s
+            resultado = list(por_chave.values())
+            resultado.sort(key=lambda s: (s.get('data_solicitacao') or ''), reverse=True)
+            return resultado
         except Exception as e:
             print(f"Erro ao carregar solicitações de peças: {e}")
             import traceback
@@ -4130,6 +4265,78 @@ class DatabaseManager:
             return {'sucesso': False, 'erro': str(e)}
 
     # ============ MÉTODOS DE COMISSÕES ============
+
+    def obter_marca_modelo_carro(self, carro_id: str) -> Optional[tuple]:
+        """Retorna (marca, modelo) do carro pelo id, ou None se não existir."""
+        if not carro_id:
+            return None
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            cursor.execute('SELECT marca, modelo FROM carros WHERE id = %s', (str(carro_id),))
+            row = cursor.fetchone()
+            conn.close()
+            return (row[0], row[1]) if row and row[0] and row[1] else None
+        except Exception as e:
+            print(f"Erro ao obter marca/modelo do carro {carro_id}: {e}")
+            return None
+
+    def obter_pecas_instaladas_carro(self, carro_id: str) -> List[dict]:
+        """Retorna peças do carro agrupadas por slot: 1 base por tipo (motor, cambio, etc.) + N upgrades.
+        Formato: [{'tipo': 'motor', 'nome': 'ap 2.0', 'upgrades': ['kit turbo']}, ...]."""
+        if not carro_id:
+            return []
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            # Apenas peças BASE no carro (não instaladas em outra peça)
+            base_cond = ""
+            if self._column_exists('pecas', 'instalado_em_peca_id'):
+                base_cond = " AND (p.instalado_em_peca_id IS NULL OR p.instalado_em_peca_id = '')"
+            order_sql = "ORDER BY p.tipo"
+            if self.is_mysql:
+                order_sql = "ORDER BY FIELD(COALESCE(p.tipo,''), 'motor', 'cambio', 'suspensao', 'kit_angulo', 'diferencial'), p.tipo"
+            cursor.execute('''
+                SELECT p.id, p.tipo, p.nome FROM pecas p
+                WHERE p.carro_id = %s AND p.instalado = 1
+                ''' + base_cond + '\n                ' + order_sql, (str(carro_id),))
+            base_rows = cursor.fetchall()
+            tem_coluna_upgrade = self._column_exists('pecas', 'instalado_em_peca_id')
+            # Máximo 1 base por tipo: agrupar por tipo e manter só o primeiro (evita duplicatas no banco)
+            por_tipo = {}
+            for row in base_rows:
+                base_id, tipo, nome = row[0], (row[1] or '').lower(), row[2] or '—'
+                if tipo not in por_tipo:
+                    por_tipo[tipo] = (base_id, nome)
+            ordem_tipo = ['motor', 'cambio', 'suspensao', 'kit_angulo', 'diferencial']
+            result = []
+            for tipo in ordem_tipo:
+                if tipo not in por_tipo:
+                    continue
+                base_id, nome = por_tipo[tipo]
+                upgrades = []
+                if tem_coluna_upgrade:
+                    cursor.execute('''
+                        SELECT nome FROM pecas
+                        WHERE instalado_em_peca_id = %s AND instalado = 1
+                    ''', (base_id,))
+                    upgrades = [r[0] or '—' for r in cursor.fetchall()]
+                result.append({'tipo': tipo, 'nome': nome, 'upgrades': upgrades})
+            for tipo, (base_id, nome) in por_tipo.items():
+                if tipo in ordem_tipo:
+                    continue
+                upgrades = []
+                if tem_coluna_upgrade:
+                    cursor.execute('SELECT nome FROM pecas WHERE instalado_em_peca_id = %s AND instalado = 1', (base_id,))
+                    upgrades = [r[0] or '—' for r in cursor.fetchall()]
+                result.append({'tipo': tipo, 'nome': nome, 'upgrades': upgrades})
+            conn.close()
+            return result
+        except Exception as e:
+            print(f"Erro ao obter peças do carro {carro_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
 
     def obter_configuracao(self, chave: str) -> Optional[str]:
         """Obtém o valor de uma configuração"""
@@ -4881,7 +5088,7 @@ class DatabaseManager:
             
             # 2. Obter valor da participação (configuração global)
             valor_etapa = self.obter_configuracao('valor_etapa')
-            valor_etapa_float = float(valor_etapa) if valor_etapa else 1000.00
+            valor_etapa_float = float(valor_etapa) if valor_etapa else 20.00
             
             # 2.1. Verificar se há débito acumulado (saldo <= -valor_etapa)
             if saldo_pix_atual <= -valor_etapa_float:
@@ -5002,7 +5209,7 @@ class DatabaseManager:
             
             # 2. Obter valor da participação (configuração global)
             valor_etapa = self.obter_configuracao('valor_etapa')
-            valor_etapa_float = float(valor_etapa) if valor_etapa else 1000.00
+            valor_etapa_float = float(valor_etapa) if valor_etapa else 20.00
             
             # 3. Verificar se haverá saldo suficiente após deducção
             novo_saldo = saldo_pix_atual - valor_etapa_float
@@ -5770,7 +5977,7 @@ class DatabaseManager:
             
             # 2. Obter valor de participação (configuração global)
             valor_etapa = self.obter_configuracao('valor_etapa')
-            valor_etapa_float = float(valor_etapa) if valor_etapa else 1000.00
+            valor_etapa_float = float(valor_etapa) if valor_etapa else 20.00
             
             # 2.1. Verificar se há débito acumulado (saldo <= -valor_etapa)
             if saldo_pix_atual <= -valor_etapa_float:

@@ -463,60 +463,6 @@ def get_carro_ativo(equipe_id):
         print(f"[ERRO] Erro ao buscar carro ativo: {e}")
         return jsonify({'id': None, 'erro': str(e)}), 500
 
-@app.route('/api/garagem/<equipe_id>')
-@requer_login_api
-def get_garagem(equipe_id):
-    """Retorna dados da garagem da equipe (carros e peças)"""
-    try:
-        auth_equipe_id = obter_equipe_id_request()
-        if not auth_equipe_id:
-            return jsonify({'erro': 'Não autenticado'}), 401
-        
-        # Verificar se o equipe_id da URL corresponde ao usuário autenticado
-        if equipe_id != auth_equipe_id:
-            return jsonify({'erro': 'Acesso negado'}), 403
-        
-        # Carregar equipe do banco de dados (não da memória)
-        equipe = api.db.carregar_equipe(equipe_id)
-        if not equipe:
-            return jsonify({'erro': 'Equipe não encontrada'}), 404
-        
-        carros = []
-        
-        # Processar todos os carros da equipe
-        for carro in equipe.carros:
-            print(f"[DEBUG] Processando carro: {carro.marca} {carro.modelo}")
-            
-            # Determinar status baseado no status do carro no banco (não apenas em memória)
-            carro_status_banco = getattr(carro, 'status', 'repouso')  # 'ativo' ou 'repouso'
-            status_carro = carro_status_banco
-            
-            # Buscar peças instaladas com compatibilidades
-            pecas_instaladas = api.db.obter_pecas_carro_com_compatibilidade(carro.id)
-            
-            carro_info = {
-                'id': carro.id,
-                'marca': carro.marca,
-                'modelo': carro.modelo,
-                'numero_carro': carro.numero_carro,
-                'classe': getattr(carro, 'classe', 'N/A'),
-                'modelo_id': getattr(carro, 'modelo_id', None),
-                'status': status_carro,
-                'carro_ativo': status_carro == 'ativo',
-                'apelido': getattr(carro, 'apelido', None),
-                'pecas': pecas_instaladas
-            }
-            
-            carros.append(carro_info)
-        
-        return jsonify({'carros': carros})
-    except Exception as e:
-        print(f"[ERRO GARAGEM] {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'erro': f'Erro ao carregar garagem'}), 500
-
-
 @app.route('/api/garagem/recuperar-peca', methods=['POST'])
 @requer_login_api
 def recuperar_peca_garagem():
@@ -572,6 +518,13 @@ def solicitar_instalacao_armazem():
         if not peca_encontrada:
             return jsonify({'sucesso': False, 'erro': 'Peça não encontrada no armazém'}), 404
         
+        # Upgrade não pode ser instalado diretamente no carro: precisa estar em cima de uma peça base (ex: motor)
+        if peca_encontrada.get('upgrade_id'):
+            return jsonify({
+                'sucesso': False,
+                'erro': 'Upgrade não pode ser instalado diretamente no carro. Instale primeiro a peça base correspondente (ex: motor) no carro ou adicione o upgrade à peça no armazém.'
+            }), 400
+        
         # Buscar a peça_loja
         pecas_loja = api.db.carregar_pecas_loja()
         peca_loja = None
@@ -589,16 +542,14 @@ def solicitar_instalacao_armazem():
             print(f"[INSTALAÇÃO ARMAZÉM] Incompatibilidade: {msg}")
             return jsonify({'sucesso': False, 'erro': msg}), 400
         
-        # Valor = preço da peça + soma dos upgrades instalados nessa peça (motor + peças no motor)
-        valor_item = float(api.db.obter_preco_total_peca_com_upgrades(peca_encontrada['id']))
-        if valor_item <= 0:
-            valor_item = float(api.db.obter_configuracao('preco_instalacao_warehouse') or '50')
+        # Valor = apenas taxa de instalação (config), não preço da peça
+        valor_item = float(api.db.obter_configuracao('preco_instalacao_warehouse') or '10')
         taxa = valor_item * 0.01
         valor_total = valor_item + taxa
         
         print(f"[INSTALAÇÃO ARMAZÉM] Criando transação PIX:")
         print(f"  - Peça: {peca_nome} ({peca_tipo}), id armazém: {peca_encontrada['id']}")
-        print(f"  - Valor (peça + upgrades): R$ {valor_item:.2f}")
+        print(f"  - Valor (instalação config): R$ {valor_item:.2f}")
         print(f"  - Taxa (1%): R$ {taxa:.2f}")
         print(f"  - Total: R$ {valor_total:.2f}")
         
@@ -713,7 +664,7 @@ def instalar_peca_armazem():
         import uuid
         solicitacao_id = str(uuid.uuid4())
         
-        api.db.salvar_solicitacao_peca(
+        ok = api.db.salvar_solicitacao_peca(
             id=solicitacao_id,
             equipe_id=equipe_id_str,
             peca_id=peca_loja.id,
@@ -721,6 +672,10 @@ def instalar_peca_armazem():
             status='pendente',
             carro_id=carro_id
         )
+        if not ok:
+            erro = getattr(api.db, '_erro_solicitacao_peca', None)
+            msg = 'Já existe uma solicitação pendente para esta peça neste carro.' if erro == 'duplicada' else 'Não foi possível criar a solicitação.'
+            return jsonify({'sucesso': False, 'erro': msg}), 400 if erro == 'duplicada' else 500
         
         print(f"[SOLICITAÇÃO ARMAZÉM] Solicitação {solicitacao_id} criada para peça {peca_nome} no carro {carro_id}")
         return jsonify({
@@ -821,7 +776,7 @@ def instalar_multiplas_pecas_armazem():
                 return jsonify({'sucesso': False, 'erro': msg}), 400
             
             # Adicionar à lista validada com preço de instalação
-            valor_item = float(api.db.obter_configuracao('preco_instalacao_warehouse') or '50')
+            valor_item = float(api.db.obter_configuracao('preco_instalacao_warehouse') or '10')
             valor_total_itens += valor_item * quantidade
             
             pecas_validadas.append({
@@ -906,7 +861,7 @@ def instalar_multiplas_pecas_armazem():
 @app.route('/api/garagem/instalar-multiplas-pecas-armazem-repouso', methods=['POST'])
 @requer_login_api
 def instalar_multiplas_pecas_armazem_repouso():
-    """Instala múltiplas peças do armazém em carros em repouso (direto, sem solicitação)"""
+    """Instala múltiplas peças do armazém em carros em repouso. Se a mesma solicitação tiver a peça base (ex: motor) e os upgrades (ex: kit turbo), instala a base primeiro e depois vincula os upgrades a ela."""
     try:
         dados = request.json
         carro_id = dados.get('carro_id')
@@ -920,59 +875,125 @@ def instalar_multiplas_pecas_armazem_repouso():
             return jsonify({'sucesso': False, 'erro': 'Não autenticado'}), 401
         
         equipe_id_str = str(equipe_id)
-        
-        # Carregar dados
         pecas_armazem = api.db.carregar_pecas_armazem_equipe(equipe_id_str)
-        pecas_loja = api.db.carregar_pecas_loja()
+        used_ids = set()
+        base_por_peca_loja = {}  # peca_loja_id -> id da peça base instalada no carro
         
+        def achar_peca_armazem(nome, tipo, eh_upgrade):
+            for p in pecas_armazem:
+                if p['id'] in used_ids:
+                    continue
+                if p['nome'].lower() != nome.lower() or p['tipo'].lower() != tipo.lower():
+                    continue
+                if eh_upgrade and not p.get('upgrade_id'):
+                    continue
+                if not eh_upgrade and p.get('upgrade_id'):
+                    continue
+                return p
+            return None
+        
+        # Validar antes de instalar: upgrades precisam da peça base (no carro ou na seleção)
+        bases_no_carro = set()
+        if api.db._column_exists('pecas', 'upgrade_id'):
+            conn_val = api.db._get_conn()
+            cur = conn_val.cursor()
+            cur.execute('''
+                SELECT peca_loja_id FROM pecas WHERE carro_id = %s AND equipe_id = %s AND instalado = 1
+                  AND (upgrade_id IS NULL OR upgrade_id = '') AND peca_loja_id IS NOT NULL
+            ''', (carro_id, equipe_id_str))
+            for row in cur.fetchall():
+                if row[0]:
+                    bases_no_carro.add(str(row[0]))
+            conn_val.close()
+        bases_na_selecao = set()
+        upgrades_sem_base = []
+        for peca_req in pecas:
+            peca_armazem = achar_peca_armazem(peca_req.get('nome', ''), peca_req.get('tipo', ''), eh_upgrade=False)
+            if peca_armazem and peca_armazem.get('peca_loja_id'):
+                bases_na_selecao.add(str(peca_armazem['peca_loja_id']))
+        for peca_req in pecas:
+            peca_armazem = achar_peca_armazem(peca_req.get('nome', ''), peca_req.get('tipo', ''), eh_upgrade=True)
+            if not peca_armazem:
+                continue
+            peca_loja_id_base = peca_armazem.get('peca_loja_id')
+            if not peca_loja_id_base:
+                continue
+            if str(peca_loja_id_base) in bases_na_selecao or str(peca_loja_id_base) in bases_no_carro:
+                continue
+            upgrades_sem_base.append(peca_armazem.get('nome', peca_req.get('nome', 'Upgrade')))
+        if upgrades_sem_base:
+            nomes = ', '.join(upgrades_sem_base)
+            return jsonify({
+                'sucesso': False,
+                'erro': f'Para instalar o(s) upgrade(s) "{nomes}" é necessário ter a peça base correspondente (ex.: motor) no carro ou selecionada para instalação.'
+            }), 400
+        
+        conn = api.db._get_conn()
+        cursor = conn.cursor()
         pecas_instaladas = 0
         
-        for peca_req in pecas:
-            peca_nome = peca_req.get('nome')
-            peca_tipo = peca_req.get('tipo')
-            
-            # Buscar peça no armazém
-            peca_armazem = None
-            for p in pecas_armazem:
-                if p['nome'].lower() == peca_nome.lower() and p['tipo'].lower() == peca_tipo.lower():
-                    peca_armazem = p
-                    break
-            
-            if not peca_armazem:
-                print(f"[REPOUSO] Peça {peca_nome} não encontrada no armazém")
-                continue
-            
-            # Instalar no carro - apenas atualizar a peça do armazém
-            try:
-                # Buscar o carro para pegar nome
-                equipe = api.db.carregar_equipe(equipe_id_str)
-                carro_nome = "Desconhecido"
-                for carro in equipe.carros:
-                    if str(carro.id) == str(carro_id):
-                        carro_nome = f"{carro.marca} {carro.modelo}"
-                        break
-                
-                # Atualizar a peça do armazém para instalada no carro
-                # Similar ao método instalar_peca: instalado = 1, carro_id = valor
-                conn = api.db._get_conn()
-                cursor = conn.cursor()
-                
+        try:
+            # 1) Processar peças BASE primeiro (motor, câmbio, etc.)
+            for peca_req in pecas:
+                peca_nome = peca_req.get('nome')
+                peca_tipo = peca_req.get('tipo')
+                peca_armazem = achar_peca_armazem(peca_nome, peca_tipo, eh_upgrade=False)
+                if not peca_armazem:
+                    continue
+                peca_loja_id = peca_armazem.get('peca_loja_id')
+                if not peca_loja_id:
+                    continue
+                tipo_peca = peca_armazem.get('tipo') or ''
+                peca_antiga = api.db.obter_peca_instalada_por_tipo(carro_id, tipo_peca)
+                if peca_antiga:
+                    cursor.execute('UPDATE pecas SET carro_id = NULL, instalado = 0 WHERE id = %s', (peca_antiga['id'],))
+                    if api.db._column_exists('pecas', 'instalado_em_peca_id'):
+                        cursor.execute('UPDATE pecas SET carro_id = NULL, instalado = 0 WHERE instalado_em_peca_id = %s', (peca_antiga['id'],))
                 cursor.execute('''
-                    UPDATE pecas 
-                    SET carro_id = %s, instalado = 1, equipe_id = %s
-                    WHERE id = %s
+                    UPDATE pecas SET carro_id = %s, instalado = 1, equipe_id = %s WHERE id = %s
                 ''', (carro_id, equipe_id_str, peca_armazem['id']))
-                
+                if api.db._column_exists('pecas', 'instalado_em_peca_id'):
+                    cursor.execute('UPDATE pecas SET carro_id = %s, instalado = 1, equipe_id = %s WHERE instalado_em_peca_id = %s',
+                                  (carro_id, equipe_id_str, peca_armazem['id']))
                 conn.commit()
-                conn.close()
-                
+                base_por_peca_loja[str(peca_loja_id)] = peca_armazem['id']
+                used_ids.add(peca_armazem['id'])
                 pecas_instaladas += 1
-                print(f"[REPOUSO] Peça {peca_nome} instalada no carro {carro_nome}")
-            except Exception as e:
-                print(f"[REPOUSO] Erro ao instalar peça {peca_nome}: {e}")
-                import traceback
-                traceback.print_exc()
-                continue
+                api.db.salvar_solicitacao_peca(str(uuid.uuid4()), equipe_id_str, peca_armazem['id'], 1, 'instalada', carro_id)
+                print(f"[REPOUSO] Peça base instalada: {peca_nome}")
+            
+            # 2) Para upgrades: vincular à base do mesmo peca_loja_id (instalada nesta solicitação ou já no carro)
+            for peca_req in pecas:
+                peca_nome = peca_req.get('nome')
+                peca_tipo = peca_req.get('tipo')
+                peca_armazem = achar_peca_armazem(peca_nome, peca_tipo, eh_upgrade=True)
+                if not peca_armazem:
+                    continue
+                peca_loja_id_base = peca_armazem.get('peca_loja_id')
+                if not peca_loja_id_base:
+                    continue
+                base_id = base_por_peca_loja.get(str(peca_loja_id_base))
+                if not base_id:
+                    cursor.execute('''
+                        SELECT id FROM pecas WHERE carro_id = %s AND equipe_id = %s AND instalado = 1
+                          AND peca_loja_id = %s AND (upgrade_id IS NULL OR upgrade_id = '')
+                        LIMIT 1
+                    ''', (carro_id, equipe_id_str, peca_loja_id_base))
+                    row = cursor.fetchone()
+                    base_id = row[0] if row else None
+                if not base_id:
+                    print(f"[REPOUSO] Upgrade {peca_nome} ignorado: nenhuma peça base correspondente no carro")
+                    continue
+                cursor.execute('''
+                    UPDATE pecas SET instalado_em_peca_id = %s, carro_id = %s, instalado = 1 WHERE id = %s
+                ''', (base_id, carro_id, peca_armazem['id']))
+                conn.commit()
+                used_ids.add(peca_armazem['id'])
+                pecas_instaladas += 1
+                api.db.salvar_solicitacao_peca(str(uuid.uuid4()), equipe_id_str, peca_armazem['id'], 1, 'instalada', carro_id)
+                print(f"[REPOUSO] Upgrade instalado na base: {peca_nome}")
+        finally:
+            conn.close()
         
         return jsonify({
             'sucesso': True,
@@ -1022,25 +1043,73 @@ def instalar_multiplas_pecas_armazem_ativo():
         pecas_loja = api.db.carregar_pecas_loja()
         print(f"[ATIVO MODAL PIX] Peças da loja carregadas: {len(pecas_loja)}")
         
-        # Validar que todas as peças existem na loja (não no armazém!)
+        # Validar upgrades: precisam da peça base no carro ou na seleção
+        def achar_no_armazem(nome, tipo, eh_upgrade):
+            for p in pecas_armazem:
+                if p['nome'].lower() != nome.lower() or p['tipo'].lower() != tipo.lower():
+                    continue
+                if eh_upgrade and not p.get('upgrade_id'):
+                    continue
+                if not eh_upgrade and p.get('upgrade_id'):
+                    continue
+                return p
+            return None
+        bases_no_carro = set()
+        if api.db._column_exists('pecas', 'upgrade_id'):
+            conn_ac = api.db._get_conn()
+            cur_ac = conn_ac.cursor()
+            cur_ac.execute('''
+                SELECT peca_loja_id FROM pecas WHERE carro_id = %s AND equipe_id = %s AND instalado = 1
+                  AND (upgrade_id IS NULL OR upgrade_id = '') AND peca_loja_id IS NOT NULL
+            ''', (carro_id, equipe_id_str))
+            for row in cur_ac.fetchall():
+                if row[0]:
+                    bases_no_carro.add(str(row[0]))
+            conn_ac.close()
+        bases_na_selecao = set()
+        for peca_req in pecas:
+            p = achar_no_armazem(peca_req.get('nome', ''), peca_req.get('tipo', ''), eh_upgrade=False)
+            if p and p.get('peca_loja_id'):
+                bases_na_selecao.add(str(p['peca_loja_id']))
+        upgrades_sem_base = []
+        for peca_req in pecas:
+            p = achar_no_armazem(peca_req.get('nome', ''), peca_req.get('tipo', ''), eh_upgrade=True)
+            if not p or not p.get('peca_loja_id'):
+                continue
+            if str(p['peca_loja_id']) in bases_na_selecao or str(p['peca_loja_id']) in bases_no_carro:
+                continue
+            upgrades_sem_base.append(p.get('nome', peca_req.get('nome', 'Upgrade')))
+        if upgrades_sem_base:
+            nomes = ', '.join(upgrades_sem_base)
+            return jsonify({
+                'sucesso': False,
+                'erro': f'Para instalar o(s) upgrade(s) "{nomes}" é necessário ter a peça base correspondente (ex.: motor) no carro ou selecionada para instalação.'
+            }), 400
+        
+        # Validar que todas as peças existem na loja OU no armazém (upgrades estão em upgrade_loja, não em pecas_loja)
         for peca_req in pecas:
             peca_nome = peca_req.get('nome')
             peca_tipo = peca_req.get('tipo')
             
-            # Buscar na loja
-            encontrada = False
+            # Buscar na loja (peças base)
+            encontrada_loja = False
             for p in pecas_loja:
-                # PecaLoja é um objeto, não dict
                 if p.nome.lower() == peca_nome.lower() and p.tipo.lower() == peca_tipo.lower():
-                    encontrada = True
+                    encontrada_loja = True
                     break
-            
-            if not encontrada:
-                print(f"[ATIVO MODAL PIX] Peça não encontrada: {peca_nome} ({peca_tipo})")
-                return jsonify({'sucesso': False, 'erro': f'Peça {peca_nome} não disponível na loja'}), 404
+            if encontrada_loja:
+                continue
+            # Se não está na loja, pode ser upgrade: deve estar no armazém da equipe (já carregamos pecas_armazem)
+            encontrada_armazem = any(
+                p['nome'].lower() == peca_nome.lower() and p['tipo'].lower() == peca_tipo.lower()
+                for p in pecas_armazem
+            )
+            if not encontrada_armazem:
+                print(f"[ATIVO MODAL PIX] Peça não encontrada na loja nem no armazém: {peca_nome} ({peca_tipo})")
+                return jsonify({'sucesso': False, 'erro': f'Peça {peca_nome} não encontrada no armazém'}), 404
         
         # Calcular valor do PIX (uma instalação por peça)
-        preco_config = float(api.db.obter_configuracao('preco_instalacao_warehouse') or '50')
+        preco_config = float(api.db.obter_configuracao('preco_instalacao_warehouse') or '10')
         valor_total_itens = preco_config * len(pecas)  # Uma instalação por peça
         taxa = valor_total_itens * 0.01
         valor_total = valor_total_itens + taxa
@@ -1150,30 +1219,39 @@ def criar_multiplas_solicitacoes_armazem():
             
             print(f"[SOLICITAÇÕES] Processando: {peca_nome} ({peca_tipo}) x{quantidade}")
             
-            # Buscar peça na loja para ID
+            # Buscar peça na loja (base) ou no armazém (upgrade)
             peca_loja = None
             for p in pecas_loja:
                 if p.nome.lower() == peca_nome.lower() and p.tipo.lower() == peca_tipo.lower():
                     peca_loja = p
                     break
             
+            peca_armazem = None
             if not peca_loja:
-                print(f"[SOLICITAÇÕES] Peça {peca_nome} não encontrada na loja")
+                for p in pecas_armazem:
+                    if p['nome'].lower() == peca_nome.lower() and p['tipo'].lower() == peca_tipo.lower():
+                        peca_armazem = p
+                        break
+            
+            peca_id = peca_loja.id if peca_loja else (peca_armazem['id'] if peca_armazem else None)
+            if not peca_id:
+                print(f"[SOLICITAÇÕES] Peça {peca_nome} não encontrada na loja nem no armazém")
                 continue
             
-            # Criar solicitação para cada quantidade
+            # Criar solicitação para cada quantidade (evita duplicata: só cria se não existir pendente mesma peça+carro)
             for qtd in range(quantidade):
                 solicitacao_id = str(uuid.uuid4())
-                api.db.salvar_solicitacao_peca(
+                ok = api.db.salvar_solicitacao_peca(
                     id=solicitacao_id,
                     equipe_id=equipe_id_str,
-                    peca_id=peca_loja.id,
+                    peca_id=peca_id,
                     quantidade=1,
                     status='pendente',
                     carro_id=carro_id
                 )
-                solicitacoes_criadas += 1
-                print(f"[SOLICITAÇÕES] Criada solicitação para {peca_nome}")
+                if ok:
+                    solicitacoes_criadas += 1
+                    print(f"[SOLICITAÇÕES] Criada solicitação para {peca_nome}")
         
         print(f"[SOLICITAÇÕES] Total criado: {solicitacoes_criadas}")
         return jsonify({
@@ -1186,6 +1264,61 @@ def criar_multiplas_solicitacoes_armazem():
         import traceback
         traceback.print_exc()
         return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+@app.route('/api/garagem/<equipe_id>')
+@requer_login_api
+def get_garagem(equipe_id):
+    """Retorna dados da garagem da equipe (carros e peças)"""
+    try:
+        auth_equipe_id = obter_equipe_id_request()
+        if not auth_equipe_id:
+            return jsonify({'erro': 'Não autenticado'}), 401
+
+        # Verificar se o equipe_id da URL corresponde ao usuário autenticado
+        if equipe_id != auth_equipe_id:
+            return jsonify({'erro': 'Acesso negado'}), 403
+
+        # Carregar equipe do banco de dados (não da memória)
+        equipe = api.db.carregar_equipe(equipe_id)
+        if not equipe:
+            return jsonify({'erro': 'Equipe não encontrada'}), 404
+
+        carros = []
+
+        # Processar todos os carros da equipe
+        for carro in equipe.carros:
+            print(f"[DEBUG] Processando carro: {carro.marca} {carro.modelo}")
+
+            # Determinar status baseado no status do carro no banco (não apenas em memória)
+            carro_status_banco = getattr(carro, 'status', 'repouso')  # 'ativo' ou 'repouso'
+            status_carro = carro_status_banco
+
+            # Buscar peças instaladas com compatibilidades
+            pecas_instaladas = api.db.obter_pecas_carro_com_compatibilidade(carro.id)
+
+            carro_info = {
+                'id': carro.id,
+                'marca': carro.marca,
+                'modelo': carro.modelo,
+                'numero_carro': carro.numero_carro,
+                'classe': getattr(carro, 'classe', 'N/A'),
+                'modelo_id': getattr(carro, 'modelo_id', None),
+                'status': status_carro,
+                'carro_ativo': status_carro == 'ativo',
+                'apelido': getattr(carro, 'apelido', None),
+                'imagem_url': getattr(carro, 'imagem_url', None),
+                'pecas': pecas_instaladas
+            }
+
+            carros.append(carro_info)
+
+        return jsonify({'carros': carros})
+    except Exception as e:
+        print(f"[ERRO GARAGEM] {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'erro': f'Erro ao carregar garagem'}), 500
+
 
 @app.route('/api/armazem/<equipe_id>')
 @requer_login_api
@@ -1555,65 +1688,83 @@ def get_aguardando_carros():
                 for sol in solicitacoes_carros:
                     print(f"[AGUARDANDO-CARROS] Solicitação: ID={sol.get('id')}, status={sol.get('status')}, tipo_carro={sol.get('tipo_carro')}")
                     if sol['status'] == 'pendente':
-                        # Parse tipo_carro format: "UUID|Marca|Modelo" ou UUID puro (legacy)
-                        tipo_carro_str = sol.get('tipo_carro', '')
+                        # 1) Usar marca/modelo já preenchidos por carregar_solicitacoes_carros (carro encontrado na equipe)
+                        if sol.get('marca') and sol.get('modelo'):
+                            carro_id = sol.get('carro_id')
+                            pecas = api.db.obter_pecas_instaladas_carro(carro_id) if carro_id else []
+                            carros_aguardando.append({
+                                'id': sol.get('id'),
+                                'marca': sol['marca'],
+                                'modelo': sol['modelo'],
+                                'classe': sol.get('classe', 'N/A'),
+                                'preco': sol.get('preco', 0),
+                                'timestamp': sol.get('data_solicitacao', ''),
+                                'pecas': pecas
+                            })
+                            continue
+                        # 2) Parse tipo_carro: "carro_id|Marca|Modelo" ou UUID (legacy)
+                        tipo_carro_str = sol.get('tipo_carro') or ''
                         marca = None
                         modelo_name = None
                         carro_id = None
-                        
                         if '|' in tipo_carro_str:
-                            # Novo formato: UUID|Marca|Modelo
                             parts = tipo_carro_str.split('|')
                             carro_id = parts[0]
                             marca = parts[1] if len(parts) > 1 else None
                             modelo_name = parts[2] if len(parts) > 2 else None
                         else:
-                            # Legacy formato: apenas UUID
                             carro_id = tipo_carro_str
-                        
-                        # Buscar modelo do carro para obter informações completas
-                        modelo = None
-                        if carro_id:
-                            for m in api.loja_carros.modelos:
-                                if str(m.id) == str(carro_id):
-                                    modelo = m
-                                    break
-                            
-                            # Se não encontrou em memória, buscar do banco
-                            if not modelo:
-                                modelo = api.db.buscar_modelo_loja_por_id(carro_id)
-                        
-                        if modelo:
-                            print(f"[AGUARDANDO-CARROS] Modelo encontrado: {modelo.marca} {modelo.modelo}")
-                            carros_aguardando.append({
-                                'id': sol.get('id'),
-                                'marca': modelo.marca,
-                                'modelo': modelo.modelo,
-                                'classe': getattr(modelo, 'classe', 'N/A'),
-                                'preco': modelo.preco,
-                                'timestamp': sol.get('data_solicitacao', '')
-                            })
-                        elif marca and modelo_name:
-                            # Modelo foi deletado, mas temos marca e modelo armazenados
-                            print(f"[AGUARDANDO-CARROS] Modelo deletado, mas marca/modelo recuperados: {marca} {modelo_name}")
+                        # 3) Se já temos marca/modelo do tipo_carro, usar
+                        if marca and modelo_name:
+                            pecas = api.db.obter_pecas_instaladas_carro(carro_id) if carro_id else []
                             carros_aguardando.append({
                                 'id': sol.get('id'),
                                 'marca': marca,
                                 'modelo': modelo_name,
                                 'classe': 'N/A',
                                 'preco': 0,
-                                'timestamp': sol.get('data_solicitacao', '')
+                                'timestamp': sol.get('data_solicitacao', ''),
+                                'pecas': pecas
                             })
-                        else:
-                            # Fallback: Modelo não encontrado e sem dados armazenados
-                            print(f"[AGUARDANDO-CARROS] AVISO: Modelo não encontrado para tipo_carro={tipo_carro_str}")
+                            continue
+                        # 4) Tentar buscar modelo na loja (só quando tipo_carro é UUID de modelo, legacy)
+                        modelo = None
+                        if carro_id:
+                            for m in api.loja_carros.modelos:
+                                if str(m.id) == str(carro_id):
+                                    modelo = m
+                                    break
+                            if not modelo:
+                                modelo = api.db.buscar_modelo_loja_por_id(carro_id)
+                        if modelo:
+                            pecas = api.db.obter_pecas_instaladas_carro(carro_id) if carro_id else []
                             carros_aguardando.append({
                                 'id': sol.get('id'),
-                                'marca': 'Modelo Deletado',
-                                'modelo': 'Desconhecido',
+                                'marca': modelo.marca,
+                                'modelo': modelo.modelo,
+                                'classe': getattr(modelo, 'classe', 'N/A'),
+                                'preco': modelo.preco,
+                                'timestamp': sol.get('data_solicitacao', ''),
+                                'pecas': pecas
+                            })
+                        else:
+                            # 5) Fallback: buscar marca/modelo do carro no BD pelo carro_id
+                            nome_marca = marca or 'Modelo Deletado'
+                            nome_modelo = modelo_name or 'Desconhecido'
+                            carro_id_fk = sol.get('carro_id')
+                            if carro_id_fk:
+                                mar_mod = api.db.obter_marca_modelo_carro(carro_id_fk)
+                                if mar_mod and mar_mod[0] and mar_mod[1]:
+                                    nome_marca, nome_modelo = mar_mod[0], mar_mod[1]
+                            pecas = api.db.obter_pecas_instaladas_carro(carro_id_fk) if carro_id_fk else []
+                            carros_aguardando.append({
+                                'id': sol.get('id'),
+                                'marca': nome_marca,
+                                'modelo': nome_modelo,
                                 'classe': 'N/A',
                                 'preco': 0,
-                                'timestamp': sol.get('data_solicitacao', '')
+                                'timestamp': sol.get('data_solicitacao', ''),
+                                'pecas': pecas
                             })
         except Exception as e:
             print(f"[AGUARDANDO-CARROS] Erro ao carregar solicitações: {str(e)}")
@@ -4139,8 +4290,8 @@ def comprar():
             # Obter carro_id se foi selecionado
             carro_id = dados.get('carro_id')
             
-            # Salvar solicitação no banco de dados
-            api.db.salvar_solicitacao_peca(
+            # Salvar solicitação no banco de dados (não duplica se já existir pendente mesma peça+carro)
+            ok = api.db.salvar_solicitacao_peca(
                 id=solicitacao_id,
                 equipe_id=equipe_id,
                 peca_id=item_id,
@@ -4148,6 +4299,10 @@ def comprar():
                 status='pendente',
                 carro_id=carro_id
             )
+            if not ok:
+                erro = getattr(api.db, '_erro_solicitacao_peca', None)
+                msg = 'Já existe uma solicitação pendente para esta peça neste carro.' if erro == 'duplicada' else 'Falha ao criar solicitação.'
+                return jsonify({'sucesso': False, 'erro': msg}), 400 if erro == 'duplicada' else 500
             
             # Registrar comissão
             try:
@@ -4228,62 +4383,15 @@ def ativar_carro_gerar_pix():
         print(f"[ATIVAR CARRO]   kit_angulo: {carro.kit_angulo}")
         print(f"[ATIVAR CARRO]   diferenciais: {carro.diferenciais}")
         
-        # Procurar todas as peças do carro que NÃO têm pix_id (ainda não foram pagas)
-        print(f"[ATIVAR CARRO] 🔍 Procurando peças do carro {carro_id} da equipe {equipe_id}...")
+        # Valor = taxa de ativação + (taxa de instalação por peça × quantidade); usa apenas config (não preço da peça)
+        _, quantidade_pecas = api.db.obter_valor_total_pecas_nao_pagas_carro(carro_id, equipe_id)
+        valor_ativacao = float(api.db.obter_configuracao('valor_ativacao_carro') or '10')
+        valor_instalacao_peca = float(api.db.obter_configuracao('valor_instalacao_peca') or '10')
+        valor_pecas = valor_instalacao_peca * quantidade_pecas
+        valor_subtotal = valor_ativacao + valor_pecas
         
-        try:
-            conn = api.db._get_conn()
-            cursor = conn.cursor()
-            
-            # Primeiro, listar TODAS as peças do carro (debug)
-            cursor.execute('''
-                SELECT id, tipo, nome, pix_id, carro_id, instalado FROM pecas 
-                WHERE carro_id = %s AND equipe_id = %s
-            ''', (str(carro_id), str(equipe_id)))
-            
-            todas_pecas = cursor.fetchall()
-            print(f"[ATIVAR CARRO] 📦 TODAS as peças do carro: {len(todas_pecas)}")
-            for peca_id, peca_tipo, peca_nome, pix_id_val, carr_id, inst in todas_pecas:
-                print(f"[ATIVAR CARRO]   - {peca_nome} ({peca_tipo}): instalado={inst}, pix_id={pix_id_val}")
-            
-            # Agora procurar APENAS peças não pagas (instalado=1 e pix_id vazio)
-            cursor.execute('''
-                SELECT id, tipo, nome, pix_id FROM pecas 
-                WHERE carro_id = %s AND instalado = 1 AND equipe_id = %s AND (pix_id IS NULL OR pix_id = '')
-            ''', (str(carro_id), str(equipe_id)))
-            
-            pecas_nao_pagas = cursor.fetchall()
-            cursor.close()
-            conn.close()
-        except Exception as e:
-            print(f"[ATIVAR CARRO] ❌ Erro ao buscar peças não pagas: {e}")
-            import traceback
-            traceback.print_exc()
-            pecas_nao_pagas = []
-        
-        print(f"[ATIVAR CARRO] 💸 Peças NÃO pagas (instalado=1 e pix_id vazio): {len(pecas_nao_pagas)}")
-        
-        for peca_id, peca_tipo, peca_nome, pix_id_val in pecas_nao_pagas:
-            print(f"[ATIVAR CARRO]   - {peca_nome} ({peca_tipo}) - pix_id: {pix_id_val}")
-        
-        # Calcular valor da instalação por peça
-        valor_instalacao_config = api.db.obter_configuracao('valor_instalacao_peca')
-        valor_instalacao = float(valor_instalacao_config) if valor_instalacao_config else 10.0
-        print(f"[ATIVAR CARRO] 💰 Valor de instalação por peça (config: {valor_instalacao_config}): R$ {valor_instalacao}")
-        
-        # Calcular valor total: ativação + (quantidade de peças não pagas * valor instalação)
-        valor_ativacao = float(api.db.obter_configuracao('valor_ativacao_carro') or '30')
-        
-        # Multiplicar EXPLICITAMENTE
-        quantidade_pecas = len(pecas_nao_pagas)
-        valor_pecas_nao_pagas = quantidade_pecas * valor_instalacao
-        
-        valor_subtotal = valor_ativacao + valor_pecas_nao_pagas
-        
-        print(f"[ATIVAR CARRO] 💵 Cálculo dos valores:")
-        print(f"[ATIVAR CARRO]   - Ativação: R$ {valor_ativacao}")
-        print(f"[ATIVAR CARRO]   - Peças não pagas: {quantidade_pecas} × R$ {valor_instalacao} = R$ {valor_pecas_nao_pagas}")
-        print(f"[ATIVAR CARRO]   - Subtotal: R$ {valor_ativacao} + R$ {valor_pecas_nao_pagas} = R$ {valor_subtotal}")
+        print(f"[ATIVAR CARRO] 💸 Peças não pagas no carro: {quantidade_pecas} peça(s)")
+        print(f"[ATIVAR CARRO] 💵 Cálculo: Ativação R$ {valor_ativacao} + instalação R$ {valor_instalacao_peca}/peça × {quantidade_pecas} = R$ {valor_subtotal:.2f}")
         
         taxa = mp_client.calcular_taxa(valor_subtotal)
         valor_total = round(valor_subtotal + taxa, 2)
@@ -4321,7 +4429,7 @@ def ativar_carro_gerar_pix():
                     'valor_total': valor_total,
                     'valor_item': valor_subtotal,
                     'valor_ativacao': valor_ativacao,
-                    'valor_pecas': valor_pecas_nao_pagas,
+                    'valor_pecas': valor_pecas,
                     'pecas_nao_pagas': quantidade_pecas,
                     'taxa': taxa,
                     'item_nome': f"Ativar: {carro.marca} {carro.modelo} (+ {quantidade_pecas} peças)",
@@ -4337,7 +4445,7 @@ def ativar_carro_gerar_pix():
             equipe_nome=equipe.nome,
             tipo_item='carro_ativacao',
             item_id=carro_id,
-            item_nome=f"Ativar: {carro.marca} {carro.modelo} (+ {len(pecas_nao_pagas)} peças)",
+            item_nome=f"Ativar: {carro.marca} {carro.modelo} (+ {quantidade_pecas} peças)",
             valor_item=valor_subtotal,
             valor_taxa=taxa
         )
@@ -4369,10 +4477,10 @@ def ativar_carro_gerar_pix():
             'valor_total': valor_total,
             'valor_item': valor_subtotal,
             'valor_ativacao': valor_ativacao,
-            'valor_pecas': valor_pecas_nao_pagas,
-            'pecas_nao_pagas': len(pecas_nao_pagas),
+            'valor_pecas': valor_pecas,
+            'pecas_nao_pagas': quantidade_pecas,
             'taxa': taxa,
-            'item_nome': f"Ativar: {carro.marca} {carro.modelo} (+ {len(pecas_nao_pagas)} peças)",
+            'item_nome': f"Ativar: {carro.marca} {carro.modelo} (+ {quantidade_pecas} peças)",
             'tipo_item': 'carro_ativacao',
             'item_id': carro_id,
             'carro_id': carro_id
@@ -6065,13 +6173,15 @@ def listar_solicitacoes_pecas():
 
 @app.route('/api/admin/solicitacoes-carros')
 def listar_solicitacoes_carros():
-    """Listar todas as solicitações de mudança de carro do banco de dados"""
+    """Listar todas as solicitações de mudança de carro do banco de dados (apenas carros, com peças de cada carro)"""
     try:
-        # Carregar solicitações do banco de dados (com dados completos já enriquecidos)
         solicitacoes = api.db.carregar_solicitacoes_carros()
-        
+        for sol in solicitacoes:
+            carro_id = sol.get('carro_id')
+            if not carro_id and sol.get('tipo_carro') and '|' in str(sol.get('tipo_carro', '')):
+                carro_id = str(sol['tipo_carro']).split('|')[0]
+            sol['pecas'] = api.db.obter_pecas_instaladas_carro(carro_id) if carro_id else []
         print(f"[SOLICITAÇÕES CARROS] Total carregadas: {len(solicitacoes)}")
-        
         return jsonify(solicitacoes)
     except Exception as e:
         print(f"[ERRO LISTAR SOLICITAÇÕES CARROS] {str(e)}")
@@ -6137,25 +6247,97 @@ def processar_solicitacao():
             
             # ===== PROCESSAR INSTALAÇÃO DE PEÇA =====
             if novo_status == 'instalado':
-                # Usar carro_id do request se fornecido, senão usar da solicitação
+                # Usar carro_id do request se fornecido, senão da solicitação, senão carro ativo da equipe
                 carro_id_final = carro_id_request if carro_id_request else solicitacao.get('carro_id')
+                if not carro_id_final and solicitacao.get('equipe_id'):
+                    try:
+                        conn_ac = api.db._get_conn()
+                        cur_ac = conn_ac.cursor()
+                        cur_ac.execute('''
+                            SELECT id FROM carros WHERE equipe_id = %s AND status = %s LIMIT 1
+                        ''', (str(solicitacao['equipe_id']), 'ativo'))
+                        row_ac = cur_ac.fetchone()
+                        conn_ac.close()
+                        if row_ac:
+                            carro_id_final = row_ac[0]
+                    except Exception:
+                        pass
                 
                 print(f"[INSTALAR PEÇA] carro_id_request={carro_id_request}, carro_id_solicitacao={solicitacao.get('carro_id')}, carro_id_final={carro_id_final}")
                 
-                # Validar que tem carro_id
                 if not carro_id_final:
-                    return jsonify({'erro': 'Nenhum carro selecionado para instalação'}), 400
+                    return jsonify({'erro': 'Nenhum carro selecionado para instalação. A equipe não tem carro ativo.'}), 400
                 
-                # SEMPRE atualizar solicitação com o carro_id do request se foi fornecido
-                if carro_id_request:
-                    print(f"[INSTALAR PEÇA] Atualizando carro_id da solicitação de {solicitacao.get('carro_id')} para {carro_id_request}...")
-                    resultado_atualizar = api.db.atualizar_carro_id_solicitacao_peca(solicitacao_id, carro_id_request)
+                # Atualizar solicitação com carro_id quando não estava preenchido (ex.: inferido pelo carro ativo)
+                if not solicitacao.get('carro_id') or carro_id_request:
+                    print(f"[INSTALAR PEÇA] Atualizando carro_id da solicitação para {carro_id_final}...")
+                    resultado_atualizar = api.db.atualizar_carro_id_solicitacao_peca(solicitacao_id, carro_id_final)
                     print(f"[INSTALAR PEÇA] Resultado da atualização: {resultado_atualizar}")
                 
-                # Criar peça no armazém se não existir
-                print(f"[INSTALAR PEÇA] Criando peça no armazém: peca_loja_id={solicitacao['peca_id']}, equipe_id={solicitacao['equipe_id']}")
+                peca_id = solicitacao['peca_id']
+                equipe_id_peca = str(solicitacao.get('equipe_id') or '')
+                # Se peca_id é uma peça do armazém (tabela pecas), instalar por id (base) ou upgrade na base
+                ok_por_id, msg_por_id = api.db.instalar_peca_por_id_no_carro(peca_id, carro_id_final, equipe_id_peca)
+                if ok_por_id:
+                    sucesso_status = api.db.atualizar_status_solicitacao_peca(solicitacao_id, 'instalado')
+                    if sucesso_status:
+                        print(f"[PEÇA INSTALADA] Solicitação {solicitacao_id} (peça armazém) instalada com sucesso")
+                        try:
+                            if solicitacao.get('equipe_id'):
+                                equipe = api.gerenciador.obter_equipe(solicitacao['equipe_id'])
+                                comissao_valor = float(api.db.obter_configuracao('comissao_warehouse') or '10')
+                                api.db.registrar_comissao(
+                                    tipo='instalar_peca',
+                                    valor=comissao_valor,
+                                    equipe_id=solicitacao['equipe_id'],
+                                    equipe_nome=equipe.nome if equipe else 'Desconhecido',
+                                    descricao=f'Instalação de {solicitacao.get("peca_nome", "")} do warehouse'
+                                )
+                        except Exception as e:
+                            print(f"[AVISO] Erro ao registrar comissão: {e}")
+                        return jsonify({
+                            'sucesso': True,
+                            'mensagem': f'Peça {solicitacao.get("peca_nome", "")} instalada com sucesso!'
+                        })
+                    return jsonify({'erro': 'Erro ao atualizar status da solicitação'}), 400
+                # Se é upgrade do armazém: vincular à peça base no carro
+                if api.db._column_exists('pecas', 'upgrade_id'):
+                    conn_u = api.db._get_conn()
+                    cur_u = conn_u.cursor()
+                    cur_u.execute('SELECT upgrade_id, peca_loja_id FROM pecas WHERE id = %s AND equipe_id = %s', (peca_id, equipe_id_peca))
+                    row_u = cur_u.fetchone()
+                    conn_u.close()
+                    if row_u and row_u[0]:  # é upgrade
+                        peca_loja_id_base = row_u[1]
+                        base_id = None
+                        conn_b = api.db._get_conn()
+                        cur_b = conn_b.cursor()
+                        cur_b.execute('''
+                            SELECT id FROM pecas WHERE carro_id = %s AND equipe_id = %s AND instalado = 1
+                              AND peca_loja_id = %s AND (upgrade_id IS NULL OR upgrade_id = '')
+                            LIMIT 1
+                        ''', (carro_id_final, equipe_id_peca, peca_loja_id_base))
+                        rb = cur_b.fetchone()
+                        conn_b.close()
+                        base_id = rb[0] if rb else None
+                        if base_id:
+                            ok_up, msg_up = api.db.instalar_upgrade_em_peca(equipe_id_peca, peca_id, base_id, exigir_alvo_no_carro=False)
+                            if ok_up:
+                                api.db.atualizar_status_solicitacao_peca(solicitacao_id, 'instalado')
+                                try:
+                                    if solicitacao.get('equipe_id'):
+                                        equipe = api.gerenciador.obter_equipe(solicitacao['equipe_id'])
+                                        cv = float(api.db.obter_configuracao('comissao_warehouse') or '10')
+                                        api.db.registrar_comissao(tipo='instalar_peca', valor=cv, equipe_id=solicitacao['equipe_id'], equipe_nome=equipe.nome if equipe else 'Desconhecido', descricao=f'Instalação de {solicitacao.get("peca_nome", "")} do warehouse')
+                                except Exception:
+                                    pass
+                                return jsonify({'sucesso': True, 'mensagem': f'Upgrade {solicitacao.get("peca_nome", "")} instalado com sucesso!'})
+                            return jsonify({'erro': msg_up}), 400
+                        return jsonify({'erro': 'Nenhuma peça base correspondente no carro para instalar o upgrade. Instale primeiro a peça base (ex.: motor).'}), 400
+                # Senão: peça da loja — criar no armazém se não existir e instalar
+                print(f"[INSTALAR PEÇA] Criando peça no armazém: peca_loja_id={peca_id}, equipe_id={equipe_id_peca}")
                 try:
-                    peca_armazem = api.db.criar_peca_armazem(solicitacao['peca_id'], solicitacao['equipe_id'])
+                    peca_armazem = api.db.criar_peca_armazem(peca_id, solicitacao['equipe_id'])
                     if not peca_armazem:
                         print(f"[INSTALAR PEÇA] ERRO ao criar peça no armazém")
                         return jsonify({'erro': 'Erro ao criar peça no armazém'}), 400
@@ -6166,12 +6348,8 @@ def processar_solicitacao():
                     traceback.print_exc()
                     return jsonify({'erro': f'Erro ao criar peça: {str(e)}'}), 400
                 
-                # Instalar a peça no carro
-                print(f"[INSTALAR PEÇA] Instalando peça {solicitacao['peca_id']} no carro {carro_id_final}")
-                sucesso, mensagem = api.db.instalar_peca_no_carro(
-                    solicitacao['peca_id'],
-                    carro_id_final
-                )
+                print(f"[INSTALAR PEÇA] Instalando peça {peca_id} no carro {carro_id_final}")
+                sucesso, mensagem = api.db.instalar_peca_no_carro(peca_id, carro_id_final)
                 
                 if not sucesso:
                     print(f"[ERRO INSTALAÇÃO] {mensagem}")
@@ -6440,7 +6618,7 @@ def gerar_qr_pix():
                     item = peca
                     item_nome = f"Instalar: {peca.nome}"
                     # Usar preço de instalação configurado
-                    valor_pix = float(api.db.obter_configuracao('preco_instalacao_warehouse') or '50')
+                    valor_pix = float(api.db.obter_configuracao('preco_instalacao_warehouse') or '10')
                     break
         
         if not item and not valor_custom:
@@ -6574,6 +6752,87 @@ def obter_transacao_pix(transacao_id):
         import traceback
         traceback.print_exc()
         return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
+def _processar_multiplas_pecas_armazem_ativo_confirmacao(equipe_id, carro_id, pecas_solicitadas, transacao_id=None):
+    """Ao confirmar PIX do modal 'múltiplas peças → carro ativo': se a peça tem 'id' (veio da loja),
+    adiciona ao armazém; senão procura no armazém por nome/tipo. Cria uma solicitação pendente por peça.
+    Retorna (num_solicitacoes, None) em sucesso ou (0, mensagem_erro) em falha."""
+    if not pecas_solicitadas or not carro_id:
+        return 0, 'Dados da transação incompletos (pecas/carro_id)'
+    pecas_armazem = api.db.carregar_pecas_armazem_equipe(str(equipe_id))
+    pecas_loja = api.db.carregar_pecas_loja()
+    used_ids = set()
+    ids_para_pix = []
+
+    def _achar_armazem(nome, tipo, eh_upgrade):
+        for p in pecas_armazem:
+            if p['id'] in used_ids:
+                continue
+            if (p.get('nome') or '').lower() != (nome or '').lower() or (p.get('tipo') or '').lower() != (tipo or '').lower():
+                continue
+            if eh_upgrade and not p.get('upgrade_id'):
+                continue
+            if not eh_upgrade and p.get('upgrade_id'):
+                continue
+            return p
+        return None
+
+    for peca_req in pecas_solicitadas:
+        peca_nome = peca_req.get('nome')
+        peca_tipo = peca_req.get('tipo')
+        peca_id_origem = peca_req.get('id')
+        peca_armazem_id = None
+
+        if peca_id_origem:
+            # Peça veio da loja (compra PIX): adicionar ao armazém
+            if (peca_tipo or '').lower() == 'upgrade':
+                res = api.db.adicionar_upgrade_armazem(str(equipe_id), str(peca_id_origem))
+                if not res:
+                    return 0, f'Falha ao adicionar upgrade ao armazém: {peca_nome}'
+                peca_armazem_id = res
+                pecas_armazem = api.db.carregar_pecas_armazem_equipe(str(equipe_id))
+            else:
+                pl = next((p for p in pecas_loja if str(getattr(p, 'id', p)) == str(peca_id_origem)), None)
+                if not pl:
+                    return 0, f'Peça da loja não encontrada: id={peca_id_origem}'
+                preco = float(getattr(pl, 'preco', 0) or 0)
+                durabilidade = int(getattr(pl, 'durabilidade', 100) or 100)
+                coef = float(getattr(pl, 'coeficiente_quebra', 1) or 1)
+                res = api.db.adicionar_peca_armazem(
+                    str(equipe_id), str(peca_id_origem), getattr(pl, 'nome', peca_nome),
+                    getattr(pl, 'tipo', peca_tipo or 'motor'), durabilidade, preco, coef
+                )
+                if not res:
+                    return 0, f'Falha ao adicionar peça ao armazém: {peca_nome}'
+                peca_armazem_id = res
+                pecas_armazem = api.db.carregar_pecas_armazem_equipe(str(equipe_id))
+        else:
+            for eh_upgrade in (False, True):
+                p_arm = _achar_armazem(peca_nome, peca_tipo, eh_upgrade)
+                if p_arm:
+                    peca_armazem_id = p_arm['id']
+                    break
+            if not peca_armazem_id:
+                return 0, f'Peça não encontrada no armazém nem na loja: {peca_nome} ({peca_tipo})'
+
+        used_ids.add(peca_armazem_id)
+        ids_para_pix.append(peca_armazem_id)
+        ok = api.db.salvar_solicitacao_peca(str(uuid.uuid4()), equipe_id, peca_armazem_id, 1, 'pendente', carro_id)
+        if not ok:
+            erro = getattr(api.db, '_erro_solicitacao_peca', None)
+            msg = 'Já existe uma solicitação pendente para esta peça neste carro.' if erro == 'duplicada' else f'Falha ao criar solicitação para {peca_nome}.'
+            return 0, msg
+
+    if transacao_id and api.db._column_exists('pecas', 'pix_id') and ids_para_pix:
+        conn = api.db._get_conn()
+        cursor = conn.cursor()
+        ph = ','.join(['%s'] * len(ids_para_pix))
+        cursor.execute(f'UPDATE pecas SET pix_id = %s WHERE id IN ({ph})', (str(transacao_id),) + tuple(ids_para_pix))
+        conn.commit()
+        conn.close()
+    return len(ids_para_pix), None
+
 
 @app.route('/api/confirmar-pagamento-manual', methods=['POST'])
 @requer_login_api
@@ -6743,6 +7002,22 @@ def confirmar_pagamento_manual():
                     return jsonify({'sucesso': False, 'erro': str(e)}), 400
                 return jsonify({'sucesso': False, 'erro': 'Transação sem peca_armazem_id ou peca_loja_id'}), 400
             
+            elif transacao['tipo_item'] == 'multiplas_pecas_armazem_ativo_modal':
+                import json as _json
+                dados_json_str = transacao.get('dados_json') or '{}'
+                try:
+                    dados_json = _json.loads(dados_json_str) if isinstance(dados_json_str, str) else dados_json_str
+                except Exception:
+                    dados_json = {}
+                pecas_solicitadas = dados_json.get('pecas', [])
+                carro_id = transacao.get('carro_id') or transacao.get('item_id')
+                print(f"[CONFIRMAÇÃO MANUAL] multiplas_pecas_armazem_ativo_modal: criando solicitações (com PIX: peças vão ao armazém se tiverem id)...")
+                n, err = _processar_multiplas_pecas_armazem_ativo_confirmacao(equipe_id, carro_id, pecas_solicitadas, transacao_id=transacao_id)
+                if err:
+                    return jsonify({'sucesso': False, 'erro': err}), 400 if 'duplicada' in err else 500
+                print(f"[CONFIRMAÇÃO MANUAL] ✅ {n} solicitação(ões) pendente(s) criada(s). Aguardando aprovação do admin.")
+                return jsonify({'sucesso': True, 'mensagem': f'{n} solicitação(ões) criada(s). As peças serão instaladas após aprovação do administrador.'})
+            
             elif transacao['tipo_item'] == 'carro_ativacao':
                 # Ativação de carro já foi criada como solicitação no confirmar_transacao_pix()
                 # Agora apenas retornamos sucesso - a ativação real será feita quando admin aprovar
@@ -6856,75 +7131,24 @@ def confirmar_pagamento_manual():
                     return jsonify({'sucesso': False, 'erro': f'Erro ao registrar participação: {str(e)}'}), 500
             
             elif transacao['tipo_item'] == 'multiplas_pecas_armazem_ativo_modal':
-                # Criar solicitações de peças (não instalar diretamente)
-                print(f"\n[MULTIPLAS PEÇAS CARRO ATIVO] ===== CRIANDO SOLICITAÇÕES DE PEÇAS =====")
-                print(f"[MULTIPLAS PEÇAS CARRO ATIVO] Transacao ID: {transacao_id}")
-                print(f"[MULTIPLAS PEÇAS CARRO ATIVO] Equipe: {equipe_id}")
-                print(f"[MULTIPLAS PEÇAS CARRO ATIVO] Carro: {transacao.get('carro_id')}")
-                
+                print(f"\n[MULTIPLAS PEÇAS CARRO ATIVO] ===== CRIANDO SOLICITAÇÕES (PIX: peças vão ao armazém se tiverem id) =====")
                 try:
                     import json
-                    # Obter lista de peças do dados_json
                     dados_json_str = transacao.get('dados_json', '{}')
-                    try:
-                        dados_json = json.loads(dados_json_str) if dados_json_str else {}
-                    except:
-                        dados_json = {}
-                    
-                    pecas_armazem_lista = dados_json.get('pecas', [])
-                    print(f"[MULTIPLAS PEÇAS CARRO ATIVO] Peças recuperadas: {len(pecas_armazem_lista)}")
-                    
-                    if not pecas_armazem_lista:
-                        print(f"[MULTIPLAS PEÇAS CARRO ATIVO] ⚠️ Nenhuma peça na lista")
+                    dados_json = json.loads(dados_json_str) if dados_json_str else {}
+                    pecas_lista = dados_json.get('pecas', [])
+                    carro_id = transacao.get('carro_id') or transacao.get('item_id')
+                    n, err = _processar_multiplas_pecas_armazem_ativo_confirmacao(equipe_id, carro_id, pecas_lista, transacao_id=transacao_id)
+                    if err:
+                        return jsonify({'sucesso': False, 'erro': err}), 400 if 'duplicada' in err else 500
+                    if n == 0:
                         return jsonify({'sucesso': True, 'mensagem': 'Nenhuma peça a processar'})
-                    
-                    carro_id = transacao.get('carro_id')
-                    pecas_loja = api.db.carregar_pecas_loja()
-                    pecas_armazem = api.db.carregar_pecas_armazem_equipe(str(equipe_id))
-                    
-                    solicitacoes_criadas = 0
-                    
-                    # Para cada peça, criar uma solicitação com status 'pendente'
-                    for peca_armazem_info in pecas_armazem_lista:
-                        peca_nome = peca_armazem_info.get('nome')
-                        peca_tipo = peca_armazem_info.get('tipo')
-                        
-                        print(f"[MULTIPLAS PEÇAS CARRO ATIVO] Processando: {peca_nome} ({peca_tipo})")
-                        
-                        # Buscar peça na loja
-                        peca_loja = None
-                        for p in pecas_loja:
-                            if p.nome.lower() == peca_nome.lower() and p.tipo.lower() == peca_tipo.lower():
-                                peca_loja = p
-                                break
-                        
-                        if not peca_loja:
-                            print(f"[MULTIPLAS PEÇAS CARRO ATIVO] ⚠️ Peça {peca_nome} não encontrada na loja")
-                            continue
-                        
-                        # Criar solicitação com status 'pendente'
-                        solicitacao_id = str(uuid.uuid4())
-                        api.db.salvar_solicitacao_peca(
-                            id=solicitacao_id,
-                            equipe_id=equipe_id,
-                            peca_id=peca_loja.id,
-                            quantidade=1,
-                            status='pendente',
-                            carro_id=carro_id
-                        )
-                        solicitacoes_criadas += 1
-                        print(f"[MULTIPLAS PEÇAS CARRO ATIVO] ✅ Solicitação criada: {solicitacao_id} para {peca_nome}")
-                    
-                    print(f"[MULTIPLAS PEÇAS CARRO ATIVO] ✅ {solicitacoes_criadas} solicitação(ões) criada(s)")
-                    print(f"[MULTIPLAS PEÇAS CARRO ATIVO] ===== PROCESSAMENTO CONCLUÍDO =====\n")
-                    return jsonify({'sucesso': True, 'mensagem': f'{solicitacoes_criadas} solicitação(ões) criada(s)', 'solicitacoes': solicitacoes_criadas})
-                    
+                    print(f"[MULTIPLAS PEÇAS CARRO ATIVO] ✅ {n} solicitação(ões) criada(s)\n")
+                    return jsonify({'sucesso': True, 'mensagem': f'{n} solicitação(ões) criada(s)', 'solicitacoes': n})
                 except Exception as e:
-                    print(f"[MULTIPLAS PEÇAS CARRO ATIVO] ❌ ERRO: {e}")
                     import traceback
                     traceback.print_exc()
-                    print(f"[MULTIPLAS PEÇAS CARRO ATIVO] ===== ERRO FATAL =====\n")
-                    return jsonify({'sucesso': False, 'erro': f'Erro ao criar solicitações: {str(e)}'}), 500
+                    return jsonify({'sucesso': False, 'erro': str(e)}), 500
             
             else:
                 return jsonify({'sucesso': True, 'mensagem': 'Pagamento confirmado'})
@@ -7128,7 +7352,7 @@ def processar_compra_pix():
             try:
                 # Criar solicitação de instalação (como em compra normal)
                 solicitacao_id = str(uuid.uuid4())
-                api.db.salvar_solicitacao_peca(
+                ok = api.db.salvar_solicitacao_peca(
                     id=solicitacao_id,
                     equipe_id=equipe_id,
                     peca_id=item_id,
@@ -7136,7 +7360,10 @@ def processar_compra_pix():
                     status='pendente',
                     carro_id=carro_id
                 )
-                
+                if not ok:
+                    erro = getattr(api.db, '_erro_solicitacao_peca', None)
+                    msg = 'Já existe uma solicitação pendente para esta peça neste carro.' if erro == 'duplicada' else 'Falha ao criar solicitação.'
+                    return jsonify({'sucesso': False, 'erro': msg}), 400 if erro == 'duplicada' else 500
                 print(f"[COMPRA PIX] ✅ Solicitação de instalação {solicitacao_id} criada com sucesso!")
                 
             except Exception as e:
@@ -7191,10 +7418,10 @@ def processar_compra_pix():
                         print(f"[COMPRA PIX] Peça {peca_armazem['nome']} não encontrada na loja, ignorando")
                         continue
                     
-                    # Criar solicitação de instalação para cada quantidade
+                    # Criar solicitação de instalação para cada quantidade (não duplica se já existir pendente)
                     for qtd in range(peca_armazem.get('quantidade', 1)):
                         solicitacao_id = str(uuid.uuid4())
-                        api.db.salvar_solicitacao_peca(
+                        ok = api.db.salvar_solicitacao_peca(
                             id=solicitacao_id,
                             equipe_id=equipe_id,
                             peca_id=peca_loja.id,
@@ -7202,8 +7429,9 @@ def processar_compra_pix():
                             status='pendente',
                             carro_id=carro_id
                         )
-                        pecas_processadas += 1
-                        print(f"[COMPRA PIX] ✅ Solicitação {solicitacao_id} criada para {peca_armazem['nome']}")
+                        if ok:
+                            pecas_processadas += 1
+                            print(f"[COMPRA PIX] ✅ Solicitação {solicitacao_id} criada para {peca_armazem['nome']}")
                 
                 if pecas_processadas == 0:
                     print(f"[COMPRA PIX] ⚠️ Nenhuma peça foi processada (todas já pagas)")
@@ -7241,10 +7469,10 @@ def processar_compra_pix():
                     if not peca_loja:
                         continue
                     
-                    # Se peça não tem pix_id (precisa pagar), criar solicitação
+                    # Se peça não tem pix_id (precisa pagar), criar solicitação (não duplica se já existir pendente)
                     if not peca_armazem.get('pix_id'):
                         solicitacao_id = str(uuid.uuid4())
-                        api.db.salvar_solicitacao_peca(
+                        ok = api.db.salvar_solicitacao_peca(
                             id=solicitacao_id,
                             equipe_id=equipe_id,
                             peca_id=peca_loja.id,
@@ -7252,7 +7480,8 @@ def processar_compra_pix():
                             status='pendente',
                             carro_id=carro_id
                         )
-                        solicitacoes_criadas += 1
+                        if ok:
+                            solicitacoes_criadas += 1
                         print(f"[COMPRA PIX] ✅ Solicitação criada para {peca_armazem['nome']}")
                 
                 print(f"[COMPRA PIX] {solicitacoes_criadas} solicitações criadas para carro ativo")
@@ -7264,100 +7493,28 @@ def processar_compra_pix():
                 return jsonify({'sucesso': False, 'erro': f'Erro ao criar solicitações: {str(e)}'}), 500
         
         elif tipo == 'multiplas_pecas_armazem_ativo_modal':
-            # PIX confirmado: instalar peças novas e remover antigas
-            print(f"[PIX CONFIRMADO MODAL] Processando peças para carro ativo (modal)...")
-            print(f"  - Equipe: {equipe_id}")
-            print(f"  - Carro: {carro_id}")
-            
             try:
-                # Obter lista de peças específicas do request
-                pecas_solicitadas = request.json.get('pecas', [])
-                print(f"[PIX CONFIRMADO MODAL] Peças a instalar: {[p.get('nome') for p in pecas_solicitadas]}")
-                
-                # Carregar peças do armazém
-                pecas_armazem = api.db.carregar_pecas_armazem_equipe(str(equipe_id))
-                
-                # Obter carro ativo
-                carro_ativo = api.db.obter_carro(carro_id)
-                if not carro_ativo:
-                    print(f"[PIX CONFIRMADO MODAL] ❌ Carro {carro_id} não encontrado")
-                    return jsonify({'sucesso': False, 'erro': 'Carro não encontrado'}), 404
-                
-                pecas_instaladas = 0
-                
-                # Processar APENAS as peças solicitadas
-                for peca_req in pecas_solicitadas:
-                    peca_nome = peca_req.get('nome')
-                    peca_tipo = peca_req.get('tipo')
-                    
-                    print(f"[PIX CONFIRMADO MODAL] Processando: {peca_nome} ({peca_tipo})")
-                    
-                    # Buscar peça no armazém
-                    peca_armazem = None
-                    for p in pecas_armazem:
-                        if p['nome'].lower() == peca_nome.lower() and p['tipo'].lower() == peca_tipo.lower():
-                            peca_armazem = p
-                            break
-                    
-                    if not peca_armazem:
-                        print(f"[PIX CONFIRMADO MODAL] ⚠️ Peça {peca_nome} não encontrada no armazém")
-                        continue
-                    
-                    # IMPORTANTE: Remover TODAS as peças antigas do mesmo tipo ANTES de instalar a nova
-                    cursor = api.db.db.cursor()
-                    
-                    # Buscar todas as peças antigas do tipo instaladas no carro
-                    cursor.execute('''
-                        SELECT id, nome FROM pecas 
-                        WHERE carro_id = %s AND tipo = %s AND instalado = 1
-                    ''', (str(carro_id), peca_tipo))
-                    
-                    pecas_antigas = cursor.fetchall()
-                    print(f"[PIX CONFIRMADO MODAL] Encontradas {len(pecas_antigas)} peça(s) antiga(s) do tipo {peca_tipo}")
-                    
-                    # Remover TODAS as peças antigas
-                    for peca_antigua_id, peca_antigua_nome in pecas_antigas:
-                        print(f"[PIX CONFIRMADO MODAL] 🗑️ Removendo: {peca_antigua_nome} (ID: {peca_antigua_id})")
-                        cursor.execute('''
-                            UPDATE pecas 
-                            SET carro_id = NULL, instalado = 0, pix_id = NULL
-                            WHERE id = %s
-                        ''', (str(peca_antigua_id),))
-                    
-                    api.db.db.commit()
-                    print(f"[PIX CONFIRMADO MODAL] ✅ {len(pecas_antigas)} peça(s) desinstalada(s)")
-                    
-                    # Agora instalar a peça nova
-                    cursor.execute('''
-                        UPDATE pecas
-                        SET carro_id = %s, instalado = 1
-                        WHERE id = %s AND equipe_id = %s AND instalado = 0
-                    ''', (str(carro_id), str(peca_armazem['id']), str(equipe_id)))
-                    
-                    api.db.db.commit()
-                    pecas_instaladas += 1
-                    print(f"[PIX CONFIRMADO MODAL] ✅ Peça instalada: {peca_nome}")
-                    
-                    # Criar solicitação de peça para rastreamento
-                    solicitacao_id = str(uuid.uuid4())
-                    api.db.salvar_solicitacao_peca(
-                        id=solicitacao_id,
-                        equipe_id=equipe_id,
-                        peca_id=peca_armazem['id'],
-                        quantidade=1,
-                        status='instalada',
-                        carro_id=carro_id
-                    )
-                    print(f"[PIX CONFIRMADO MODAL] 📋 Solicitação de peça criada: {solicitacao_id}")
-                
-                print(f"[PIX CONFIRMADO MODAL] ✅ {pecas_instaladas} peça(s) instalada(s)")
-                return jsonify({'sucesso': True, 'mensagem': f'{pecas_instaladas} peça(s) instalada(s)', 'pecas_instaladas': pecas_instaladas})
-                
+                pecas_solicitadas = dados.get('pecas', [])
+                transacao_id = dados.get('transacao_id')
+                carro_id_modal = carro_id
+                if transacao_id:
+                    trans = api.db.obter_transacao_pix(transacao_id)
+                    if trans:
+                        if not carro_id_modal:
+                            carro_id_modal = trans.get('carro_id') or trans.get('item_id')
+                        if not pecas_solicitadas and trans.get('dados_json'):
+                            import json as _json
+                            dj = _json.loads(trans['dados_json']) if isinstance(trans['dados_json'], str) else trans['dados_json']
+                            pecas_solicitadas = dj.get('pecas', [])
+                n, err = _processar_multiplas_pecas_armazem_ativo_confirmacao(equipe_id, carro_id_modal, pecas_solicitadas, transacao_id=transacao_id)
+                if err:
+                    return jsonify({'sucesso': False, 'erro': err}), 400 if 'duplicada' in err else 500
+                print(f"[PIX CONFIRMADO MODAL] ✅ {n} solicitação(ões) pendente(s) criada(s)")
+                return jsonify({'sucesso': True, 'mensagem': f'{n} solicitação(ões) criada(s). Aguardando aprovação do administrador.', 'solicitacoes_criadas': n})
             except Exception as e:
-                print(f"[PIX CONFIRMADO MODAL] ❌ ERRO: {e}")
                 import traceback
                 traceback.print_exc()
-                return jsonify({'sucesso': False, 'erro': f'Erro ao processar peças: {str(e)}'}), 500
+                return jsonify({'sucesso': False, 'erro': str(e)}), 500
         
         elif tipo == 'carro_ativacao':
             # Ativação de carro (sem compra, apenas ativação)
@@ -7380,7 +7537,12 @@ def processar_compra_pix():
                     SET status = %s, timestamp_ativo = NOW()
                     WHERE id = %s AND equipe_id = %s
                 ''', ('ativo', str(item_id), str(equipe_id)))
-                
+                # Marcar todas as peças deste carro como pagas (pix_id = transação) para não cobrar de novo
+                if api.db._column_exists('pecas', 'pix_id'):
+                    cursor.execute('''
+                        UPDATE pecas SET pix_id = %s
+                        WHERE carro_id = %s AND equipe_id = %s AND instalado = 1
+                    ''', (str(transacao_id), str(item_id), str(equipe_id)))
                 conn.commit()
                 conn.close()
                 
@@ -7597,7 +7759,9 @@ def test_criar_solicitacao_peca():
         sol_id = str(uuid.uuid4())
         ok = api.db.salvar_solicitacao_peca(sol_id, equipe_id, peca_id, 1, 'pendente', carro_id)
         if not ok:
-            return jsonify({'erro': 'Falha ao salvar solicitação'}), 500
+            erro = getattr(api.db, '_erro_solicitacao_peca', None)
+            msg = 'Já existe uma solicitação pendente para esta peça neste carro.' if erro == 'duplicada' else 'Falha ao salvar solicitação'
+            return jsonify({'erro': msg}), 400 if erro == 'duplicada' else 500
         return jsonify({'sucesso': True, 'solicitacao_id': sol_id})
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
@@ -7927,10 +8091,10 @@ def inicializar_configuracoes_padrao():
         'comissao_carro': ('10', 'Comissão para cada carro comprado (em reais)'),
         'comissao_peca': ('10', 'Comissão para cada peça comprada (em reais)'),
         'comissao_warehouse': ('50', 'Comissão warehouse (em reais)'),
-        'preco_instalacao_warehouse': ('50', 'Preço para instalar peça do armazém (em reais)'),
+        'preco_instalacao_warehouse': ('10', 'Preço para instalar peça do armazém (em reais)'),
         'valor_instalacao_peca': ('10', 'Valor por peça ao ativar carro (peças não pagas)'),
-        'valor_ativacao_carro': ('30', 'Valor para troca/ativação de carro (em reais)'),
-        'valor_etapa': ('1000', 'Valor para participar de uma etapa (em reais)'),
+        'valor_ativacao_carro': ('10', 'Valor para troca/ativação de carro (em reais)'),
+        'valor_etapa': ('20', 'Valor para participar de uma etapa (em reais)'),
         'dado_dano': ('20', 'Número de faces do dado de dano (ex: 20 = D20) nas passadas'),
         'participacao_etapa_A': ('3000', 'Doricoins por participar da etapa (Série A)'),
         'participacao_etapa_B': ('2000', 'Doricoins por participar da etapa (Série B)'),
@@ -7985,6 +8149,54 @@ def atualizar_apelido_carro(carro_id):
         print(f'[APELIDO] Erro ao atualizar: {e}')
         return jsonify({'sucesso': False, 'erro': str(e)}), 400
 
+# ====== ENDPOINT IMAGEM DO CARRO ======
+UPLOAD_CARROS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads', 'carros')
+ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'gif'}
+
+@app.route('/api/carro/<carro_id>/imagem', methods=['POST'])
+def upload_imagem_carro(carro_id):
+    """Envia imagem do carro (dono da equipe). Arquivo salvo em static/uploads/carros/"""
+    try:
+        equipe_id = session.get('equipe_id') or request.headers.get('X-Equipe-ID')
+        if not equipe_id:
+            return jsonify({'sucesso': False, 'erro': 'Não autenticado'}), 401
+
+        # Validar que o carro pertence à equipe
+        conn = api.db._get_conn()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id FROM carros WHERE id = %s AND equipe_id = %s', (carro_id, str(equipe_id)))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'sucesso': False, 'erro': 'Carro não encontrado'}), 404
+        conn.close()
+
+        f = request.files.get('imagem')
+        if not f or f.filename == '':
+            return jsonify({'sucesso': False, 'erro': 'Nenhum arquivo enviado'}), 400
+
+        ext = (f.filename.rsplit('.', 1)[-1] or '').lower()
+        if ext not in ALLOWED_IMAGE_EXTENSIONS:
+            ext = 'jpg'
+        safe_name = f"{carro_id}.{ext}"
+        os.makedirs(UPLOAD_CARROS_DIR, exist_ok=True)
+        path_dest = os.path.join(UPLOAD_CARROS_DIR, safe_name)
+        f.save(path_dest)
+
+        imagem_url = f"/static/uploads/carros/{safe_name}"
+        if api.db._column_exists('carros', 'imagem_url'):
+            conn = api.db._get_conn()
+            cur = conn.cursor()
+            cur.execute('UPDATE carros SET imagem_url = %s WHERE id = %s', (imagem_url, carro_id))
+            conn.commit()
+            conn.close()
+
+        return jsonify({'sucesso': True, 'imagem_url': imagem_url}), 200
+    except Exception as e:
+        print(f'[IMAGEM CARRO] Erro: {e}')
+        import traceback
+        traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)}), 400
+
 # ====== ENDPOINT REMOVER PEÇA DO CARRO ======
 @app.route('/api/remover-peca-carro', methods=['POST'])
 def remover_peca_carro():
@@ -8035,12 +8247,20 @@ def remover_peca_carro():
                 ''', (peca_antiga_destino[0],))
 
         
-        # 1. Buscar peça instalada deste tipo no carro
-        cursor.execute('''
-            SELECT id, peca_loja_id FROM pecas 
-            WHERE carro_id = %s AND tipo = %s AND instalado = 1
-            LIMIT 1
-        ''', (carro_id, tipo_peca))
+        # 1. Buscar a peça BASE instalada deste tipo (não upgrade), para mover base + upgrades juntos
+        if api.db._column_exists('pecas', 'upgrade_id'):
+            cursor.execute('''
+                SELECT id, peca_loja_id FROM pecas 
+                WHERE carro_id = %s AND tipo = %s AND instalado = 1
+                  AND (upgrade_id IS NULL OR upgrade_id = '')
+                LIMIT 1
+            ''', (carro_id, tipo_peca))
+        else:
+            cursor.execute('''
+                SELECT id, peca_loja_id FROM pecas 
+                WHERE carro_id = %s AND tipo = %s AND instalado = 1
+                LIMIT 1
+            ''', (carro_id, tipo_peca))
         
         peca_instalada = cursor.fetchone()
         if not peca_instalada:
@@ -8048,27 +8268,29 @@ def remover_peca_carro():
             return jsonify({'sucesso': False, 'erro': f'Nenhuma peça {tipo_peca} instalada'}), 404
         
         peca_id, peca_loja_id = peca_instalada
-        print(f'[REMOVER PEÇA] Movendo peça {peca_id} para {novo_carro_id or "armazém"}')
+        print(f'[REMOVER PEÇA] Movendo peça base {peca_id} (e upgrades) para {novo_carro_id or "armazém"}')
         
-        # 2. Mover peça
+        # 2. Mover peça base E todas com instalado_em_peca_id = peca_id (upgrades desta peça)
         if novo_carro_id:
-            # Mover para outro carro (instalado = 1, carro_id = novo_carro_id)
-            # Limpar pix_id quando transferir entre carros
             cursor.execute('''
-                UPDATE pecas 
-                SET carro_id = %s, instalado = 1, pix_id = NULL
-                WHERE id = %s
+                UPDATE pecas SET carro_id = %s, instalado = 1, pix_id = NULL WHERE id = %s
             ''', (novo_carro_id, peca_id))
-            print(f'[REMOVER PEÇA] Peça {peca_id} movida para carro {novo_carro_id} (pix_id limpo)')
+            if api.db._column_exists('pecas', 'instalado_em_peca_id'):
+                cursor.execute('''
+                    UPDATE pecas SET carro_id = %s, instalado = 1
+                    WHERE instalado_em_peca_id = %s
+                ''', (novo_carro_id, peca_id))
+            print(f'[REMOVER PEÇA] Peça base e upgrades movidos para carro {novo_carro_id}')
         else:
-            # Mover para armazém (carro_id = NULL, instalado = 0)
-            # Limpar pix_id quando enviar para armazém
             cursor.execute('''
-                UPDATE pecas 
-                SET carro_id = NULL, instalado = 0, pix_id = NULL
-                WHERE id = %s
+                UPDATE pecas SET carro_id = NULL, instalado = 0, pix_id = NULL WHERE id = %s
             ''', (peca_id,))
-            print(f'[REMOVER PEÇA] Peça {peca_id} movida para armazém (pix_id limpo)')
+            if api.db._column_exists('pecas', 'instalado_em_peca_id'):
+                cursor.execute('''
+                    UPDATE pecas SET carro_id = NULL, instalado = 0
+                    WHERE instalado_em_peca_id = %s
+                ''', (peca_id,))
+            print(f'[REMOVER PEÇA] Peça base e upgrades movidos para armazém')
         
         conn.commit()
         conn.close()

@@ -46,6 +46,11 @@ body {
     color: #000;
 }
 
+/* Cards da garagem um pouco mais compactos */
+.card-garagem-compact .card-body { padding: 0.5rem 0.75rem; }
+.card-garagem-compact .peca-item { margin-bottom: 0.5rem !important; }
+.card-garagem-compact .peca-item .progress { height: 8px !important; }
+
 .btn-danger {
     background-color: #dc143c;
     border-color: #dc143c;
@@ -132,9 +137,9 @@ body {
 
 .alert-success {
     background-color: #fff;
-    border-color: #22c55e;
+    border-color: #dc143c;
     color: #000;
-    border: 2px solid #22c55e;
+    border: 2px solid #dc143c;
 }
 
 .alert-danger {
@@ -167,8 +172,33 @@ body {
 }
 
 .badge.bg-success {
-    background-color: #22c55e !important;
+    background-color: #dc143c !important;
 }
+
+/* Overrides Bootstrap: apenas preto, cinza, branco, vermelho */
+.bg-primary, .modal-header.bg-primary { background-color: #dc143c !important; border-color: #dc143c !important; color: #fff !important; }
+.text-primary { color: #dc143c !important; }
+.border-primary { border-color: #dc143c !important; }
+.btn-outline-primary { color: #dc143c !important; border-color: #dc143c !important; }
+.btn-outline-primary:hover { background-color: #dc143c !important; border-color: #dc143c !important; color: #fff !important; }
+.bg-info, .card-header.bg-info, .modal-header.bg-info { background-color: #666 !important; border-color: #666 !important; color: #fff !important; }
+.text-info { color: #666 !important; }
+.border-info { border-color: #666 !important; }
+.card.border-info { border-color: #666 !important; }
+.card.border-primary { border-color: #dc143c !important; }
+.btn-info { background-color: #666 !important; border-color: #666 !important; color: #fff !important; }
+.btn-info:hover { background-color: #555 !important; border-color: #555 !important; color: #fff !important; }
+.alert-info { background-color: #f5f5f5 !important; border-color: #666 !important; color: #000 !important; }
+.badge.bg-primary { background-color: #dc143c !important; }
+.badge.bg-info { background-color: #666 !important; }
+.bg-success, .card-header.bg-success, .modal-header.bg-success { background-color: #dc143c !important; border-color: #dc143c !important; color: #fff !important; }
+.border-success { border-color: #dc143c !important; }
+.card.border-success { border-color: #dc143c !important; }
+.btn-success { background-color: #dc143c !important; border-color: #dc143c !important; color: #fff !important; }
+.btn-success:hover { background-color: #b91c1c !important; border-color: #b91c1c !important; color: #fff !important; }
+.btn-outline-success { color: #dc143c !important; border-color: #dc143c !important; }
+.btn-outline-success:hover { background-color: #dc143c !important; border-color: #dc143c !important; color: #fff !important; }
+.alert-success { background-color: #f5f5f5 !important; border-color: #dc143c !important; color: #000 !important; }
 
 /* Tags de Compatibilidade */
 .compatibilidade-tag {
@@ -447,7 +477,7 @@ body {
 }
 
 .toast.success {
-    border-left: 4px solid #22c55e;
+    border-left: 4px solid #dc143c;
 }
 
 .toast.error {
@@ -580,15 +610,15 @@ body {
 }
 
 .alert-info {
-    background-color: #1a1a1a;
-    border-color: #0066cc;
-    color: #0099ff;
+    background-color: #f5f5f5;
+    border-color: #666;
+    color: #000;
 }
 
 .alert-success {
-    background-color: #1a1a1a;
-    border-color: #00cc00;
-    color: #00ff00;
+    background-color: #f5f5f5;
+    border-color: #dc143c;
+    color: #000;
 }
 
 .alert-danger {
@@ -616,11 +646,11 @@ body {
 }
 
 .badge.bg-info {
-    background-color: #0066cc !important;
+    background-color: #666 !important;
 }
 
 .badge.bg-success {
-    background-color: #00cc00 !important;
+    background-color: #dc143c !important;
 }
 
 /* Tags de Compatibilidade */
@@ -682,8 +712,8 @@ body {
 }
 
 .dropdown-menu.compatibilidade-menu .dropdown-item.selected {
-    background-color: #e7f1ff;
-    color: #0d6efd;
+    background-color: #f5f5f5;
+    color: #dc143c;
     font-weight: 500;
 }
 
@@ -696,13 +726,13 @@ body {
 
 .list-group-item:hover {
     background-color: #f8f9fa;
-    border-left-color: #0d6efd;
+    border-left-color: #dc143c;
 }
 
 .list-group-item.active {
-    background-color: #0d6efd;
-    border-color: #0d6efd;
-    border-left-color: #0d6efd;
+    background-color: #dc143c;
+    border-color: #dc143c;
+    border-left-color: #dc143c;
 }
 
 /* Cards de Produto */
@@ -719,7 +749,7 @@ body {
 .produto-card:hover {
     transform: translateY(-4px);
     box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-    border-color: #0d6efd;
+    border-color: #dc143c;
 }
 
 .produto-card-inativo {
@@ -729,7 +759,7 @@ body {
 }
 
 .produto-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #1a1a1a 0%, #dc143c 100%);
     color: white;
     padding: 12px;
     border-radius: 8px 8px 0 0;
@@ -745,14 +775,14 @@ body {
 .preco {
     font-size: 24px;
     font-weight: bold;
-    color: #28a745;
+    color: #dc143c;
     margin: 10px 0;
     margin-top: auto;
 }
 
 .btn-comprar {
     width: 100%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #1a1a1a 0%, #dc143c 100%);
     border: none;
     color: white;
     font-weight: bold;
@@ -793,7 +823,7 @@ body {
 .stat-value {
     font-size: 24px;
     font-weight: bold;
-    color: #0d6efd;
+    color: #dc143c;
     margin-top: 8px;
 }
 
@@ -801,7 +831,7 @@ body {
 .historico-item {
     background: white;
     padding: 12px 16px;
-    border-left: 4px solid #28a745;
+    border-left: 4px solid #dc143c;
     border-radius: 4px;
     margin-bottom: 10px;
     display: flex;
@@ -811,7 +841,7 @@ body {
 
 .historico-item .valor {
     font-weight: bold;
-    color: #28a745;
+    color: #dc143c;
     font-size: 16px;
 }
 
@@ -840,14 +870,14 @@ body {
 }
 
 .nav-tabs .nav-link:hover {
-    color: #0d6efd;
-    border-color: #0d6efd;
+    color: #dc143c;
+    border-color: #dc143c;
 }
 
 .nav-tabs .nav-link.active {
-    color: #0d6efd;
+    color: #dc143c;
     background-color: transparent;
-    border-color: #0d6efd;
+    border-color: #dc143c;
     font-weight: bold;
 }
 
@@ -892,11 +922,11 @@ body {
 }
 
 .toast.success {
-    border-left: 4px solid #28a745;
+    border-left: 4px solid #dc143c;
 }
 
 .toast.error {
-    border-left: 4px solid #dc3545;
+    border-left: 4px solid #dc143c;
 }
 /* Garantir que apenas uma aba está visível por vez */
 .tab-pane {

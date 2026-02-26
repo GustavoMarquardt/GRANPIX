@@ -837,7 +837,7 @@ async function mostrarPilotosConfirmadosEtapa(etapaId, etapaInfo) {
                 const sobrenome = nomePartes.length > 1 ? nomePartes[nomePartes.length - 1] : '';
                 
                 return `
-                    <div style="background: rgba(220, 20, 60, 0.05); padding: 12px; border-left: 3px solid #28a745; border-radius: 2px; margin-bottom: 10px;">
+                    <div style="background: rgba(220, 20, 60, 0.05); padding: 12px; border-left: 3px solid #dc143c; border-radius: 2px; margin-bottom: 10px;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <div>
                                 <div style="font-size: 12px; font-weight: bold; color: #000;">
@@ -845,7 +845,7 @@ async function mostrarPilotosConfirmadosEtapa(etapaId, etapaInfo) {
                                 </div>
                                 ${piloto.carro_modelo ? `<div style="font-size: 11px; color: #666;">🏎️ ${piloto.carro_modelo}</div>` : ''}
                             </div>
-                            <div style="background: #28a745; color: white; padding: 4px 10px; border-radius: 3px; font-size: 11px; font-weight: bold;">
+                            <div style="background: #dc143c; color: white; padding: 4px 10px; border-radius: 3px; font-size: 11px; font-weight: bold;">
                                 ✓ CONFIRMADO
                             </div>
                         </div>
@@ -911,8 +911,8 @@ async function mostrarPilotosConfirmadosEtapa(etapaId, etapaInfo) {
                         <button type="button" class="btn-close" data-bs-dismiss="modal" style="filter: brightness(0) invert(1);"></button>
                     </div>
                     <div class="modal-body" style="padding: 30px; background: #fafafa;">
-                        <div style="margin-bottom: 20px; padding: 15px; background: #e8f5e9; border-left: 4px solid #28a745; border-radius: 4px;">
-                            <strong style="color: #28a745;">✓ ${equipesArray.length} EQUIPE(S) COM PILOTOS CONFIRMADO(S) • Total: ${data.pilotos.length} piloto(s)</strong>
+                        <div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-left: 4px solid #dc143c; border-radius: 4px;">
+                            <strong style="color: #dc143c;">✓ ${equipesArray.length} EQUIPE(S) COM PILOTOS CONFIRMADO(S) • Total: ${data.pilotos.length} piloto(s)</strong>
                         </div>
                         ${equipasHtml}
                     </div>
@@ -1653,12 +1653,12 @@ function renderizarVoltasAdmin(equipes, etapaInfo) {
             statusText = '⏭️ PRÓXIMO';
         } else if (somaNotas > 0) {
             // Piloto já foi avaliado
-            statusColor = '#28a745';  // verde
+            statusColor = '#dc143c';  // verde
             statusText = '✓ AVALIADO';
         } else {
             // Manter status original se não for o atual ou próximo
             if (voltaStatus === 'andando') {
-                statusColor = '#28a745';  // verde
+                statusColor = '#dc143c';  // verde
                 statusText = '▶ ANDANDO';
             } else if (voltaStatus === 'proximo') {
                 statusColor = '#ffc107';  // amarelo

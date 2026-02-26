@@ -67,3 +67,38 @@ chmod +x scripts/atualizar_producao.sh
 ```
 
 (O script faz `git pull origin lord` e mostra como reiniciar o app.)
+
+---
+
+## Cenário 3: Cloudflare Tunnel (cloudflared) no Windows
+
+Você está usando **cloudflared** com quick tunnel (`cloudflared tunnel --url http://localhost:5000`) para expor o app local na internet.
+
+O erro **"Unable to reach the origin service"** / **"connection refused"** acontece quando o **app Flask não está rodando** na porta 5000. O túnel só encaminha tráfego; quem atende é o seu app.
+
+### Ordem correta (dois terminais)
+
+1. **PowerShell 1** – subir o app na porta 5000:
+   ```powershell
+   cd "C:\Users\Gustavo Marquardt\OneDrive\Documentos\GRANPIX"
+   python app.py
+   ```
+   Deixe este terminal aberto (você deve ver algo como "Running on http://localhost:5000").
+
+2. **PowerShell 2** – depois que o app estiver no ar, abrir o túnel:
+   ```powershell
+   cloudflared tunnel --url http://localhost:5000
+   ```
+   Use a URL que aparecer (ex: `https://....trycloudflare.com`).
+
+Enquanto o app não estiver rodando em `localhost:5000`, o cloudflared continuará retornando "connection refused".
+
+### Script PowerShell (opcional)
+
+Na pasta do projeto você pode rodar:
+
+```powershell
+.\scripts\iniciar_tunnel_cloudflare.ps1
+```
+
+Esse script abre outra janela com o app e, em seguida, inicia o cloudflared na janela atual.
