@@ -589,14 +589,16 @@ def solicitar_instalacao_armazem():
             print(f"[INSTALAÇÃO ARMAZÉM] Incompatibilidade: {msg}")
             return jsonify({'sucesso': False, 'erro': msg}), 400
         
-        # Usar o valor configurado para instalação de peça do warehouse
-        valor_item = float(api.db.obter_configuracao('preco_instalacao_warehouse') or '50')
+        # Valor = preço da peça + soma dos upgrades instalados nessa peça (motor + peças no motor)
+        valor_item = float(api.db.obter_preco_total_peca_com_upgrades(peca_encontrada['id']))
+        if valor_item <= 0:
+            valor_item = float(api.db.obter_configuracao('preco_instalacao_warehouse') or '50')
         taxa = valor_item * 0.01
         valor_total = valor_item + taxa
         
         print(f"[INSTALAÇÃO ARMAZÉM] Criando transação PIX:")
-        print(f"  - Peça: {peca_nome} ({peca_tipo})")
-        print(f"  - Valor (configurado): R$ {valor_item:.2f}")
+        print(f"  - Peça: {peca_nome} ({peca_tipo}), id armazém: {peca_encontrada['id']}")
+        print(f"  - Valor (peça + upgrades): R$ {valor_item:.2f}")
         print(f"  - Taxa (1%): R$ {taxa:.2f}")
         print(f"  - Total: R$ {valor_total:.2f}")
         
@@ -607,7 +609,7 @@ def solicitar_instalacao_armazem():
         equipe = api.gerenciador.obter_equipe(equipe_id)
         equipe_nome = equipe.nome if equipe else 'Desconhecido'
         
-        # Criar transação no banco (gera transacao_id internamente)
+        dados_adicionais = {'peca_armazem_id': peca_encontrada['id'], 'peca_loja_id': peca_loja.id}
         transacao_id = api.db.criar_transacao_pix(
             equipe_id=equipe_id_str,
             equipe_nome=equipe_nome,
@@ -615,7 +617,9 @@ def solicitar_instalacao_armazem():
             item_id=carro_id,
             item_nome=f'{peca_nome} → Carro',
             valor_item=valor_item,
-            valor_taxa=taxa
+            valor_taxa=taxa,
+            carro_id=carro_id,
+            dados_adicionais=dados_adicionais
         )
         
         if not transacao_id:
@@ -729,6 +733,29 @@ def instalar_peca_armazem():
         import traceback
         traceback.print_exc()
         return jsonify({'erro': str(e)}), 500
+
+@app.route('/api/garagem/instalar-upgrade-em-peca', methods=['POST'])
+@requer_login_api
+def instalar_upgrade_em_peca():
+    """Instala um upgrade (do armazém) em uma peça base (motor/cambio etc) que a equipe possui."""
+    try:
+        equipe_id = obter_equipe_id_request()
+        if not equipe_id:
+            return jsonify({'sucesso': False, 'erro': 'Não autenticado'}), 401
+        dados = request.json or {}
+        peca_upgrade_id = dados.get('peca_upgrade_id')
+        peca_alvo_id = dados.get('peca_alvo_id')
+        exigir_alvo_no_carro = dados.get('exigir_alvo_no_carro', False)  # True = instalação no carro: peça base deve estar no carro
+        if not peca_upgrade_id or not peca_alvo_id:
+            return jsonify({'sucesso': False, 'erro': 'peca_upgrade_id e peca_alvo_id são obrigatórios'}), 400
+        ok, msg = api.db.instalar_upgrade_em_peca(str(equipe_id), str(peca_upgrade_id), str(peca_alvo_id), exigir_alvo_no_carro=exigir_alvo_no_carro)
+        if ok:
+            return jsonify({'sucesso': True, 'mensagem': msg})
+        return jsonify({'sucesso': False, 'erro': msg}), 400
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
 
 @app.route('/api/garagem/instalar-multiplas-pecas-armazem', methods=['POST'])
 @requer_login_api
@@ -1393,6 +1420,27 @@ def get_pecas():
                 print(f"  [{peca.nome}] tem_imagem=False")
             
             pecas.append(peca_dict)
+
+    # Incluir upgrades na lista, com o tipo da peça associada (aparecem na aba Motor, Câmbio, etc.)
+    try:
+        upgrades = api.db.carregar_upgrades()
+        for u in upgrades:
+            peca_tipo = (u.get('peca_tipo') or 'motor').strip() or 'motor'
+            pecas.append({
+                'id': 'upgrade_' + str(u['id']),
+                'nome': u.get('nome', ''),
+                'tipo': peca_tipo,
+                'preco': float(u.get('preco') or 0),
+                'descricao': u.get('descricao') or '',
+                'compatibilidade': 'universal',
+                'compatibilidade_nome': 'universal',
+                'is_upgrade': True,
+                'peca_nome': u.get('peca_nome') or '-',
+                'imagem': u.get('imagem'),
+            })
+    except Exception as e:
+        print(f"[API] Aviso ao incluir upgrades: {e}")
+
     print(f"[API] Total de peças retornadas: {len(pecas)}\n")
     return jsonify(pecas)
 
@@ -5641,18 +5689,19 @@ def get_admin_upgrades():
 
 @app.route('/api/admin/cadastrar-upgrade', methods=['POST'])
 def cadastrar_upgrade():
-    """Cadastra um novo upgrade vinculado a uma peça"""
+    """Cadastra um novo upgrade vinculado a uma peça (com imagem opcional em base64)"""
     dados = request.json
     try:
         peca_loja_id = dados.get('peca_loja_id')
         nome = dados.get('nome', '').strip()
         preco = float(dados.get('preco', 0) or 0)
         descricao = (dados.get('descricao') or '').strip()
+        imagem = dados.get('imagem')
         if not peca_loja_id or not nome:
             return jsonify({'sucesso': False, 'erro': 'Informe a peça base e o nome do upgrade'}), 400
         import uuid
         upgrade_id = str(uuid.uuid4())
-        if api.db.criar_upgrade(upgrade_id, peca_loja_id, nome, preco, descricao):
+        if api.db.criar_upgrade(upgrade_id, peca_loja_id, nome, preco, descricao, imagem=imagem):
             return jsonify({'sucesso': True, 'mensagem': f'Upgrade {nome} cadastrado', 'id': upgrade_id})
         return jsonify({'sucesso': False, 'erro': 'Erro ao salvar upgrade'}), 500
     except Exception as e:
@@ -5671,6 +5720,22 @@ def deletar_upgrade():
         return jsonify({'sucesso': False, 'erro': 'Erro ao excluir'}), 500
     except Exception as e:
         return jsonify({'sucesso': False, 'erro': str(e)}), 400
+
+@app.route('/api/admin/reset-pecas-carros', methods=['POST'])
+@requer_admin
+def reset_pecas_carros():
+    """Remove todos os dados das tabelas de peças e carros (loja, peças, carros, upgrades, solicitações)."""
+    try:
+        resultado = api.db.resetar_pecas_e_carros()
+        if resultado.get('sucesso'):
+            if hasattr(api, 'loja_pecas') and api.loja_pecas:
+                api.loja_pecas.pecas = []
+            if hasattr(api, 'loja_carros') and api.loja_carros:
+                api.loja_carros.modelos = []
+            return jsonify(resultado)
+        return jsonify(resultado), 500
+    except Exception as e:
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
 
 @app.route('/api/admin/editar-peca', methods=['POST'])
 def editar_peca():
@@ -6646,32 +6711,37 @@ def confirmar_pagamento_manual():
                     return jsonify({'sucesso': False, 'erro': f'Erro ao processar peça: {str(e)}'}), 500
             
             elif transacao['tipo_item'] == 'instalacao_armazem' or transacao['tipo_item'] == 'warehouse':
-                # Instalar peça do armazém no carro
+                # Instalar peça do armazém no carro (peça específica por id, com upgrades)
                 print(f"[CONFIRMAÇÃO MANUAL] Instalando peça do armazém...")
-                
-                peca_loja_id = transacao['item_id']
-                carro_id_instalacao = transacao.get('carro_id')
-                
+                carro_id_instalacao = transacao.get('carro_id') or transacao.get('item_id')
                 if not carro_id_instalacao:
                     equipe = api.db.carregar_equipe(equipe_id)
                     carro_id_instalacao = equipe.carro.id if equipe and equipe.carro else None
-                
-                print(f"[CONFIRMAÇÃO MANUAL] Instalando peça {peca_loja_id} no carro {carro_id_instalacao}")
-                
-                # Atualizar a peça para instalado = 1 (muda de armazém para carro)
+                dados_json_str = transacao.get('dados_json') or '{}'
                 try:
-                    resultado = api.db.instalar_peca_warehouse(peca_loja_id, carro_id_instalacao, equipe_id)
-                    if resultado:
-                        print(f"[CONFIRMAÇÃO MANUAL] Peça instalada com sucesso no carro")
-                        return jsonify({'sucesso': True, 'mensagem': 'Peça instalada com sucesso'})
-                    else:
-                        print(f"[CONFIRMAÇÃO MANUAL] ERRO ao instalar peça")
+                    dados_json = json.loads(dados_json_str) if isinstance(dados_json_str, str) else dados_json_str
+                except Exception:
+                    dados_json = {}
+                peca_armazem_id = dados_json.get('peca_armazem_id')
+                peca_loja_id = dados_json.get('peca_loja_id')
+                try:
+                    if peca_armazem_id:
+                        ok, msg = api.db.instalar_peca_por_id_no_carro(peca_armazem_id, carro_id_instalacao, equipe_id)
+                        if ok:
+                            print(f"[CONFIRMAÇÃO MANUAL] Peça e upgrades instalados no carro")
+                            return jsonify({'sucesso': True, 'mensagem': msg})
+                        return jsonify({'sucesso': False, 'erro': msg}), 400
+                    if peca_loja_id:
+                        resultado = api.db.instalar_peca_warehouse(peca_loja_id, carro_id_instalacao, equipe_id)
+                        if resultado:
+                            return jsonify({'sucesso': True, 'mensagem': 'Peça instalada com sucesso'})
                         return jsonify({'sucesso': False, 'erro': 'Erro ao instalar peça'}), 400
                 except Exception as e:
                     print(f"[CONFIRMAÇÃO MANUAL] ERRO ao instalar peça: {e}")
                     import traceback
                     traceback.print_exc()
                     return jsonify({'sucesso': False, 'erro': str(e)}), 400
+                return jsonify({'sucesso': False, 'erro': 'Transação sem peca_armazem_id ou peca_loja_id'}), 400
             
             elif transacao['tipo_item'] == 'carro_ativacao':
                 # Ativação de carro já foi criada como solicitação no confirmar_transacao_pix()
@@ -7365,9 +7435,26 @@ def comprar_peca_armazem():
         if not equipe:
             return jsonify({'sucesso': False, 'erro': 'Equipe não encontrada'}), 404
         
-        # Obter dados da peça do banco
+        # Upgrade: peca_id vem como "upgrade_<uuid>"
+        is_upgrade = str(peca_id).startswith('upgrade_')
+        upgrade_id_real = str(peca_id).replace('upgrade_', '', 1) if is_upgrade else None
+        
         peca_encontrada = None
-        if api.loja_pecas and hasattr(api.loja_pecas, 'pecas'):
+        if is_upgrade and upgrade_id_real:
+            u = api.db.buscar_upgrade_por_id(upgrade_id_real)
+            if u:
+                peca_encontrada = {
+                    'id': peca_id,
+                    'nome': u['nome'],
+                    'tipo': u['peca_tipo'],
+                    'preco': u['preco'],
+                    'durabilidade': 100,
+                    'coeficiente_quebra': 1.0,
+                    'descricao': u.get('descricao', ''),
+                    'is_upgrade': True,
+                    'upgrade_id_real': upgrade_id_real
+                }
+        if not peca_encontrada and api.loja_pecas and hasattr(api.loja_pecas, 'pecas'):
             for peca_obj in api.loja_pecas.pecas:
                 if str(peca_obj.id) == str(peca_id):
                     peca_encontrada = {
@@ -7377,12 +7464,13 @@ def comprar_peca_armazem():
                         'preco': peca_obj.preco,
                         'durabilidade': getattr(peca_obj, 'durabilidade', 100),
                         'coeficiente_quebra': getattr(peca_obj, 'coeficiente_quebra', 0.1),
-                        'descricao': getattr(peca_obj, 'descricao', '')
+                        'descricao': getattr(peca_obj, 'descricao', ''),
+                        'is_upgrade': False
                     }
                     break
         
         if not peca_encontrada:
-            return jsonify({'sucesso': False, 'erro': 'Peça não encontrada'}), 404
+            return jsonify({'sucesso': False, 'erro': 'Peça ou upgrade não encontrado'}), 404
         
         # Verificar saldo
         preco = float(peca_encontrada['preco'])
@@ -7404,23 +7492,25 @@ def comprar_peca_armazem():
             print(f"[ARMAZÉM] ✅ Saldo descontado: R${preco:.2f}")
             print(f"[ARMAZÉM] Novo saldo: R${novo_saldo:.2f}")
             
-            # 2. ADICIONAR A PEÇA AO ARMAZÉM (sem carro, instalado=0)
-            # Usar a função existente que insere peça com instalado=0
-            resultado_salvar = api.db.adicionar_peca_armazem(
-                equipe_id=equipe_id,
-                peca_loja_id=peca_id,
-                nome=peca_encontrada['nome'],
-                tipo=peca_encontrada['tipo'],
-                durabilidade=peca_encontrada['durabilidade'],
-                preco=preco,
-                coeficiente_quebra=peca_encontrada['coeficiente_quebra']
-            )
+            # 2. ADICIONAR AO ARMAZÉM (peça ou upgrade)
+            if peca_encontrada.get('is_upgrade'):
+                resultado_salvar = api.db.adicionar_upgrade_armazem(equipe_id, peca_encontrada['upgrade_id_real'])
+            else:
+                resultado_salvar = api.db.adicionar_peca_armazem(
+                    equipe_id=equipe_id,
+                    peca_loja_id=peca_id,
+                    nome=peca_encontrada['nome'],
+                    tipo=peca_encontrada['tipo'],
+                    durabilidade=peca_encontrada['durabilidade'],
+                    preco=preco,
+                    coeficiente_quebra=peca_encontrada['coeficiente_quebra']
+                )
             
             if not resultado_salvar:
-                print(f"[ARMAZÉM] ❌ FALHA: adicionar_peca_armazem retornou False!")
-                return jsonify({'sucesso': False, 'erro': 'Falha ao adicionar peça ao armazém'}), 500
+                print(f"[ARMAZÉM] ❌ FALHA ao adicionar ao armazém!")
+                return jsonify({'sucesso': False, 'erro': 'Falha ao adicionar ao armazém'}), 500
             
-            print(f"[ARMAZÉM] ✅ Peça adicionada ao armazém com sucesso!")
+            print(f"[ARMAZÉM] ✅ {'Upgrade' if peca_encontrada.get('is_upgrade') else 'Peça'} adicionado ao armazém com sucesso!")
             
             # 3. REGISTRAR NA TABELA DE COMPRAS (HISTÓRICO)
             try:
@@ -7434,7 +7524,7 @@ def comprar_peca_armazem():
                     INSERT INTO solicitacao_compra 
                     (id, equipe_id, tipo, item_id, quantidade, status, data_criacao, data_processamento)
                     VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
-                ''', (compra_id, equipe_id, 'PEÇA', peca_id, 1, 'CONFIRMADA'))
+                ''', (compra_id, equipe_id, 'UPGRADE' if peca_encontrada.get('is_upgrade') else 'PEÇA', peca_id, 1, 'CONFIRMADA'))
                 
                 conn.commit()
                 conn.close()
