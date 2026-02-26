@@ -1,322 +1,119 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GRANPIX - Lista de Equipes</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/imask/6.4.0/imask.min.js"></script>
-  <style>
-    #modalDesignarPiloto {
-      pointer-events: auto !important;
-      z-index: 9999 !important;
-    }
-    
-    #modalDesignarPiloto * {
-      pointer-events: auto !important;
-    }
-    
-    #modalDesignarPiloto .modal-dialog {
-      pointer-events: auto !important;
-    }
-    
-    #modalDesignarPiloto .modal-content {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao {
-      pointer-events: auto !important;
-      z-index: 9999 !important;
-      display: none !important;
-    }
-
-    #modalConfirmacaoAlocacao.show {
-      display: block !important;
-    }
-
-    #modalConfirmacaoAlocacao * {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .modal-dialog {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .modal-content {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .btn {
-      pointer-events: auto !important;
-    }
-
-    /* Modais Editar e Confirmar Exclusão - garantir clicáveis */
-    #modalEditarEquipe, #modalConfirmarExclusao {
-      pointer-events: auto !important;
-      z-index: 9999 !important;
-    }
-    #modalEditarEquipe *, #modalConfirmarExclusao * {
-      pointer-events: auto !important;
-    }
-    #modalEditarEquipe .modal-dialog, #modalConfirmarExclusao .modal-dialog {
-      pointer-events: auto !important;
-    }
-    #modalEditarEquipe .modal-content, #modalConfirmarExclusao .modal-content {
-      pointer-events: auto !important;
-    }
-    
-    .modal-backdrop {
-      pointer-events: auto !important;
-      z-index: 9998 !important;
-    }
-
-    /* Sidebar Styles */
-    .sidebar {
-      position: fixed;
-      top: 76px; /* Height of navbar */
-      left: 0;
-      width: 250px;
-      height: calc(100vh - 76px);
-      background-color: #343a40;
-      padding: 20px 0;
-      overflow-y: auto;
-      z-index: 1000;
-      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-    }
-
-    .sidebar .nav-link {
-      color: #adb5bd;
-      padding: 12px 20px;
-      text-decoration: none;
-      display: flex;
-      align-items: center;
-      transition: all 0.3s ease;
-      border: none;
-      background: none;
-      width: 100%;
-      text-align: left;
-    }
-
-    .sidebar .nav-link:hover {
-      color: #ffffff;
-      background-color: #495057;
-      text-decoration: none;
-    }
-
-    .sidebar .nav-link.active {
-      color: #dc143c;
-      background-color: #495057;
-      font-weight: bold;
-    }
-
-    .sidebar .nav-link i {
-      margin-right: 10px;
-      width: 20px;
-      text-align: center;
-    }
-
-    .main-content {
-      margin-left: 250px;
-      padding: 20px;
-      min-height: calc(100vh - 76px);
-    }
-
-    /* Responsive adjustments */
-    @media (max-width: 768px) {
-      .sidebar {
-        width: 200px;
-      }
-      .main-content {
-        margin-left: 200px;
-      }
-    }
-
-    @media (max-width: 576px) {
-      .sidebar {
-        width: 100%;
-        height: auto;
-        position: relative;
-        top: 0;
-      }
-      .main-content {
-        margin-left: 0;
-      }
-    }
-  </style>
-  <!-- Carregar script.js primeiro para definir funções globais -->
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
-  <!-- Depois carregar qualificacao.js que usa funções de script.js -->
-  <script src="{{ url_for('static', filename='qualificacao.js') }}"></script>
-  <!-- Por fim, sistema_notificacao que usa funções de qualificacao.js -->
-  <script src="{{ url_for('static', filename='sistema_notificacao.js') }}"></script>
-</head>
-<body>
-  <nav class="navbar navbar-dark" style="background-color: #1a1a1a; border-bottom: 3px solid #dc143c;">
-  <div class="container-fluid">
-  <span class="navbar-brand mb-0 h1" style="color: #dc143c; font-weight: bold;">GRANPIX - Painel Administrativo</span>
-  <a href="/" class="btn btn-sm btn-outline-light">Voltar ao Site</a>
-  </div>
-  </nav>
-
-  <!-- Sidebar -->
-  <div class="sidebar">
-  <nav class="nav flex-column">
-  <a class="nav-link" href="/admin/carros">
-  <i class="fas fa-car"></i> Cadastrar Carros
-  </a>
-  <a class="nav-link" href="/admin/pecas">
-  <i class="fas fa-cogs"></i> Cadastrar Peças
-  </a>
-  <a class="nav-link" href="/admin/variacoes">
-  <i class="fas fa-tools"></i> Cadastrar Variações
-  </a>
-  <a class="nav-link" href="/admin/equipes">
-  <i class="fas fa-users"></i> Cadastrar Equipes
-  </a>
-  <a class="nav-link" href="/admin/etapas">
-  <i class="fas fa-calendar"></i> Gerenciar Etapas
-  </a>
-  <a class="nav-link" href="/admin/solicitacoes-pecas">
-  <i class="fas fa-clipboard-list"></i> Solicitações de Peças
-  </a>
-  <a class="nav-link" href="/admin/solicitacoes-carros">
-  <i class="fas fa-clipboard-check"></i> Solicitações de Carros
-  </a>
-  <a class="nav-link" href="/admin/fazer-etapa">
-  <i class="fas fa-play"></i> Fazer Etapa
-  </a>
-  <a class="nav-link" href="/admin/alocar-pilotos">
-  <i class="fas fa-user-check"></i> Alocar Pilotos
-  </a>
-  <a class="nav-link" href="/admin/comissoes">
-  <i class="fas fa-money-bill"></i> Comissões
-  </a>
-  <a class="nav-link" href="/admin/configuracoes">
-  <i class="fas fa-cog"></i> Configurações
-  </a>
-  <a class="nav-link active" href="/admin/equipes-list">
-  <i class="fas fa-list"></i> Lista de Equipes
-  </a>
-  </nav>
-  </div>
-
-  <!-- Modais fora da main-content para evitar conflitos de z-index -->
-  <div class="modal fade" id="modalEditarEquipe" tabindex="-1">
-  <div class="modal-dialog">
-  <div class="modal-content">
-  <div class="modal-header bg-dark text-white">
-  <h5 class="modal-title">Editar Equipe</h5>
-  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-  </div>
-  <div class="modal-body">
-  <input type="hidden" id="editEquipeId">
-  <div class="mb-3">
-  <label class="form-label">Nome</label>
-  <input type="text" class="form-control" id="editEquipeNome" required minlength="2">
-  </div>
-  <div class="mb-3">
-  <label class="form-label">Saldo (Doricoins)</label>
-  <input type="number" class="form-control" id="editEquipeDoricoins" min="0" step="1">
-  </div>
-  <div class="mb-3">
-  <label class="form-label">Série</label>
-  <select class="form-select" id="editEquipeSerie">
-  <option value="A">Série A</option>
-  <option value="B">Série B</option>
-  </select>
-  </div>
-  <div class="mb-3">
-  <label class="form-label">Nova senha (deixe em branco para não alterar)</label>
-  <input type="text" class="form-control" id="editEquipeSenha" placeholder="Opcional" minlength="4">
-  </div>
-  </div>
-  <div class="modal-footer">
-  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-  <button type="button" class="btn btn-primary" id="btnSalvarEdicaoEquipe">Salvar</button>
-  </div>
-  </div>
-  </div>
-  </div>
-  <div class="modal fade" id="modalConfirmarExclusao" tabindex="-1">
-  <div class="modal-dialog">
-  <div class="modal-content">
-  <div class="modal-header bg-danger text-white">
-  <h5 class="modal-title">Excluir equipe</h5>
-  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-  </div>
-  <div class="modal-body">
-  <p>Tem certeza que deseja excluir a equipe <strong id="nomeEquipeExcluir"></strong>? Esta ação não pode ser desfeita.</p>
-  </div>
-  <div class="modal-footer">
-  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-  <button type="button" class="btn btn-danger" id="btnConfirmarExclusao">Excluir</button>
-  </div>
-  </div>
-  </div>
-  </div>
-
-  <!-- Main Content -->
-  <div class="main-content">
-  <div class="container-fluid mt-4">
+{% extends "admin_base.html" %}
+{% block title %}GRANPIX - Lista de Equipes{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
   <div class="row mb-4">
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Total de Equipes</div>
-  <div class="stat-value" id="totalEquipes">-</div>
-  </div>
-  </div>
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Solicitações de Peça</div>
-  <div class="stat-value" id="solicitacoesPecasPendentes">0</div>
-  </div>
-  </div>
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Solicitações de Carro</div>
-  <div class="stat-value" id="solicitacoesCarrosPendentes">0</div>
-  </div>
-  </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Total de Equipes</div>
+        <div class="stat-value" id="totalEquipes">-</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Solicitações de Peça</div>
+        <div class="stat-value" id="solicitacoesPecasPendentes">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Solicitações de Carro</div>
+        <div class="stat-value" id="solicitacoesCarrosPendentes">0</div>
+      </div>
+    </div>
   </div>
   <div class="row">
-  <div class="col-12">
-  <div class="card">
-  <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-  <h5 class="mb-0">Lista de Equipes</h5>
-  <button type="button" class="btn btn-sm btn-outline-light" id="btnRecarregarEquipes" title="Recarregar"><i class="fas fa-sync-alt"></i></button>
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Lista de Equipes</h5>
+          <button type="button" class="btn btn-sm btn-outline-light" id="btnRecarregarEquipes" title="Recarregar"><i class="fas fa-sync-alt"></i></button>
+        </div>
+        <div class="card-body">
+          <div id="loadingEquipes" class="text-center py-4 text-muted"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>
+          <div id="listaEquipesContainer" style="display: none;">
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead class="table-light">
+                  <tr><th>Equipe</th><th>Série</th><th>Saldo (Doricoins)</th><th>Carro</th><th>Ações</th></tr>
+                </thead>
+                <tbody id="tbodyEquipes"></tbody>
+              </table>
+            </div>
+            <p id="nenhumaEquipe" class="text-muted mb-0" style="display: none;">Nenhuma equipe cadastrada.</p>
+          </div>
+          <div id="erroEquipes" class="alert alert-danger" style="display: none;"></div>
+        </div>
+      </div>
+    </div>
   </div>
-  <div class="card-body">
-  <div id="loadingEquipes" class="text-center py-4 text-muted"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>
-  <div id="listaEquipesContainer" style="display: none;">
-  <div class="table-responsive">
-  <table class="table table-hover">
-  <thead class="table-light">
-  <tr><th>Equipe</th><th>Série</th><th>Saldo (Doricoins)</th><th>Carro</th><th>Ações</th></tr>
-  </thead>
-  <tbody id="tbodyEquipes"></tbody>
-  </table>
+  <div class="modal fade" id="modalEditarEquipe" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-dark text-white">
+          <h5 class="modal-title">Editar Equipe</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editEquipeId">
+          <div class="mb-3">
+            <label class="form-label">Nome</label>
+            <input type="text" class="form-control" id="editEquipeNome" required minlength="2">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Saldo (Doricoins)</label>
+            <input type="number" class="form-control" id="editEquipeDoricoins" min="0" step="1">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Série</label>
+            <select class="form-select" id="editEquipeSerie">
+              <option value="A">Série A</option>
+              <option value="B">Série B</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Nova senha (deixe em branco para não alterar)</label>
+            <input type="text" class="form-control" id="editEquipeSenha" placeholder="Opcional" minlength="4">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="btnSalvarEdicaoEquipe">Salvar</button>
+        </div>
+      </div>
+    </div>
   </div>
-  <p id="nenhumaEquipe" class="text-muted mb-0" style="display: none;">Nenhuma equipe cadastrada.</p>
-  </div>
-  <div id="erroEquipes" class="alert alert-danger" style="display: none;"></div>
-  </div>
-  </div>
-  </div>
-  </div>
+  <div class="modal fade" id="modalConfirmarExclusao" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title">Excluir equipe</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p>Tem certeza que deseja excluir a equipe <strong id="nomeEquipeExcluir"></strong>? Esta ação não pode ser desfeita.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-danger" id="btnConfirmarExclusao">Excluir</button>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="toast-container"></div>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script>
-  function getCookie(name) {
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function getCookie(name) {
   const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
   return v ? v[2] : null;
-  }
-  function formatarMoeda(valor) {
+}
+function formatarMoeda(valor) {
   if (valor == null || valor === '') return '—';
   return 'R$ ' + Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-  async function carregarEquipes() {
+}
+async function carregarEquipes() {
   const loading = document.getElementById('loadingEquipes');
   const container = document.getElementById('listaEquipesContainer');
   const tbody = document.getElementById('tbodyEquipes');
@@ -326,42 +123,26 @@
   container.style.display = 'none';
   erro.style.display = 'none';
   try {
-  const r = await fetch('/api/admin/equipes', { credentials: 'include' });
-  const equipes = await r.json();
-  if (!r.ok) {
-  erro.textContent = equipes.erro || 'Erro ao carregar equipes.';
-  erro.style.display = 'block';
-  return;
-  }
-  const lista = Array.isArray(equipes) ? equipes : [];
-  tbody.innerHTML = '';
-  if (lista.length === 0) {
-  nenhuma.style.display = 'block';
-  container.style.display = 'block';
-  } else {
-  nenhuma.style.display = 'none';
-  lista.forEach(function(eq) {
-  const tr = document.createElement('tr');
-  tr.innerHTML = '<td>' + (eq.nome || '—') + '</td><td>' + (eq.serie || 'A') + '</td><td>' + formatarMoeda(eq.saldo) + '</td><td>' + (eq.carro || 'Sem carro') + '</td><td><button type="button" class="btn btn-sm btn-outline-primary me-1 btn-editar-equipe" data-id="' + eq.id + '" data-nome="' + (eq.nome || '').replace(/"/g, '&quot;') + '" data-saldo="' + (eq.saldo != null ? eq.saldo : '') + '" data-serie="' + (eq.serie || 'A') + '"><i class="fas fa-edit"></i> Editar</button><button type="button" class="btn btn-sm btn-outline-danger btn-apagar-equipe" data-id="' + eq.id + '" data-nome="' + (eq.nome || '').replace(/"/g, '&quot;') + '"><i class="fas fa-trash"></i> Apagar</button></td>';
-  tbody.appendChild(tr);
-  });
-  container.style.display = 'block';
-  document.querySelectorAll('.btn-editar-equipe').forEach(function(btn) {
-  btn.addEventListener('click', abrirModalEditar);
-  });
-  document.querySelectorAll('.btn-apagar-equipe').forEach(function(btn) {
-  btn.addEventListener('click', abrirModalExcluir);
-  });
-  }
-  atualizarStatusAdmin();
-  } catch (e) {
-  erro.textContent = 'Erro ao carregar: ' + e.message;
-  erro.style.display = 'block';
-  } finally {
-  loading.style.display = 'none';
-  }
-  }
-  function abrirModalEditar(e) {
+    const r = await fetch('/api/admin/equipes', { credentials: 'include' });
+    const equipes = await r.json();
+    if (!r.ok) { erro.textContent = equipes.erro || 'Erro ao carregar equipes.'; erro.style.display = 'block'; return; }
+    const lista = Array.isArray(equipes) ? equipes : [];
+    tbody.innerHTML = '';
+    if (lista.length === 0) { nenhuma.style.display = 'block'; container.style.display = 'block'; } else {
+      nenhuma.style.display = 'none';
+      lista.forEach(function(eq) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + (eq.nome || '—') + '</td><td>' + (eq.serie || 'A') + '</td><td>' + formatarMoeda(eq.saldo) + '</td><td>' + (eq.carro || 'Sem carro') + '</td><td><button type="button" class="btn btn-sm btn-outline-primary me-1 btn-editar-equipe" data-id="' + eq.id + '" data-nome="' + (eq.nome || '').replace(/"/g, '&quot;') + '" data-saldo="' + (eq.saldo != null ? eq.saldo : '') + '" data-serie="' + (eq.serie || 'A') + '"><i class="fas fa-edit"></i> Editar</button><button type="button" class="btn btn-sm btn-outline-danger btn-apagar-equipe" data-id="' + eq.id + '" data-nome="' + (eq.nome || '').replace(/"/g, '&quot;') + '"><i class="fas fa-trash"></i> Apagar</button></td>';
+        tbody.appendChild(tr);
+      });
+      container.style.display = 'block';
+      document.querySelectorAll('.btn-editar-equipe').forEach(function(btn) { btn.addEventListener('click', abrirModalEditar); });
+      document.querySelectorAll('.btn-apagar-equipe').forEach(function(btn) { btn.addEventListener('click', abrirModalExcluir); });
+    }
+    atualizarStatusAdmin();
+  } catch (e) { erro.textContent = 'Erro ao carregar: ' + e.message; erro.style.display = 'block'; } finally { loading.style.display = 'none'; }
+}
+function abrirModalEditar(e) {
   const btn = e.currentTarget;
   document.getElementById('editEquipeId').value = btn.getAttribute('data-id');
   document.getElementById('editEquipeNome').value = btn.getAttribute('data-nome') || '';
@@ -369,120 +150,81 @@
   document.getElementById('editEquipeSerie').value = btn.getAttribute('data-serie') || 'A';
   document.getElementById('editEquipeSenha').value = '';
   new bootstrap.Modal(document.getElementById('modalEditarEquipe')).show();
-  }
-  function abrirModalExcluir(e) {
+}
+function abrirModalExcluir(e) {
   const btn = e.currentTarget;
   const id = btn.getAttribute('data-id');
   const nome = btn.getAttribute('data-nome') || 'Esta equipe';
   document.getElementById('nomeEquipeExcluir').textContent = nome;
   document.getElementById('btnConfirmarExclusao').setAttribute('data-equipe-id', id);
   new bootstrap.Modal(document.getElementById('modalConfirmarExclusao')).show();
-  }
-  async function salvarEdicaoEquipe() {
+}
+async function salvarEdicaoEquipe() {
   const id = document.getElementById('editEquipeId').value;
   const nome = document.getElementById('editEquipeNome').value.trim();
   const doricoins = parseFloat(document.getElementById('editEquipeDoricoins').value) || 0;
   const serie = document.getElementById('editEquipeSerie').value;
   const novaSenha = document.getElementById('editEquipeSenha').value.trim();
-  if (!nome || nome.length < 2) {
-  if (typeof mostrarToast === 'function') mostrarToast('Nome deve ter pelo menos 2 caracteres', 'error'); else alert('Nome inválido.');
-  return;
-  }
+  if (!nome || nome.length < 2) { if (typeof mostrarToast === 'function') mostrarToast('Nome deve ter pelo menos 2 caracteres', 'error'); else alert('Nome inválido.'); return; }
   const btnSalvar = document.getElementById('btnSalvarEdicaoEquipe');
   btnSalvar.disabled = true;
   btnSalvar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
   try {
-  const payload = { id: id, nome: nome, doricoins: doricoins, serie: serie };
-  const r = await fetch('/api/admin/editar-equipe', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrf_token') || '' },
-  body: JSON.stringify(payload),
-  credentials: 'include'
-  });
-  const data = await r.json();
-  if (r.ok && data.sucesso) {
-  if (novaSenha && novaSenha.length >= 4) {
-  const rSenha = await fetch('/api/admin/equipe/mudar-senha', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrf_token') || '' },
-  body: JSON.stringify({ id: id, nova_senha: novaSenha }),
-  credentials: 'include'
-  });
-  const dataSenha = await rSenha.json();
-  if (!rSenha.ok || !dataSenha.sucesso) {
-  if (typeof mostrarToast === 'function') mostrarToast('Equipe atualizada, mas falha ao alterar senha: ' + (dataSenha.erro || ''), 'error'); else alert('Senha não alterada.');
-  }
-  }
-  bootstrap.Modal.getInstance(document.getElementById('modalEditarEquipe')).hide();
-  if (typeof mostrarToast === 'function') mostrarToast(data.mensagem || 'Equipe atualizada.', 'success'); else alert(data.mensagem);
-  carregarEquipes();
-  } else {
-  if (typeof mostrarToast === 'function') mostrarToast(data.erro || 'Erro ao salvar', 'error'); else alert(data.erro || 'Erro ao salvar');
-  }
-  } catch (e) {
-  if (typeof mostrarToast === 'function') mostrarToast('Erro: ' + e.message, 'error'); else alert('Erro: ' + e.message);
-  } finally {
-  btnSalvar.disabled = false;
-  btnSalvar.innerHTML = 'Salvar';
-  }
-  }
-  async function confirmarExclusao() {
+    const payload = { id: id, nome: nome, doricoins: doricoins, serie: serie };
+    const r = await fetch('/api/admin/editar-equipe', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrf_token') || '' }, body: JSON.stringify(payload), credentials: 'include' });
+    const data = await r.json();
+    if (r.ok && data.sucesso) {
+      if (novaSenha && novaSenha.length >= 4) {
+        const rSenha = await fetch('/api/admin/equipe/mudar-senha', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrf_token') || '' }, body: JSON.stringify({ id: id, nova_senha: novaSenha }), credentials: 'include' });
+        const dataSenha = await rSenha.json();
+        if (!rSenha.ok || !dataSenha.sucesso) { if (typeof mostrarToast === 'function') mostrarToast('Equipe atualizada, mas falha ao alterar senha: ' + (dataSenha.erro || ''), 'error'); else alert('Senha não alterada.'); }
+      }
+      bootstrap.Modal.getInstance(document.getElementById('modalEditarEquipe')).hide();
+      if (typeof mostrarToast === 'function') mostrarToast(data.mensagem || 'Equipe atualizada.', 'success'); else alert(data.mensagem);
+      carregarEquipes();
+    } else { if (typeof mostrarToast === 'function') mostrarToast(data.erro || 'Erro ao salvar', 'error'); else alert(data.erro || 'Erro ao salvar'); }
+  } catch (e) { if (typeof mostrarToast === 'function') mostrarToast('Erro: ' + e.message, 'error'); else alert('Erro: ' + e.message); } finally { btnSalvar.disabled = false; btnSalvar.innerHTML = 'Salvar'; }
+}
+async function confirmarExclusao() {
   const id = document.getElementById('btnConfirmarExclusao').getAttribute('data-equipe-id');
   const btn = document.getElementById('btnConfirmarExclusao');
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Excluindo...';
   try {
-  const r = await fetch('/api/admin/deletar-equipe', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrf_token') || '' },
-  body: JSON.stringify({ id: id }),
-  credentials: 'include'
-  });
-  const data = await r.json();
-  if (r.ok && data.sucesso) {
-  bootstrap.Modal.getInstance(document.getElementById('modalConfirmarExclusao')).hide();
-  if (typeof mostrarToast === 'function') mostrarToast(data.mensagem || 'Equipe excluída.', 'success'); else alert(data.mensagem);
+    const r = await fetch('/api/admin/deletar-equipe', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrf_token') || '' }, body: JSON.stringify({ id: id }), credentials: 'include' });
+    const data = await r.json();
+    if (r.ok && data.sucesso) {
+      bootstrap.Modal.getInstance(document.getElementById('modalConfirmarExclusao')).hide();
+      if (typeof mostrarToast === 'function') mostrarToast(data.mensagem || 'Equipe excluída.', 'success'); else alert(data.mensagem);
+      carregarEquipes();
+      atualizarContadoresSolicitacoes && atualizarContadoresSolicitacoes();
+    } else { if (typeof mostrarToast === 'function') mostrarToast(data.erro || 'Erro ao excluir', 'error'); else alert(data.erro || 'Erro ao excluir'); }
+  } catch (e) { if (typeof mostrarToast === 'function') mostrarToast('Erro: ' + e.message, 'error'); else alert('Erro: ' + e.message); } finally { btn.disabled = false; btn.innerHTML = 'Excluir'; }
+}
+window.addEventListener('load', function() {
   carregarEquipes();
-  atualizarContadoresSolicitacoes();
-  } else {
-  if (typeof mostrarToast === 'function') mostrarToast(data.erro || 'Erro ao excluir', 'error'); else alert(data.erro || 'Erro ao excluir');
-  }
-  } catch (e) {
-  if (typeof mostrarToast === 'function') mostrarToast('Erro: ' + e.message, 'error'); else alert('Erro: ' + e.message);
-  } finally {
-  btn.disabled = false;
-  btn.innerHTML = 'Excluir';
-  }
-  }
-  window.addEventListener('load', function() {
-  carregarEquipes();
-  atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
+  atualizarContadoresSolicitacoes && atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
   document.getElementById('btnRecarregarEquipes').addEventListener('click', carregarEquipes);
   document.getElementById('btnSalvarEdicaoEquipe').addEventListener('click', salvarEdicaoEquipe);
   document.getElementById('btnConfirmarExclusao').addEventListener('click', confirmarExclusao);
-  });
-  async function atualizarStatusAdmin() {
-  try {
-  const resp = await fetch('/api/admin/status');
-  const status = await resp.json();
-  document.getElementById('totalEquipes').textContent = status.total_equipes || 0;
-  } catch (e) { console.log('Erro ao atualizar status'); }
-  }
-  async function atualizarContadoresSolicitacoes() {
+});
+async function atualizarStatusAdmin() {
+  try { const resp = await fetch('/api/admin/status'); const status = await resp.json(); document.getElementById('totalEquipes').textContent = status.total_equipes || 0; } catch (e) {}
+}
+async function atualizarContadoresSolicitacoes() {
   if (typeof window.atualizarContadoresSolicitacoesAdmin === 'function') return window.atualizarContadoresSolicitacoesAdmin();
   try {
-  const respPecas = await fetch('/api/admin/solicitacoes-pecas');
-  const pecas = await respPecas.json();
-  const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
-  const elemPecas = document.getElementById('solicitacoesPecasPendentes');
-  if (elemPecas) elemPecas.textContent = pecasPendentes;
-  const respCarros = await fetch('/api/admin/solicitacoes-carros');
-  const carros = await respCarros.json();
-  const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
-  const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
-  if (elemCarros) elemCarros.textContent = carrosPendentes;
+    const respPecas = await fetch('/api/admin/solicitacoes-pecas');
+    const pecas = await respPecas.json();
+    const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
+    const elemPecas = document.getElementById('solicitacoesPecasPendentes');
+    if (elemPecas) elemPecas.textContent = pecasPendentes;
+    const respCarros = await fetch('/api/admin/solicitacoes-carros');
+    const carros = await respCarros.json();
+    const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
+    const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
+    if (elemCarros) elemCarros.textContent = carrosPendentes;
   } catch (e) { console.error('Erro ao atualizar contadores:', e); }
-  }
-  </script>
-</body>
-</html>
+}
+</script>
+{% endblock %}

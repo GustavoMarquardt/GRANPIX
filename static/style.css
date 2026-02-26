@@ -483,6 +483,16 @@ body {
     z-index: 1 !important;
 }
 
+/* Barra lateral do admin - texto branco em fundo escuro */
+.sidebar,
+.sidebar .nav-link {
+    color: #fff !important;
+}
+.sidebar .nav-link:hover,
+.sidebar .nav-link.active {
+    color: #fff !important;
+}
+
 /* Texto branco em fundos escuros */
 #chaveamentoBatalhasInline,
 #chaveamentoBatalhasInline .card,
@@ -494,10 +504,42 @@ body {
 .modal-content.bg-dark,
 .modal-content.bg-dark .modal-body,
 .modal-content.bg-dark .modal-header,
+.modal-content.bg-dark label,
+.modal-content.bg-dark .form-label,
+.modal-content.bg-dark .form-group label,
+.modal-content.bg-dark small,
 .table-dark,
 .table-dark td,
-.table-dark th {
+.table-dark th,
+/* Cards e headers com fundo escuro */
+.card-header.bg-dark,
+.card.bg-dark,
+.modal-header.bg-dark,
+.bg-dark,
+.bg-secondary,
+.badge.bg-secondary {
     color: #fff !important;
+}
+
+/* Modal com fundo escuro (#222) - labels e textos brancos */
+.modal-content .modal-body,
+.modal-content label,
+.modal-content .form-label,
+.modal-content .form-group label,
+.modal-content small {
+    color: #fff !important;
+}
+.modal-content .text-muted {
+    color: #bbb !important;
+}
+.modal-content .form-control,
+.modal-content .form-select {
+    background-color: #333 !important;
+    color: #fff !important;
+    border-color: #555 !important;
+}
+.modal-content .form-control::placeholder {
+    color: #999 !important;
 }
 .table-dark {
     background-color: #1a1a1a;

@@ -1,356 +1,139 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GRANPIX - Fazer Etapa</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/imask/6.4.0/imask.min.js"></script>
-  <style>
-    #modalDesignarPiloto {
-      pointer-events: auto !important;
-      z-index: 9999 !important;
-    }
-    
-    #modalDesignarPiloto * {
-      pointer-events: auto !important;
-    }
-    
-    #modalDesignarPiloto .modal-dialog {
-      pointer-events: auto !important;
-    }
-    
-    #modalDesignarPiloto .modal-content {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao {
-      pointer-events: auto !important;
-      z-index: 9999 !important;
-      display: none !important;
-    }
-
-    #modalConfirmacaoAlocacao.show {
-      display: block !important;
-    }
-
-    #modalConfirmacaoAlocacao * {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .modal-dialog {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .modal-content {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .btn {
-      pointer-events: auto !important;
-    }
-    
-    .modal-backdrop {
-      pointer-events: auto !important;
-      z-index: 9998 !important;
-    }
-
-    /* Sidebar Styles */
-    .sidebar {
-      position: fixed;
-      top: 76px; /* Height of navbar */
-      left: 0;
-      width: 250px;
-      height: calc(100vh - 76px);
-      background-color: #343a40;
-      padding: 20px 0;
-      overflow-y: auto;
-      z-index: 1000;
-      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-    }
-
-    .sidebar .nav-link {
-      color: #adb5bd;
-      padding: 12px 20px;
-      text-decoration: none;
-      display: flex;
-      align-items: center;
-      transition: all 0.3s ease;
-      border: none;
-      background: none;
-      width: 100%;
-      text-align: left;
-    }
-
-    .sidebar .nav-link:hover {
-      color: #ffffff;
-      background-color: #495057;
-      text-decoration: none;
-    }
-
-    .sidebar .nav-link.active {
-      color: #dc143c;
-      background-color: #495057;
-      font-weight: bold;
-    }
-
-    .sidebar .nav-link i {
-      margin-right: 10px;
-      width: 20px;
-      text-align: center;
-    }
-
-    .main-content {
-      margin-left: 250px;
-      padding: 20px;
-      min-height: calc(100vh - 76px);
-    }
-
-    /* Responsive adjustments */
-    @media (max-width: 768px) {
-      .sidebar {
-        width: 200px;
-      }
-      .main-content {
-        margin-left: 200px;
-      }
-    }
-
-    @media (max-width: 576px) {
-      .sidebar {
-        width: 100%;
-        height: auto;
-        position: relative;
-        top: 0;
-      }
-      .main-content {
-        margin-left: 0;
-      }
-    }
-  </style>
-  <!-- Carregar script.js primeiro para definir funções globais -->
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
-  <!-- Depois carregar qualificacao.js que usa funções de script.js -->
-  <script src="{{ url_for('static', filename='qualificacao.js') }}"></script>
-  <!-- Por fim, sistema_notificacao que usa funções de qualificacao.js -->
-  <script src="{{ url_for('static', filename='sistema_notificacao.js') }}"></script>
-</head>
-<body>
-  <nav class="navbar navbar-dark" style="background-color: #1a1a1a; border-bottom: 3px solid #dc143c;">
-  <div class="container-fluid">
-  <span class="navbar-brand mb-0 h1" style="color: #dc143c; font-weight: bold;">GRANPIX - Painel Administrativo</span>
-  <a href="/" class="btn btn-sm btn-outline-light">Voltar ao Site</a>
-  </div>
-  </nav>
-
-  <!-- Sidebar -->
-  <div class="sidebar">
-  <nav class="nav flex-column">
-  <a class="nav-link" href="/admin/carros">
-  <i class="fas fa-car"></i> Cadastrar Carros
-  </a>
-  <a class="nav-link" href="/admin/pecas">
-  <i class="fas fa-cogs"></i> Cadastrar Peças
-  </a>
-  <a class="nav-link" href="/admin/variacoes">
-  <i class="fas fa-tools"></i> Cadastrar Variações
-  </a>
-  <a class="nav-link" href="/admin/equipes">
-  <i class="fas fa-users"></i> Cadastrar Equipes
-  </a>
-  <a class="nav-link" href="/admin/etapas">
-  <i class="fas fa-calendar"></i> Gerenciar Etapas
-  </a>
-  <a class="nav-link" href="/admin/solicitacoes-pecas">
-  <i class="fas fa-clipboard-list"></i> Solicitações de Peças
-  </a>
-  <a class="nav-link" href="/admin/solicitacoes-carros">
-  <i class="fas fa-clipboard-check"></i> Solicitações de Carros
-  </a>
-  <a class="nav-link active" href="/admin/fazer-etapa">
-  <i class="fas fa-play"></i> Fazer Etapa
-  </a>
-  <a class="nav-link" href="/admin/alocar-pilotos">
-  <i class="fas fa-user-check"></i> Alocar Pilotos
-  </a>
-  <a class="nav-link" href="/admin/comissoes">
-  <i class="fas fa-money-bill"></i> Comissões
-  </a>
-  <a class="nav-link" href="/admin/configuracoes">
-  <i class="fas fa-cog"></i> Configurações
-  </a>
-  <a class="nav-link" href="/admin/equipes-list">
-  <i class="fas fa-list"></i> Lista de Equipes
-  </a>
-  </nav>
-  </div>
-
-  <!-- Main Content -->
-  <div class="main-content">
-  <div class="container-fluid mt-4">
+{% extends "admin_base.html" %}
+{% block title %}GRANPIX - Fazer Etapa{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
   <div class="row mb-4">
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Total de Equipes</div>
-  <div class="stat-value" id="totalEquipes">-</div>
-  </div>
-  </div>
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Solicitações de Peça</div>
-  <div class="stat-value" id="solicitacoesPecasPendentes">0</div>
-  </div>
-  </div>
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Solicitações de Carro</div>
-  <div class="stat-value" id="solicitacoesCarrosPendentes">0</div>
-  </div>
-  </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Total de Equipes</div>
+        <div class="stat-value" id="totalEquipes">-</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Solicitações de Peça</div>
+        <div class="stat-value" id="solicitacoesPecasPendentes">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Solicitações de Carro</div>
+        <div class="stat-value" id="solicitacoesCarrosPendentes">0</div>
+      </div>
+    </div>
   </div>
   <div class="row">
-  <div class="col-12">
-  <div class="card">
-  <div class="card-header bg-dark text-white">
-  <h5 class="mb-0">Fazer Etapa - Qualificação</h5>
-  </div>
-  <div class="card-body">
-  <!-- Etapa de Hoje -->
-  <div id="semEtapaHoje" style="display: block; text-align: center; padding: 40px;">
-  <h4 style="color: #666;">Nenhuma etapa programada para hoje</h4>
-  <p style="color: #999;">Verifique o calendário de etapas ou aguarde a próxima programação.</p>
-  </div>
-
-  <div id="infoEtapaHoje" style="display: none;">
-  <div class="row mb-4">
-  <div class="col-md-6">
-  <div class="card bg-dark text-white">
-  <div class="card-body">
-  <h6 class="card-title">🏆 Campeonato</h6>
-  <p class="card-text" id="etapaHojeCampeonatoNome">-</p>
-  <small class="text-muted">Série: <span id="etapaHojeCampeonatoSerie">-</span></small>
-  </div>
-  </div>
-  </div>
-  <div class="col-md-6">
-  <div class="card bg-dark text-white">
-  <div class="card-body">
-  <h6 class="card-title">📅 Etapa</h6>
-  <p class="card-text">Etapa <span id="etapaHojeNumero">-</span>: <span id="etapaHojeNome">-</span></p>
-  <small class="text-muted">Horário: <span id="etapaHojeHora">-</span></small>
-  </div>
-  </div>
-  </div>
-  </div>
-
-  <div id="grupoEtapa" style="display: none;">
-  <div class="text-center mb-4">
-  <button id="botaoIniciarQualificacao" class="btn btn-success btn-lg" type="button" onclick="window.iniciarQualificacao()">
-  🚀 Iniciar Qualificação
-  </button>
-  <input type="hidden" id="etapaIdAtual" value="">
-  </div>
-  </div>
-
-  <!-- Container para a tabela de voltas -->
-  <div id="containerVoltasAdmin" style="display: none;">
-  <h5 class="text-center mb-3" style="color: #dc3545; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">📊 Tabela de Qualificação - Administração</h5>
-  <div id="tabelaVoltasAdmin" style="max-height: 600px; overflow-y: auto; border: 3px solid #dc3545; border-radius: 8px; background: #fff;">
-  <!-- Tabela será inserida aqui pelo JavaScript -->
-  </div>
-  
-  <!-- Botão para finalizar qualificação -->
-  <div class="text-center mt-4">
-  <button id="botaoFinalizarQualificacao" class="btn btn-danger btn-lg" type="button" onclick="window.finalizarQualificacao()" style="display: none;">
-  🏁 Finalizar Qualificação
-  </button>
-  </div>
-
-  <div id="secaoResultadoQualificacao" style="display: none;" class="mt-4">
-  <h5 class="mb-3" style="color: #ffc107; font-weight: bold;">📊 Resultado da Qualificação</h5>
-  <div id="listaResultadoQualificacao"></div>
-  </div>
-
-  <div id="secaoChaveamentoBatalhas" style="display: none;" class="mt-4">
-  <h5 class="mb-3" style="color: #ffc107; font-weight: bold;">⚔️ Chaveamento das Batalhas</h5>
-  <div id="chaveamentoBatalhasInline" style="overflow-x: auto; overflow-y: auto; padding: 12px; background: #1a1a1a; border-radius: 8px; border: 2px solid #ffc107; min-height: 200px; max-height: 70vh;"></div>
-  </div>
-  </div>
-  </div>
-  </div>
-  </div>
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header bg-dark text-white">
+          <h5 class="mb-0">Fazer Etapa - Qualificação</h5>
+        </div>
+        <div class="card-body">
+          <div id="semEtapaHoje" style="display: block; text-align: center; padding: 40px;">
+            <h4 style="color: #666;">Nenhuma etapa programada para hoje</h4>
+            <p style="color: #999;">Verifique o calendário de etapas ou aguarde a próxima programação.</p>
+          </div>
+          <div id="infoEtapaHoje" style="display: none;">
+            <div class="row mb-4">
+              <div class="col-md-6">
+                <div class="card bg-dark text-white">
+                  <div class="card-body">
+                    <h6 class="card-title">🏆 Campeonato</h6>
+                    <p class="card-text" id="etapaHojeCampeonatoNome">-</p>
+                    <small class="text-muted">Série: <span id="etapaHojeCampeonatoSerie">-</span></small>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="card bg-dark text-white">
+                  <div class="card-body">
+                    <h6 class="card-title">📅 Etapa</h6>
+                    <p class="card-text">Etapa <span id="etapaHojeNumero">-</span>: <span id="etapaHojeNome">-</span></p>
+                    <small class="text-muted">Horário: <span id="etapaHojeHora">-</span></small>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="grupoEtapa" style="display: none;">
+            <div class="text-center mb-4">
+              <button id="botaoIniciarQualificacao" class="btn btn-success btn-lg" type="button" onclick="window.iniciarQualificacao()">🚀 Iniciar Qualificação</button>
+              <input type="hidden" id="etapaIdAtual" value="">
+            </div>
+          </div>
+          <div id="containerVoltasAdmin" style="display: none;">
+            <h5 class="text-center mb-3" style="color: #dc3545; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">📊 Tabela de Qualificação - Administração</h5>
+            <div id="tabelaVoltasAdmin" style="max-height: 600px; overflow-y: auto; border: 3px solid #dc3545; border-radius: 8px; background: #fff;"></div>
+            <div class="text-center mt-4">
+              <button id="botaoFinalizarQualificacao" class="btn btn-danger btn-lg" type="button" onclick="window.finalizarQualificacao()" style="display: none;">🏁 Finalizar Qualificação</button>
+            </div>
+          </div>
+          <div id="secaoResultadoQualificacao" style="display: none;" class="mt-4">
+            <h5 class="mb-3" style="color: #ffc107; font-weight: bold;">📊 Resultado da Qualificação</h5>
+            <div id="listaResultadoQualificacao"></div>
+          </div>
+          <div id="secaoChaveamentoBatalhas" style="display: none;" class="mt-4">
+            <h5 class="mb-3" style="color: #ffc107; font-weight: bold;">⚔️ Chaveamento das Batalhas</h5>
+            <div id="chaveamentoBatalhasInline" style="overflow-x: auto; overflow-y: auto; padding: 12px; background: #1a1a1a; border-radius: 8px; border: 2px solid #ffc107; min-height: 200px; max-height: 70vh;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="toast-container"></div>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script>
-  // Verificar autenticação de admin
-  if (!sessionStorage.getItem('admin_logado')) {
-  // Se não tem sessão de admin, redireciona para login
-  // Mas permite carregar para testar
-  }
-  // Inicializar painel
-  window.addEventListener('load', () => {
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+window.addEventListener('load', () => {
   atualizarStatusAdmin();
-  atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
+  atualizarContadoresSolicitacoes && atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
   const params = new URLSearchParams(window.location.search);
   const etapaIdParam = params.get('etapa_id');
   if (etapaIdParam) {
-  // Carregar etapa específica (ex.: E2E ou link direto)
-  fetch('/api/etapas/' + encodeURIComponent(etapaIdParam) + '/evento')
-    .then(r => r.json())
-    .then(data => {
-      if (data.sucesso && data.evento && data.evento.etapa) {
-        const etapa = data.evento.etapa;
-        etapa.id = etapaIdParam;
-        if (typeof preencherEtapaHoje === 'function') preencherEtapaHoje(etapa);
-        if (typeof verificarStatusEtapa === 'function') verificarStatusEtapa(etapaIdParam);
-      } else {
-        carregarEtapaHoje().catch(e => console.error('Erro ao carregar etapa hoje:', e));
-      }
-    })
-    .catch(() => carregarEtapaHoje().catch(e => console.error('Erro ao carregar etapa hoje:', e)));
+    fetch('/api/etapas/' + encodeURIComponent(etapaIdParam) + '/evento')
+      .then(r => r.json())
+      .then(data => {
+        if (data.sucesso && data.evento && data.evento.etapa) {
+          const etapa = data.evento.etapa;
+          etapa.id = etapaIdParam;
+          if (typeof preencherEtapaHoje === 'function') preencherEtapaHoje(etapa);
+          if (typeof verificarStatusEtapa === 'function') verificarStatusEtapa(etapaIdParam);
+        } else {
+          carregarEtapaHoje && carregarEtapaHoje().catch(e => console.error('Erro ao carregar etapa hoje:', e));
+        }
+      })
+      .catch(() => carregarEtapaHoje && carregarEtapaHoje().catch(e => console.error('Erro ao carregar etapa hoje:', e)));
   } else {
-  carregarEtapaHoje().catch(e => console.error('Erro ao carregar etapa hoje:', e));
+    carregarEtapaHoje && carregarEtapaHoje().catch(e => console.error('Erro ao carregar etapa hoje:', e));
   }
-  });
+});
 
-  async function iniciarQualificacao() {
-    const etapaId = document.getElementById('etapaIdAtual').value;
-    if (!etapaId) {
-      mostrarToast('❌ Nenhuma etapa selecionada', 'error');
-      return;
-    }
-    await (typeof abrirQualificacao === 'function' ? abrirQualificacao(etapaId) : Promise.resolve());
-  }
-  window.iniciarQualificacao = iniciarQualificacao;
+async function iniciarQualificacao() {
+  const etapaId = document.getElementById('etapaIdAtual').value;
+  if (!etapaId) { if (typeof mostrarToast === 'function') mostrarToast('❌ Nenhuma etapa selecionada', 'error'); else alert('Nenhuma etapa selecionada'); return; }
+  await (typeof abrirQualificacao === 'function' ? abrirQualificacao(etapaId) : Promise.resolve());
+}
+window.iniciarQualificacao = iniciarQualificacao;
 
-  async function atualizarStatusAdmin() {
-  try {
-  console.log('Atualizando status admin...');
-  const resp = await fetch('/api/admin/status');
-  const status = await resp.json();
-  console.log('Status recebido:', status);
-  document.getElementById('totalEquipes').textContent = status.total_equipes || 0;
-  } catch (e) {
-  console.log('Erro ao atualizar status');
-  }
-  }
-  async function atualizarContadoresSolicitacoes() {
+async function atualizarStatusAdmin() {
+  try { const resp = await fetch('/api/admin/status'); const status = await resp.json(); document.getElementById('totalEquipes').textContent = status.total_equipes || 0; } catch (e) {}
+}
+
+async function atualizarContadoresSolicitacoes() {
   if (typeof window.atualizarContadoresSolicitacoesAdmin === 'function') return window.atualizarContadoresSolicitacoesAdmin();
   try {
-  const respPecas = await fetch('/api/admin/solicitacoes-pecas');
-  const pecas = await respPecas.json();
-  const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
-  const elemPecas = document.getElementById('solicitacoesPecasPendentes');
-  if (elemPecas) elemPecas.textContent = pecasPendentes;
-  const respCarros = await fetch('/api/admin/solicitacoes-carros');
-  const carros = await respCarros.json();
-  const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
-  const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
-  if (elemCarros) elemCarros.textContent = carrosPendentes;
+    const respPecas = await fetch('/api/admin/solicitacoes-pecas');
+    const pecas = await respPecas.json();
+    const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
+    const elemPecas = document.getElementById('solicitacoesPecasPendentes');
+    if (elemPecas) elemPecas.textContent = pecasPendentes;
+    const respCarros = await fetch('/api/admin/solicitacoes-carros');
+    const carros = await respCarros.json();
+    const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
+    const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
+    if (elemCarros) elemCarros.textContent = carrosPendentes;
   } catch (e) { console.error('Erro ao atualizar contadores:', e); }
-  }
-  </script>
-</body>
-</html>
+}
+</script>
+{% endblock %}

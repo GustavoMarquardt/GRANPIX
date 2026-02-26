@@ -8,6 +8,7 @@ import pymysql
 from pymysql.cursors import DictCursor
 import re  # Regular expression module for parsing MySQL connection strings
 import traceback
+import hashlib
 import base64  # Para codificar/decodificar imagens
 from datetime import datetime
 from pathlib import Path
@@ -612,6 +613,25 @@ class DatabaseManager:
                 UNIQUE KEY unique_campeonato_equipe (campeonato_id, equipe_id),
                 INDEX idx_campeonato (campeonato_id),
                 INDEX idx_equipe (equipe_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ''')
+        
+        # Tabela de passadas de batalha (para exibir cards de vida/dano para pilotos e equipes)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS passadas_batalha (
+                id VARCHAR(64) PRIMARY KEY,
+                etapa_id VARCHAR(64) NOT NULL,
+                equipe1_id VARCHAR(64),
+                equipe2_id VARCHAR(64),
+                equipe1_nome VARCHAR(255) DEFAULT '',
+                equipe2_nome VARCHAR(255) DEFAULT '',
+                vida_p1 TEXT,
+                vida_p2 TEXT,
+                dano_p1 DOUBLE DEFAULT 0,
+                dano_p2 DOUBLE DEFAULT 0,
+                data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_etapa (etapa_id),
+                INDEX idx_data (data_criacao)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ''')
         
@@ -1375,7 +1395,9 @@ class DatabaseManager:
             print(f"[DB-CARRO] Salvando {len(pecas_list)} peças...")
             try:
                 for peca in pecas_list:
-                    peca_id_unico = f"{carro.id}_{peca.id}"
+                    # ID limitado a 64 chars: usar hash MD5 (32 chars) em vez de carro_id_peca_id (73 chars)
+                    raw = f"{carro.id}_{peca.id}"
+                    peca_id_unico = hashlib.md5(raw.encode()).hexdigest()
                     cursor.execute('SELECT id FROM pecas_loja WHERE id = %s', (peca.id,))
                     peca_loja_id = peca.id if cursor.fetchone() else None
                     cursor.execute('''
@@ -2633,9 +2655,10 @@ class DatabaseManager:
             conn = self._get_conn()
             cursor = conn.cursor()
             
-            # Buscar todas as peças do carro com durabilidade
+            # Buscar todas as peças do carro com durabilidade e preço da loja (para recuperação)
             cursor.execute('''
-                SELECT p.id, p.peca_loja_id, p.nome, p.tipo, p.durabilidade_maxima, p.durabilidade_atual, pl.compatibilidade
+                SELECT p.id, p.peca_loja_id, p.nome, p.tipo, p.durabilidade_maxima, p.durabilidade_atual, pl.compatibilidade,
+                       COALESCE(pl.preco, p.preco, 0) AS preco_loja
                 FROM pecas p
                 LEFT JOIN pecas_loja pl ON p.peca_loja_id = pl.id
                 WHERE p.carro_id = %s AND p.instalado = 1
@@ -2647,7 +2670,7 @@ class DatabaseManager:
             
             pecas_com_compat = []
             for row in rows:
-                peca_id, peca_loja_id, nome, tipo_peca, durabilidade_maxima, durabilidade_atual, compatibilidade_json = row
+                peca_id, peca_loja_id, nome, tipo_peca, durabilidade_maxima, durabilidade_atual, compatibilidade_json, preco_loja = row
                 
                 # Processar compatibilidade
                 compatibilidades = []
@@ -2671,13 +2694,16 @@ class DatabaseManager:
                 if compatibilidades and all(str(c).lower() == 'universal' for c in compatibilidades):
                     compatibilidades = []
                 
+                # Preservar 0 em durabilidade_atual (None = 100)
+                v_atual = durabilidade_atual if (durabilidade_atual is not None and str(durabilidade_atual) != '') else 100
                 pecas_com_compat.append({
                     'id': peca_id,
                     'peca_loja_id': peca_loja_id,
                     'nome': nome,
                     'tipo': tipo_peca,
                     'durabilidade_maxima': durabilidade_maxima or 100,
-                    'durabilidade_atual': durabilidade_atual or 100,
+                    'durabilidade_atual': v_atual,
+                    'preco_loja': float(preco_loja or 0),
                     'compatibilidades': compatibilidades  # Array de IDs de carros compatíveis (vazio = universal)
                 })
             
@@ -3753,6 +3779,58 @@ class DatabaseManager:
             print(f"Erro ao salvar configuração: {e}")
             return False
 
+    def carro_equipe_quebrado_etapa(self, etapa_id: str, equipe_id: str) -> bool:
+        """Verifica se o carro da equipe na etapa tem alguma peça crítica com durabilidade <= 0 (quebrou)."""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT carro_id FROM participacoes_etapas
+                WHERE etapa_id = %s AND equipe_id = %s AND carro_id IS NOT NULL LIMIT 1
+            ''', (etapa_id, equipe_id))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return False
+            carro_id = row[0]
+            cursor.execute('''
+                SELECT 1 FROM pecas
+                WHERE carro_id = %s AND instalado = 1 AND durabilidade_atual <= 0 LIMIT 1
+            ''', (carro_id,))
+            quebrou = cursor.fetchone() is not None
+            conn.close()
+            return quebrou
+        except Exception as e:
+            print(f"[DB] Erro ao verificar carro quebrado: {e}")
+            return False
+
+    def adicionar_equipe_by_run(self, etapa_id: str, equipe_id: str) -> bool:
+        """Marca que a equipe venceu com carro quebrado: na próxima batalha o adversário faz By run."""
+        import json
+        chave = f'by_run_etapa_{etapa_id}'
+        ids = self.obter_equipes_by_run(etapa_id)
+        if equipe_id not in ids:
+            ids.append(equipe_id)
+        return self.salvar_configuracao(chave, json.dumps(ids), 'Equipes que não podem andar (By run para adversário)')
+
+    def remover_equipe_by_run(self, etapa_id: str, equipe_id: str) -> bool:
+        """Remove equipe da lista by_run (após partida By run reportada)."""
+        import json
+        chave = f'by_run_etapa_{etapa_id}'
+        ids = [eid for eid in self.obter_equipes_by_run(etapa_id) if eid != equipe_id]
+        return self.salvar_configuracao(chave, json.dumps(ids), 'Equipes que não podem andar')
+
+    def obter_equipes_by_run(self, etapa_id: str) -> List[str]:
+        """Retorna lista de equipe_ids que venceram com carro quebrado (próxima batalha = By run para adversário)."""
+        import json
+        try:
+            val = self.obter_configuracao(f'by_run_etapa_{etapa_id}')
+            if not val:
+                return []
+            return json.loads(val) if isinstance(val, str) else (val or [])
+        except Exception:
+            return []
+
     def listar_configuracoes(self) -> List[Dict[str, str]]:
         """Lista todas as configurações"""
         try:
@@ -3848,6 +3926,83 @@ class DatabaseManager:
             import traceback
             traceback.print_exc()
             return {'sucesso': False, 'erro': str(e), 'resumo': [], 'lancamentos': []}
+
+    def obter_pecas_batalha_interno(self, etapa_id: str, eq1_id: str, eq2_id: str) -> list:
+        """Retorna lista de carros com peças (vida) para as duas equipes da batalha."""
+        carros = []
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor(dictionary=True)
+            for equipe_id in (eq1_id, eq2_id):
+                if not equipe_id:
+                    carros.append({'equipe_nome': '', 'pecas': []})
+                    continue
+                cursor.execute(
+                    'SELECT carro_id FROM participacoes_etapas WHERE etapa_id = %s AND equipe_id = %s LIMIT 1',
+                    (etapa_id, equipe_id)
+                )
+                row = cursor.fetchone()
+                cursor.execute('SELECT nome FROM equipes WHERE id = %s', (equipe_id,))
+                eq_row = cursor.fetchone()
+                eq_nome = (eq_row or {}).get('nome', '')
+                if not row or not row.get('carro_id'):
+                    carros.append({'equipe_nome': eq_nome, 'pecas': []})
+                    continue
+                carro_id = row['carro_id']
+                cursor.execute('''
+                    SELECT tipo, nome, durabilidade_maxima, durabilidade_atual
+                    FROM pecas WHERE carro_id = %s AND instalado = 1
+                ''', (carro_id,))
+                pecas_rows = cursor.fetchall()
+                pecas = []
+                for p in pecas_rows:
+                    dur_max = float(p.get('durabilidade_maxima') or 100)
+                    dur_atual = float(p.get('durabilidade_atual') or 100)
+                    pct = int((dur_atual / dur_max * 100) if dur_max > 0 else 0)
+                    pecas.append({'tipo': p.get('tipo', ''), 'percentual': pct})
+                carros.append({'equipe_nome': eq_nome, 'pecas': pecas})
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            print(f"[DB] Erro obter_pecas_batalha_interno: {e}")
+        return carros
+
+    def registrar_passada_batalha(self, etapa_id: str, eq1_id: str, eq2_id: str, eq1_nome: str, eq2_nome: str,
+                                   vida_p1: str, vida_p2: str, dano_p1: float, dano_p2: float) -> bool:
+        """Registra uma passada de batalha para exibir em cards para pilotos e equipes."""
+        try:
+            import uuid
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            pid = str(uuid.uuid4())
+            cursor.execute('''
+                INSERT INTO passadas_batalha (id, etapa_id, equipe1_id, equipe2_id, equipe1_nome, equipe2_nome, vida_p1, vida_p2, dano_p1, dano_p2)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ''', (pid, etapa_id, eq1_id or '', eq2_id or '', eq1_nome or '', eq2_nome or '', vida_p1 or '', vida_p2 or '', dano_p1 or 0, dano_p2 or 0))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"[DB] Erro registrar_passada_batalha: {e}")
+            return False
+
+    def listar_passadas_batalha(self, etapa_id: str, limit: int = 30) -> list:
+        """Lista passadas recentes da etapa para exibir cards de vida/dano."""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute('''
+                SELECT id, equipe1_nome, equipe2_nome, vida_p1, vida_p2, dano_p1, dano_p2, data_criacao
+                FROM passadas_batalha WHERE etapa_id = %s ORDER BY data_criacao DESC LIMIT %s
+            ''', (etapa_id, limit))
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            return rows
+        except Exception as e:
+            print(f"[DB] Erro listar_passadas_batalha: {e}")
+            return []
 
     def registrar_comissao(self, tipo: str, valor: float, equipe_id: str = '', equipe_nome: str = '', descricao: str = '') -> bool:
         """Registra uma comissão/pagamento"""
@@ -4904,7 +5059,7 @@ class DatabaseManager:
             conn.commit()
             cursor.close()
             conn.close()
-            print(f"[DB] ✓ Etapa cadastrada: {nome} ({serie})")
+            print(f"[DB] [OK] Etapa cadastrada: {nome} ({serie})")
             return True
         except Exception as e:
             print(f"[DB] Erro ao cadastrar etapa: {e}")
@@ -5183,7 +5338,8 @@ class DatabaseManager:
             return {'sucesso': False, 'erro': str(e)}
     
     def inscrever_equipe_etapa(self, inscricao_id: str, etapa_id: str, equipe_id: str, carro_id: str, tipo_participacao: str = 'equipe_completa') -> dict:
-        """Inscreve uma equipe em uma etapa com tipo de participação e cobra a taxa"""
+        """Inscreve uma equipe em uma etapa com tipo de participação e cobra a taxa.
+        Nenhuma equipe pode se inscrever sem ter um carro ativo com todas as peças instaladas."""
         try:
             import uuid
             
@@ -5192,6 +5348,25 @@ class DatabaseManager:
             
             conn = self._get_conn()
             cursor = conn.cursor(dictionary=True)
+            
+            # 0. Validar: carro deve pertencer à equipe, estar ativo e ter todas as peças
+            cursor.execute('SELECT id, equipe_id, status FROM carros WHERE id = %s', (carro_id,))
+            carro_row = cursor.fetchone()
+            if not carro_row:
+                conn.close()
+                return {'sucesso': False, 'erro': 'Carro não encontrado'}
+            if str(carro_row.get('equipe_id', '')) != str(equipe_id):
+                conn.close()
+                return {'sucesso': False, 'erro': 'Este carro não pertence à sua equipe'}
+            if (carro_row.get('status') or 'repouso').lower() != 'ativo':
+                conn.close()
+                return {'sucesso': False, 'erro': 'Sua equipe precisa ter um carro ATIVO para participar. Ative um carro na Garagem.'}
+            validacao = self.validar_pecas_carro(carro_id, equipe_id)
+            if not validacao.get('valido'):
+                pecas_faltando = validacao.get('pecas_faltando', [])
+                nomes = [p.upper().replace('_', '-') for p in pecas_faltando]
+                conn.close()
+                return {'sucesso': False, 'erro': f'O carro precisa ter todas as peças instaladas. Faltando: {", ".join(nomes)}'}
             
             # 1. Obter dados da equipe (saldo_pix)
             cursor.execute('SELECT doricoins, saldo_pix FROM equipes WHERE id = %s', (equipe_id,))
@@ -5435,6 +5610,85 @@ class DatabaseManager:
         except Exception as e:
             print(f"[DB] Erro ao creditar doricoins: {e}")
             return False
+
+    def debitar_doricoins_equipe(self, equipe_id: str, valor: float) -> bool:
+        """Debita doricoins de uma equipe. Retorna True se sucesso (saldo suficiente)."""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            cursor.execute('SELECT doricoins FROM equipes WHERE id = %s', (equipe_id,))
+            row = cursor.fetchone()
+            if not row or float(row[0] or 0) < float(valor):
+                conn.close()
+                return False
+            cursor.execute('UPDATE equipes SET doricoins = doricoins - %s WHERE id = %s', (float(valor), equipe_id))
+            conn.commit()
+            ok = cursor.rowcount > 0
+            cursor.close()
+            conn.close()
+            return ok
+        except Exception as e:
+            print(f"[DB] Erro ao debitar doricoins: {e}")
+            return False
+
+    def recuperar_peca_vida(self, peca_id: str, equipe_id: str) -> tuple:
+        """
+        Recupera a durabilidade de uma peça para 100%.
+        Custo = metade do preço da peça na loja (doricoins).
+        Retorna (True, custo) ou (False, mensagem_erro).
+        """
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            # Obter peça, carro e preço
+            cursor.execute('''
+                SELECT p.id, p.carro_id, p.durabilidade_maxima, p.durabilidade_atual,
+                       COALESCE(pl.preco, p.preco, 0) AS preco_loja
+                FROM pecas p
+                LEFT JOIN pecas_loja pl ON p.peca_loja_id = pl.id
+                WHERE p.id = %s AND p.instalado = 1
+            ''', (peca_id,))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return False, 'Peça não encontrada ou não instalada'
+            _, carro_id, durab_max, durab_atual, preco_loja = row
+            preco_loja = float(preco_loja or 0)
+            custo = preco_loja / 2
+            if custo <= 0:
+                conn.close()
+                return False, 'Preço da peça não definido'
+            # Verificar se o carro pertence à equipe
+            cursor.execute('SELECT id FROM carros WHERE id = %s AND equipe_id = %s', (carro_id, equipe_id))
+            if not cursor.fetchone():
+                conn.close()
+                return False, 'Carro não pertence a esta equipe'
+            # Verificar se precisa recuperar
+            v_atual = durab_atual if (durab_atual is not None and str(durab_atual) != '') else 100
+            durab_max_val = durab_max or 100
+            if v_atual >= durab_max_val:
+                conn.close()
+                return False, 'Peça já está em 100%'
+            # Verificar saldo
+            cursor.execute('SELECT doricoins FROM equipes WHERE id = %s', (equipe_id,))
+            saldo_row = cursor.fetchone()
+            if not saldo_row or float(saldo_row[0] or 0) < custo:
+                conn.close()
+                return False, f'Saldo insuficiente. Custo: {custo:.2f} doricoins'
+            # Aplicar recuperação
+            cursor.execute(
+                'UPDATE pecas SET durabilidade_atual = %s WHERE id = %s',
+                (durab_max_val, peca_id)
+            )
+            cursor.execute('UPDATE equipes SET doricoins = doricoins - %s WHERE id = %s', (custo, equipe_id))
+            conn.commit()
+            conn.close()
+            return True, custo
+        except Exception as e:
+            print(f"[DB] Erro recuperar peça: {e}")
+            import traceback
+            traceback.print_exc()
+            return False, str(e)
 
     def obter_equipe_id_por_nome_na_etapa(self, etapa_id: str, equipe_nome: str) -> Optional[str]:
         """Retorna equipe_id da equipe com o nome dado que participa da etapa."""

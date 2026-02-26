@@ -1155,6 +1155,11 @@ async function mostrarEventoAoVivo(etapaId) {
                     </div>
                 </div>
                 <div class="modal-body" style="padding: 20px; background: #0a0a0a; overflow-x: auto; max-height: 75vh; overflow-y: auto; position: relative;">
+                    ${(evento.etapa.qualificacao_finalizada || evento.etapa.status === 'batalhas') ? `
+                    <div id="containerCardsBatalhas" style="position: fixed; top: 70px; right: 12px; z-index: 100001; max-width: 320px; max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Cards de batalhas (vida e dano) serão inseridos aqui -->
+                    </div>
+                    ` : ''}
                     ${evento.etapa.qualificacao_finalizada ? `
                     <div class="setas-esquerda-evento" style="position: fixed; left: 12px; top: 50%; transform: translateY(-50%); z-index: 100001; display: flex; flex-direction: column; gap: 10px;">
                         <button type="button" class="btn btn-outline-light btn-setas-evento" onclick="verResultadoQualificacao('${etapaId}')" title="Lista ordenada por nota">
@@ -1207,7 +1212,15 @@ async function mostrarEventoAoVivo(etapaId) {
             renderizarPitsEvento(eventoAtualizado.equipes, eventoAtualizado.etapa);
             atualizarTimestampEvento();
         }
+        if ((evento.etapa.qualificacao_finalizada || evento.etapa.status === 'batalhas')) {
+            carregarCardsBatalhas(etapaId);
+        }
     }, 2000); // Atualiza a cada 2 segundos
+    
+    // Carregar cards de batalhas imediatamente
+    if ((evento.etapa.qualificacao_finalizada || evento.etapa.status === 'batalhas')) {
+        carregarCardsBatalhas(etapaId);
+    }
     
     // Limpar ao fechar modal
     modalDiv.addEventListener('hidden.bs.modal', () => {
@@ -1221,6 +1234,72 @@ async function mostrarEventoAoVivo(etapaId) {
             mostrarBotaoFlutante();
         }
     });
+}
+
+async function carregarCardsBatalhas(etapaId) {
+    const container = document.getElementById('containerCardsBatalhas');
+    if (!container) return;
+    try {
+        const r = await fetch(`/api/etapas/${etapaId}/batalhas-recentes?limit=15`, { credentials: 'include' });
+        const data = await r.json();
+        if (!data.sucesso || !Array.isArray(data.passadas) || data.passadas.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        container.innerHTML = data.passadas.map(p => {
+            const eq1 = (p.equipe1_nome || 'Equipe 1').substring(0, 18);
+            const eq2 = (p.equipe2_nome || 'Equipe 2').substring(0, 18);
+            const vida1 = p.vida_p1 || '—';
+            const vida2 = p.vida_p2 || '—';
+            const dano1 = parseFloat(p.dano_p1) || 0;
+            const dano2 = parseFloat(p.dano_p2) || 0;
+            const time = p.data_criacao ? new Date(p.data_criacao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+            return `
+                <div class="card bg-dark text-white border border-danger" style="font-size: 11px;">
+                    <div class="card-header py-1 px-2" style="background: rgba(255,0,0,0.3); font-weight: bold;">⚔️ Batalha ${time}</div>
+                    <div class="card-body py-2 px-2">
+                        <div class="mb-1"><strong style="color: #ff6b6b;">${escapeHtml(eq1)}</strong><br><span style="color: #aaa; font-size: 10px;">Vida: ${escapeHtml(String(vida1))}</span><br><span style="color: #f87171;">Dano: ${dano1.toFixed(1)}</span></div>
+                        <div><strong style="color: #ff6b6b;">${escapeHtml(eq2)}</strong><br><span style="color: #aaa; font-size: 10px;">Vida: ${escapeHtml(String(vida2))}</span><br><span style="color: #f87171;">Dano: ${dano2.toFixed(1)}</span></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        console.warn('[CARDS BATALHA] Erro ao carregar:', e);
+    }
+}
+
+async function carregarCardsBatalhasChave(etapaId) {
+    const container = document.getElementById('containerCardsBatalhasChave');
+    if (!container) return;
+    try {
+        const r = await fetch(`/api/etapas/${etapaId}/batalhas-recentes?limit=15`, { credentials: 'include' });
+        const data = await r.json();
+        if (!data.sucesso || !Array.isArray(data.passadas) || data.passadas.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        container.innerHTML = data.passadas.map(p => {
+            const eq1 = (p.equipe1_nome || 'Equipe 1').substring(0, 18);
+            const eq2 = (p.equipe2_nome || 'Equipe 2').substring(0, 18);
+            const vida1 = p.vida_p1 || '—';
+            const vida2 = p.vida_p2 || '—';
+            const dano1 = parseFloat(p.dano_p1) || 0;
+            const dano2 = parseFloat(p.dano_p2) || 0;
+            const time = p.data_criacao ? new Date(p.data_criacao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+            return `
+                <div class="card bg-dark text-white border border-danger" style="font-size: 11px;">
+                    <div class="card-header py-1 px-2" style="background: rgba(255,0,0,0.3); font-weight: bold;">⚔️ Batalha ${time}</div>
+                    <div class="card-body py-2 px-2">
+                        <div class="mb-1"><strong style="color: #ff6b6b;">${escapeHtml(eq1)}</strong><br><span style="color: #aaa; font-size: 10px;">Vida: ${escapeHtml(String(vida1))}</span><br><span style="color: #f87171;">Dano: ${dano1.toFixed(1)}</span></div>
+                        <div><strong style="color: #ff6b6b;">${escapeHtml(eq2)}</strong><br><span style="color: #aaa; font-size: 10px;">Vida: ${escapeHtml(String(vida2))}</span><br><span style="color: #f87171;">Dano: ${dano2.toFixed(1)}</span></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        console.warn('[CARDS BATALHA CHAVE] Erro:', e);
+    }
 }
 
 function renderizarPitsEvento(equipes, etapaInfo = null) {
@@ -1970,10 +2049,17 @@ function abrirModalPartidaBatalha(el) {
     abrirModalPartida(etapaId, match);
 }
 
+function ehAdminUsuario() {
+    const equipeId = localStorage.getItem('equipe_id');
+    const pilotoId = localStorage.getItem('piloto_id');
+    return !equipeId && !pilotoId;
+}
+
 function abrirModalPartida(etapaId, match) {
     const p1 = match.player1 || {};
     const p2 = match.player2 || {};
     const temVencedor = !!match.winner_id;
+    const isAdmin = ehAdminUsuario();
     let bodyHtml = `
         <div class="row g-2 mb-3">
             <div class="col-6">
@@ -1995,24 +2081,29 @@ function abrirModalPartida(etapaId, match) {
                 </div>
             </div>
         </div>`;
-    if (temVencedor) {
-        bodyHtml += `<button type="button" class="btn btn-warning w-100" onclick="desfazerResultadoPartida('${etapaId}', ${match.match_id})"><i class="fas fa-undo me-1"></i> Desfazer resultado</button>`;
-    } else {
-        bodyHtml += `
-        <div class="d-flex gap-2">
-            <button type="button" class="btn btn-success flex-fill" onclick="reportarVencedorPartida('${etapaId}', ${match.match_id}, ${p1.id || 'null'}, this, ${match.round || 1})"><i class="fas fa-trophy me-1"></i> ${escapeHtml((p1.name || 'P1').substring(0, 15))} vence</button>
-            <button type="button" class="btn btn-success flex-fill" onclick="reportarVencedorPartida('${etapaId}', ${match.match_id}, ${p2.id || 'null'}, this, ${match.round || 1})"><i class="fas fa-trophy me-1"></i> ${escapeHtml((p2.name || 'P2').substring(0, 15))} vence</button>
+    if (isAdmin) {
+        if (temVencedor) {
+            bodyHtml += `<button type="button" class="btn btn-warning w-100" onclick="desfazerResultadoPartida('${etapaId}', ${match.match_id})"><i class="fas fa-undo me-1"></i> Desfazer resultado</button>`;
+        } else {
+            bodyHtml += `
+        <div id="modalByRunBadge" class="alert alert-info py-2 mb-2" style="display:none;"><i class="fas fa-info-circle me-1"></i> <span id="modalByRunText"></span></div>
+        <div class="d-flex gap-2" id="modalBotoesVencedor">
+            <button type="button" class="btn btn-success flex-fill" id="btnVencerP1" onclick="reportarVencedorPartida('${etapaId}', ${match.match_id}, ${p1.id || 'null'}, this, ${match.round || 1})"><i class="fas fa-trophy me-1"></i> ${escapeHtml((p1.name || 'P1').substring(0, 15))} vence</button>
+            <button type="button" class="btn btn-success flex-fill" id="btnVencerP2" onclick="reportarVencedorPartida('${etapaId}', ${match.match_id}, ${p2.id || 'null'}, this, ${match.round || 1})"><i class="fas fa-trophy me-1"></i> ${escapeHtml((p2.name || 'P2').substring(0, 15))} vence</button>
         </div>
         <div class="mt-3">
             <button type="button" class="btn btn-outline-warning w-100" id="btnExecutarPassada">
                 <i class="fas fa-dice me-1"></i> Executar passada <span id="passadaCount">(0/2)</span>
             </button>
-            <small class="text-muted d-block mt-1">Roda 1 dado de dano para Motor, Câmbio, Suspensão, Kit-ângulo e Diferencial de ambos os carros. Máx. 2 vezes.</small>
+            <small class="text-muted d-block mt-1" id="modalPassadaDesc">Roda 1 dado de dano para Motor, Câmbio, Suspensão, Kit-ângulo e Diferencial de ambos os carros. Máx. 2 vezes.</small>
             <div id="resultadoPassada" class="mt-2 p-2 rounded bg-secondary" style="display:none; max-height:180px; overflow-y:auto;">
                 <div class="small fw-bold text-warning mb-1">Resultado da passada:</div>
                 <div id="resultadoPassadaConteudo" class="small" style="color:#ddd;"></div>
             </div>
         </div>`;
+        }
+    } else {
+        bodyHtml += `<p class="text-muted small mb-0 mt-2"><i class="fas fa-eye me-1"></i> Modo somente leitura. Apenas o administrador pode definir vencedores e executar passadas.</p>`;
     }
     const modalDiv = document.createElement('div');
     modalDiv.className = 'modal fade';
@@ -2038,20 +2129,33 @@ function abrirModalPartida(etapaId, match) {
     modalDiv.dataset.passadaCount = '0';
     modalDiv.addEventListener('hidden.bs.modal', () => modalDiv.remove());
 
-    carregarPilotosNoModal(etapaId, p1.name, p2.name);
+    if (isAdmin) {
+        carregarPilotosNoModal(etapaId, p1.name, p2.name);
+    } else {
+        const el1 = document.getElementById('modalP1Piloto');
+        const el2 = document.getElementById('modalP2Piloto');
+        if (el1) el1.innerHTML = '<span style="color:#999;">Visualização somente leitura</span>';
+        if (el2) el2.innerHTML = '<span style="color:#999;">Visualização somente leitura</span>';
+    }
 
     const btnPassada = modalDiv.querySelector('#btnExecutarPassada');
-    if (btnPassada) {
+    if (btnPassada && isAdmin) {
         btnPassada.addEventListener('click', function() {
             const modal = document.getElementById('modalPartidaBatalha');
+            const maxPassadas = parseInt(modal?.dataset?.passadaMax || '2', 10);
             const count = parseInt(modal?.dataset?.passadaCount || '0', 10);
-            if (count >= 2) return;
-            executarPassada(etapaId, {
+            if (count >= maxPassadas) return;
+            const payload = {
                 equipe1_id: modal?.dataset?.equipe1Id || '',
                 equipe2_id: modal?.dataset?.equipe2Id || '',
                 equipe1_nome: modal?.dataset?.eq1Nome || '',
                 equipe2_nome: modal?.dataset?.eq2Nome || ''
-            }, btnPassada, modal);
+            };
+            if (modal?.dataset?.byRun === 'true') {
+                payload.by_run = true;
+                payload.equipe_que_corre_id = modal?.dataset?.equipeQueCorreId || '';
+            }
+            executarPassada(etapaId, payload, btnPassada, modal);
         });
     }
 }
@@ -2069,11 +2173,48 @@ async function carregarPilotosNoModal(etapaId, nome1, nome2) {
         if (el2) el2.innerHTML = '<span style="color: #fff;">Equipe: ' + escapeHtml(nome2 || 'TBD') + ' | Piloto: ' + escapeHtml(eq2?.piloto_nome || '-') + '</span>';
         const modal = document.getElementById('modalPartidaBatalha');
         if (modal) {
-            modal.dataset.equipe1Id = eq1?.equipe_id || '';
-            modal.dataset.equipe2Id = eq2?.equipe_id || '';
-            carregarVidaPecasModal(etapaId, eq1?.equipe_id || '', eq2?.equipe_id || '');
+            const eq1Id = eq1?.equipe_id || '';
+            const eq2Id = eq2?.equipe_id || '';
+            modal.dataset.equipe1Id = eq1Id;
+            modal.dataset.equipe2Id = eq2Id;
+            carregarVidaPecasModal(etapaId, eq1Id, eq2Id);
+            const rBy = await fetch(`/api/etapas/${etapaId}/equipes-by-run`, { credentials: 'include' });
+            const dBy = await rBy.json();
+            const byRunIds = (dBy.sucesso && Array.isArray(dBy.equipe_ids)) ? dBy.equipe_ids : [];
+            aplicarModoByRun(modal, eq1Id, eq2Id, nome1, nome2, byRunIds);
         }
     } catch (e) { console.warn('Erro ao carregar pilotos no modal:', e); }
+}
+
+function aplicarModoByRun(modal, eq1Id, eq2Id, nome1, nome2, byRunIds) {
+    if (!modal || !byRunIds || byRunIds.length === 0) return;
+    const badge = document.getElementById('modalByRunBadge');
+    const span = document.getElementById('modalByRunText');
+    const btnP1 = document.getElementById('btnVencerP1');
+    const btnP2 = document.getElementById('btnVencerP2');
+    const passadaCount = document.getElementById('passadaCount');
+    const passadaDesc = document.getElementById('modalPassadaDesc');
+    const p1ByRun = eq1Id && byRunIds.includes(eq1Id);
+    const p2ByRun = eq2Id && byRunIds.includes(eq2Id);
+    if (p1ByRun) {
+        modal.dataset.byRun = 'true';
+        modal.dataset.equipeQueCorreId = eq2Id;
+        modal.dataset.passadaMax = '1';
+        if (badge) { badge.style.display = 'block'; badge.className = 'alert alert-warning py-2 mb-2'; }
+        if (span) span.textContent = 'BY RUN: ' + (nome1 || 'P1') + ' não pode andar (carro quebrado). ' + (nome2 || 'P2') + ' faz 1 passada e vence.';
+        if (btnP1) btnP1.style.display = 'none';
+        if (passadaCount) passadaCount.textContent = '(0/1)';
+        if (passadaDesc) passadaDesc.textContent = 'By run: apenas 1 passada para o carro de ' + (nome2 || 'P2') + '.';
+    } else if (p2ByRun) {
+        modal.dataset.byRun = 'true';
+        modal.dataset.equipeQueCorreId = eq1Id;
+        modal.dataset.passadaMax = '1';
+        if (badge) { badge.style.display = 'block'; badge.className = 'alert alert-warning py-2 mb-2'; }
+        if (span) span.textContent = 'BY RUN: ' + (nome2 || 'P2') + ' não pode andar (carro quebrado). ' + (nome1 || 'P1') + ' faz 1 passada e vence.';
+        if (btnP2) btnP2.style.display = 'none';
+        if (passadaCount) passadaCount.textContent = '(0/1)';
+        if (passadaDesc) passadaDesc.textContent = 'By run: apenas 1 passada para o carro de ' + (nome1 || 'P1') + '.';
+    }
 }
 
 async function carregarVidaPecasModal(etapaId, equipe1Id, equipe2Id) {
@@ -2146,14 +2287,17 @@ function renderizarResultadoPassada(d) {
 }
 
 async function executarPassada(etapaId, dados, btn, modal) {
+    const maxPassadas = parseInt(modal?.dataset?.passadaMax || '2', 10);
     const count = parseInt(modal?.dataset?.passadaCount || '0', 10);
-    if (count >= 2) return;
+    if (count >= maxPassadas) return;
     if (btn) btn.disabled = true;
     const payload = {};
     if (dados.equipe1_id) payload.equipe1_id = dados.equipe1_id;
     if (dados.equipe2_id) payload.equipe2_id = dados.equipe2_id;
     if (dados.equipe1_nome) payload.equipe1_nome = dados.equipe1_nome;
     if (dados.equipe2_nome) payload.equipe2_nome = dados.equipe2_nome;
+    if (dados.by_run) payload.by_run = true;
+    if (dados.equipe_que_corre_id) payload.equipe_que_corre_id = dados.equipe_que_corre_id;
     try {
         const r = await fetch(`/api/etapas/${etapaId}/executar-passada`, {
             method: 'POST',
@@ -2164,10 +2308,11 @@ async function executarPassada(etapaId, dados, btn, modal) {
         const d = await r.json();
         if (d.sucesso) {
             const novoCount = count + 1;
+            const maxP = parseInt(modal?.dataset?.passadaMax || '2', 10);
             if (modal) modal.dataset.passadaCount = String(novoCount);
             const span = document.getElementById('passadaCount');
-            if (span) span.textContent = '(' + novoCount + '/2)';
-            if (novoCount >= 2 && btn) btn.disabled = true;
+            if (span) span.textContent = '(' + novoCount + '/' + maxP + ')';
+            if (novoCount >= maxP && btn) btn.disabled = true;
             if (typeof mostrarToast === 'function') mostrarToast('Passada executada! ' + (d.resumo || ''), 'success');
             renderizarResultadoPassada(d);
             carregarVidaPecasModal(etapaId, dados.equipe1_id || '', dados.equipe2_id || '');
@@ -2177,7 +2322,8 @@ async function executarPassada(etapaId, dados, btn, modal) {
     } catch (e) {
         if (typeof mostrarToast === 'function') mostrarToast('Erro ao executar passada', 'error');
     } finally {
-        if (btn && parseInt(modal?.dataset?.passadaCount || '0', 10) < 2) btn.disabled = false;
+        const maxP = parseInt(modal?.dataset?.passadaMax || '2', 10);
+        if (btn && parseInt(modal?.dataset?.passadaCount || '0', 10) < maxP) btn.disabled = false;
     }
 }
 
@@ -2348,22 +2494,25 @@ async function mostrarChaveamentoBatalhas(etapaId) {
         } else {
             html = '<p class="text-muted mb-0">Conecte o Challonge em Configurações e finalize a qualificação.</p>';
         }
+        const isAdminChave = ehAdminUsuario();
+        const btnEnviarHtml = isAdminChave ? `<button type="button" class="btn btn-sm btn-success" id="btnEnviarChallonge" onclick="enviarParaChallonge('${etapaId}')">
+                                <i class="fas fa-external-link-alt"></i> Enviar para Challonge
+                            </button>` : '';
         const modalDiv = document.createElement('div');
         modalDiv.className = 'modal fade';
         modalDiv.id = 'modalChaveamentoBatalhas';
         modalDiv.innerHTML = `
-            <div class="modal-dialog modal-xl">
+            <div class="modal-dialog modal-xl" style="position: relative;">
                 <div class="modal-content bg-dark text-white">
                     <div class="modal-header" style="border-bottom: 1px solid #444;">
                         <h5 class="modal-title">⚔️ Chaveamento das Batalhas</h5>
                         <div class="d-flex align-items-center gap-2">
-                            <button type="button" class="btn btn-sm btn-success" id="btnEnviarChallonge" onclick="enviarParaChallonge('${etapaId}')">
-                                <i class="fas fa-external-link-alt"></i> Enviar para Challonge
-                            </button>
+                            ${btnEnviarHtml}
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                         </div>
                     </div>
-                    <div class="modal-body" style="max-height: 70vh; overflow-x: auto; overflow-y: auto;">
+                    <div class="modal-body" style="max-height: 70vh; overflow-x: auto; overflow-y: auto; position: relative;">
+                        <div id="containerCardsBatalhasChave" style="position: fixed; top: 70px; right: 12px; z-index: 100001; max-width: 320px; max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;"></div>
                         ${html}
                     </div>
                 </div>
@@ -2371,7 +2520,9 @@ async function mostrarChaveamentoBatalhas(etapaId) {
         document.body.appendChild(modalDiv);
         const modal = new bootstrap.Modal(modalDiv);
         modal.show();
-        modalDiv.addEventListener('hidden.bs.modal', () => modalDiv.remove());
+        carregarCardsBatalhasChave(etapaId);
+        const pollChave = setInterval(() => carregarCardsBatalhasChave(etapaId), 3000);
+        modalDiv.addEventListener('hidden.bs.modal', () => { clearInterval(pollChave); modalDiv.remove(); });
     } catch (e) {
         console.error('Erro:', e);
         mostrarToast('Erro ao carregar chaveamento', 'error');

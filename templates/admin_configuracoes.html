@@ -1,415 +1,240 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GRANPIX - Configurações</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/imask/6.4.0/imask.min.js"></script>
-  <style>
-    #modalDesignarPiloto {
-      pointer-events: auto !important;
-      z-index: 9999 !important;
-    }
-    
-    #modalDesignarPiloto * {
-      pointer-events: auto !important;
-    }
-    
-    #modalDesignarPiloto .modal-dialog {
-      pointer-events: auto !important;
-    }
-    
-    #modalDesignarPiloto .modal-content {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao {
-      pointer-events: auto !important;
-      z-index: 9999 !important;
-      display: none !important;
-    }
-
-    #modalConfirmacaoAlocacao.show {
-      display: block !important;
-    }
-
-    #modalConfirmacaoAlocacao * {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .modal-dialog {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .modal-content {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .btn {
-      pointer-events: auto !important;
-    }
-    
-    .modal-backdrop {
-      pointer-events: auto !important;
-      z-index: 9998 !important;
-    }
-
-    /* Sidebar Styles */
-    .sidebar {
-      position: fixed;
-      top: 76px; /* Height of navbar */
-      left: 0;
-      width: 250px;
-      height: calc(100vh - 76px);
-      background-color: #343a40;
-      padding: 20px 0;
-      overflow-y: auto;
-      z-index: 1000;
-      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-    }
-
-    .sidebar .nav-link {
-      color: #adb5bd;
-      padding: 12px 20px;
-      text-decoration: none;
-      display: flex;
-      align-items: center;
-      transition: all 0.3s ease;
-      border: none;
-      background: none;
-      width: 100%;
-      text-align: left;
-    }
-
-    .sidebar .nav-link:hover {
-      color: #ffffff;
-      background-color: #495057;
-      text-decoration: none;
-    }
-
-    .sidebar .nav-link.active {
-      color: #dc143c;
-      background-color: #495057;
-      font-weight: bold;
-    }
-
-    .sidebar .nav-link i {
-      margin-right: 10px;
-      width: 20px;
-      text-align: center;
-    }
-
-    .main-content {
-      margin-left: 250px;
-      padding: 20px;
-      min-height: calc(100vh - 76px);
-    }
-
-    /* Responsive adjustments */
-    @media (max-width: 768px) {
-      .sidebar {
-        width: 200px;
-      }
-      .main-content {
-        margin-left: 200px;
-      }
-    }
-
-    @media (max-width: 576px) {
-      .sidebar {
-        width: 100%;
-        height: auto;
-        position: relative;
-        top: 0;
-      }
-      .main-content {
-        margin-left: 0;
-      }
-    }
-  </style>
-  <!-- Carregar script.js primeiro para definir funções globais -->
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
-  <!-- Depois carregar qualificacao.js que usa funções de script.js -->
-  <script src="{{ url_for('static', filename='qualificacao.js') }}"></script>
-  <!-- Por fim, sistema_notificacao que usa funções de qualificacao.js -->
-  <script src="{{ url_for('static', filename='sistema_notificacao.js') }}"></script>
-</head>
-<body>
-  <nav class="navbar navbar-dark" style="background-color: #1a1a1a; border-bottom: 3px solid #dc143c;">
-  <div class="container-fluid">
-  <span class="navbar-brand mb-0 h1" style="color: #dc143c; font-weight: bold;">GRANPIX - Painel Administrativo</span>
-  <a href="/" class="btn btn-sm btn-outline-light">Voltar ao Site</a>
-  </div>
-  </nav>
-
-  <!-- Sidebar -->
-  <div class="sidebar">
-  <nav class="nav flex-column">
-  <a class="nav-link" href="/admin/carros">
-  <i class="fas fa-car"></i> Cadastrar Carros
-  </a>
-  <a class="nav-link" href="/admin/pecas">
-  <i class="fas fa-cogs"></i> Cadastrar Peças
-  </a>
-  <a class="nav-link" href="/admin/variacoes">
-  <i class="fas fa-tools"></i> Cadastrar Variações
-  </a>
-  <a class="nav-link" href="/admin/equipes">
-  <i class="fas fa-users"></i> Cadastrar Equipes
-  </a>
-  <a class="nav-link" href="/admin/etapas">
-  <i class="fas fa-calendar"></i> Gerenciar Etapas
-  </a>
-  <a class="nav-link" href="/admin/solicitacoes-pecas">
-  <i class="fas fa-clipboard-list"></i> Solicitações de Peças
-  </a>
-  <a class="nav-link" href="/admin/solicitacoes-carros">
-  <i class="fas fa-clipboard-check"></i> Solicitações de Carros
-  </a>
-  <a class="nav-link" href="/admin/fazer-etapa">
-  <i class="fas fa-play"></i> Fazer Etapa
-  </a>
-  <a class="nav-link" href="/admin/alocar-pilotos">
-  <i class="fas fa-user-check"></i> Alocar Pilotos
-  </a>
-  <a class="nav-link" href="/admin/comissoes">
-  <i class="fas fa-money-bill"></i> Comissões
-  </a>
-  <a class="nav-link" href="/admin/campeonatos">
-  <i class="fas fa-trophy"></i> Colocações / Histórico
-  </a>
-  <a class="nav-link active" href="/admin/configuracoes">
-  <i class="fas fa-cog"></i> Configurações
-  </a>
-  <a class="nav-link" href="/admin/equipes-list">
-  <i class="fas fa-list"></i> Lista de Equipes
-  </a>
-  </nav>
-  </div>
-
-  <!-- Main Content -->
-  <div class="main-content">
-  <div class="container-fluid mt-4">
+{% extends "admin_base.html" %}
+{% block title %}GRANPIX - Configurações{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
   <div class="row mb-4">
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Total de Equipes</div>
-  <div class="stat-value" id="totalEquipes">-</div>
-  </div>
-  </div>
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Solicitações de Peça</div>
-  <div class="stat-value" id="solicitacoesPecasPendentes">0</div>
-  </div>
-  </div>
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Solicitações de Carro</div>
-  <div class="stat-value" id="solicitacoesCarrosPendentes">0</div>
-  </div>
-  </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Total de Equipes</div>
+        <div class="stat-value" id="totalEquipes">-</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Solicitações de Peça</div>
+        <div class="stat-value" id="solicitacoesPecasPendentes">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Solicitações de Carro</div>
+        <div class="stat-value" id="solicitacoesCarrosPendentes">0</div>
+      </div>
+    </div>
   </div>
   <div class="row">
-  <div class="col-12">
-  <div class="card">
-  <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-  <h5 class="mb-0">Configurações</h5>
-  <button type="button" class="btn btn-sm btn-success" id="btnSalvarConfiguracoes"><i class="fas fa-save"></i> Salvar</button>
-  </div>
-  <div class="card-body">
-  <div class="row">
-  <div class="col-md-6">
-  <h6 class="text-muted mb-3">Valores Cobrados</h6>
-  <div class="mb-3">
-  <label class="form-label">Instalação de peça (armazém) – R$</label>
-  <input type="number" class="form-control" id="cfgInstalacaoPeca" step="0.01" min="0" placeholder="Ex: 50">
-  <small class="text-muted">Preço para instalar peça do armazém no carro</small>
-  </div>
-  <div class="mb-3">
-  <label class="form-label">Troca / ativação de carro – R$</label>
-  <input type="number" class="form-control" id="cfgTrocaCarro" step="0.01" min="0" placeholder="Ex: 30">
-  <small class="text-muted">Valor cobrado ao trocar ou ativar um carro</small>
-  </div>
-  <div class="mb-3">
-  <label class="form-label">Participar da etapa – R$</label>
-  <input type="number" class="form-control" id="cfgParticiparEtapa" step="0.01" min="0" placeholder="Ex: 1000">
-  <small class="text-muted">Valor para participar de uma etapa</small>
-  </div>
-  </div>
-  <div class="col-md-6">
-  <h6 class="text-muted mb-3">Integrações</h6>
-  <div class="mb-3" id="challongeBox">
-    <label class="form-label d-block">Challonge (chaveamento)</label>
-    <span id="challongeStatus" class="small text-muted"></span>
-    <small class="d-block text-muted">Configure CHALLONGE_API_KEY no .env (challonge.com/settings/developer)</small>
-  </div>
-  <h6 class="text-muted mb-3">Valores adicionais</h6>
-  <div class="mb-3">
-  <label class="form-label">Valor por peça (ativação de carro) – R$</label>
-  <input type="number" class="form-control" id="cfgValorPecaAtivacao" step="0.01" min="0" placeholder="Ex: 10">
-  <small class="text-muted">Valor por peça não paga ao ativar carro</small>
-  </div>
-  <h6 class="text-muted mb-3 mt-3">Dano nas batalhas</h6>
-  <div class="mb-3">
-  <label class="form-label">Valor do dado de dano (faces)</label>
-  <input type="number" class="form-control" id="cfgDadoDano" min="2" max="100" step="1" placeholder="Ex: 20">
-  <small class="text-muted">Número de faces do dado de dano (ex: 20 = D20). Usado no botão "Executar passada" dos cards de batalha.</small>
-  </div>
-  <h6 class="text-muted mb-3 mt-4">Remuneração por série (doricoins)</h6>
-  <div class="row">
-  <div class="col-md-6 mb-3">
-  <label class="form-label">Participar etapa – Série A</label>
-  <input type="number" class="form-control" id="cfgParticipacaoA" min="0" step="1" placeholder="3000">
-  <small class="text-muted">Doricoins por participar da etapa</small>
-  </div>
-  <div class="col-md-6 mb-3">
-  <label class="form-label">Participar etapa – Série B</label>
-  <input type="number" class="form-control" id="cfgParticipacaoB" min="0" step="1" placeholder="2000">
-  </div>
-  <div class="col-md-6 mb-3">
-  <label class="form-label">Vitória batalha (fase 2+) – Série A</label>
-  <input type="number" class="form-control" id="cfgVitoriaA" min="0" step="1" placeholder="1500">
-  <small class="text-muted">Doricoins por vencer batalha a partir da fase 2</small>
-  </div>
-  <div class="col-md-6 mb-3">
-  <label class="form-label">Vitória batalha (fase 2+) – Série B</label>
-  <input type="number" class="form-control" id="cfgVitoriaB" min="0" step="1" placeholder="1000">
-  </div>
-  </div>
-  <h6 class="text-muted mb-3 mt-3">Premiação final do campeonato (doricoins)</h6>
-  <p class="small text-muted">Atribuída automaticamente ao final do campeonato (quando todas as etapas forem concluídas).</p>
-  <div class="row">
-  <div class="col mb-2"><label class="form-label">1º</label><input type="number" class="form-control" id="cfgPremio1" min="0" step="1" placeholder="0"></div>
-  <div class="col mb-2"><label class="form-label">2º</label><input type="number" class="form-control" id="cfgPremio2" min="0" step="1" placeholder="0"></div>
-  <div class="col mb-2"><label class="form-label">3º</label><input type="number" class="form-control" id="cfgPremio3" min="0" step="1" placeholder="0"></div>
-  <div class="col mb-2"><label class="form-label">4º</label><input type="number" class="form-control" id="cfgPremio4" min="0" step="1" placeholder="0"></div>
-  <div class="col mb-2"><label class="form-label">5º</label><input type="number" class="form-control" id="cfgPremio5" min="0" step="1" placeholder="0"></div>
-  </div>
-  </div>
-  </div>
-  </div>
-  </div>
-  </div>
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Configurações</h5>
+          <button type="button" class="btn btn-sm btn-success" id="btnSalvarConfiguracoes"><i class="fas fa-save"></i> Salvar</button>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-6">
+              <h6 class="text-muted mb-3">Valores Cobrados</h6>
+              <div class="mb-3">
+                <label class="form-label">Instalação de peça (armazém) – R$</label>
+                <input type="number" class="form-control" id="cfgInstalacaoPeca" step="0.01" min="0" placeholder="Ex: 50">
+                <small class="text-muted">Preço para instalar peça do armazém no carro</small>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Troca / ativação de carro – R$</label>
+                <input type="number" class="form-control" id="cfgTrocaCarro" step="0.01" min="0" placeholder="Ex: 30">
+                <small class="text-muted">Valor cobrado ao trocar ou ativar um carro</small>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Participar da etapa – R$</label>
+                <input type="number" class="form-control" id="cfgParticiparEtapa" step="0.01" min="0" placeholder="Ex: 1000">
+                <small class="text-muted">Valor para participar de uma etapa</small>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <h6 class="text-muted mb-3">Integrações</h6>
+              <div class="mb-3" id="challongeBox">
+                <label class="form-label d-block">Challonge (chaveamento)</label>
+                <span id="challongeStatus" class="small text-muted"></span>
+                <small class="d-block text-muted">Configure CHALLONGE_API_KEY no .env (challonge.com/settings/developer)</small>
+              </div>
+              <h6 class="text-muted mb-3">Comissões PIX (R$)</h6>
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">Comissão por Carro</label>
+                  <input type="number" class="form-control" id="cfgComissaoCarro" step="0.01" min="0" placeholder="10">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">Comissão por Peça</label>
+                  <input type="number" class="form-control" id="cfgComissaoPeca" step="0.01" min="0" placeholder="10">
+                </div>
+                <div class="col-md-4 mb-3">
+                  <label class="form-label">Comissão Warehouse</label>
+                  <input type="number" class="form-control" id="cfgComissaoWarehouse" step="0.01" min="0" placeholder="50">
+                </div>
+              </div>
+              <h6 class="text-muted mb-3">Valores adicionais</h6>
+              <div class="mb-3">
+                <label class="form-label">Valor por peça (ativação de carro) – R$</label>
+                <input type="number" class="form-control" id="cfgValorPecaAtivacao" step="0.01" min="0" placeholder="Ex: 10">
+                <small class="text-muted">Valor por peça não paga ao ativar carro</small>
+              </div>
+              <h6 class="text-muted mb-3 mt-3">Dano nas batalhas</h6>
+              <div class="mb-3">
+                <label class="form-label">Valor do dado de dano (faces)</label>
+                <input type="number" class="form-control" id="cfgDadoDano" min="2" max="100" step="1" placeholder="Ex: 20">
+                <small class="text-muted">Número de faces do dado de dano (ex: 20 = D20). Usado no botão "Executar passada" dos cards de batalha.</small>
+              </div>
+              <h6 class="text-muted mb-3 mt-4">Remuneração por série (doricoins)</h6>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Participar etapa – Série A</label>
+                  <input type="number" class="form-control" id="cfgParticipacaoA" min="0" step="1" placeholder="3000">
+                  <small class="text-muted">Doricoins por participar da etapa</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Participar etapa – Série B</label>
+                  <input type="number" class="form-control" id="cfgParticipacaoB" min="0" step="1" placeholder="2000">
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Vitória batalha (fase 2+) – Série A</label>
+                  <input type="number" class="form-control" id="cfgVitoriaA" min="0" step="1" placeholder="1500">
+                  <small class="text-muted">Doricoins por vencer batalha a partir da fase 2</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label">Vitória batalha (fase 2+) – Série B</label>
+                  <input type="number" class="form-control" id="cfgVitoriaB" min="0" step="1" placeholder="1000">
+                </div>
+              </div>
+              <h6 class="text-muted mb-3 mt-3">Premiação final do campeonato (doricoins)</h6>
+              <p class="small text-muted">Atribuída automaticamente ao final do campeonato (quando todas as etapas forem concluídas).</p>
+              <div class="row">
+                <div class="col mb-2"><label class="form-label">1º</label><input type="number" class="form-control" id="cfgPremio1" min="0" step="1" placeholder="0"></div>
+                <div class="col mb-2"><label class="form-label">2º</label><input type="number" class="form-control" id="cfgPremio2" min="0" step="1" placeholder="0"></div>
+                <div class="col mb-2"><label class="form-label">3º</label><input type="number" class="form-control" id="cfgPremio3" min="0" step="1" placeholder="0"></div>
+                <div class="col mb-2"><label class="form-label">4º</label><input type="number" class="form-control" id="cfgPremio4" min="0" step="1" placeholder="0"></div>
+                <div class="col mb-2"><label class="form-label">5º</label><input type="number" class="form-control" id="cfgPremio5" min="0" step="1" placeholder="0"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="toast-container"></div>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script>
-  function getCookie(name) {
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function getCookie(name) {
   const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
   return v ? v[2] : null;
-  }
-  async function carregarConfiguracoes() {
+}
+
+async function carregarConfiguracoes() {
   try {
-  const r = await fetch('/api/admin/configuracoes', { credentials: 'include' });
-  const data = await r.json();
-  if (!r.ok || !data.configuracoes) return;
-  const cfg = (chave) => {
-  const c = data.configuracoes.find(x => x.chave === chave);
-  return c ? c.valor : '';
-  };
-  const el = (id) => document.getElementById(id);
-  if (el('cfgInstalacaoPeca')) el('cfgInstalacaoPeca').value = cfg('preco_instalacao_warehouse') || '50';
-  if (el('cfgTrocaCarro')) el('cfgTrocaCarro').value = cfg('valor_ativacao_carro') || '30';
-  if (el('cfgParticiparEtapa')) el('cfgParticiparEtapa').value = cfg('valor_etapa') || '1000';
-  if (el('cfgValorPecaAtivacao')) el('cfgValorPecaAtivacao').value = cfg('valor_instalacao_peca') || '10';
-  if (el('cfgDadoDano')) el('cfgDadoDano').value = cfg('dado_dano') || '20';
-  if (el('cfgParticipacaoA')) el('cfgParticipacaoA').value = cfg('participacao_etapa_A') || '3000';
-  if (el('cfgParticipacaoB')) el('cfgParticipacaoB').value = cfg('participacao_etapa_B') || '2000';
-  if (el('cfgVitoriaA')) el('cfgVitoriaA').value = cfg('vitoria_batalha_A') || '1500';
-  if (el('cfgVitoriaB')) el('cfgVitoriaB').value = cfg('vitoria_batalha_B') || '1000';
-  if (el('cfgPremio1')) el('cfgPremio1').value = cfg('premio_campeonato_1') || '0';
-  if (el('cfgPremio2')) el('cfgPremio2').value = cfg('premio_campeonato_2') || '0';
-  if (el('cfgPremio3')) el('cfgPremio3').value = cfg('premio_campeonato_3') || '0';
-  if (el('cfgPremio4')) el('cfgPremio4').value = cfg('premio_campeonato_4') || '0';
-  if (el('cfgPremio5')) el('cfgPremio5').value = cfg('premio_campeonato_5') || '0';
+    const r = await fetch('/api/admin/configuracoes', { credentials: 'include' });
+    const data = await r.json();
+    if (!r.ok || !data.configuracoes) return;
+    const cfg = (chave) => {
+      const c = data.configuracoes.find(x => x.chave === chave);
+      return c ? c.valor : '';
+    };
+    const el = (id) => document.getElementById(id);
+    if (el('cfgInstalacaoPeca')) el('cfgInstalacaoPeca').value = cfg('preco_instalacao_warehouse') || '50';
+    if (el('cfgTrocaCarro')) el('cfgTrocaCarro').value = cfg('valor_ativacao_carro') || '30';
+    if (el('cfgParticiparEtapa')) el('cfgParticiparEtapa').value = cfg('valor_etapa') || '1000';
+    if (el('cfgComissaoCarro')) el('cfgComissaoCarro').value = cfg('comissao_carro') || '10';
+    if (el('cfgComissaoPeca')) el('cfgComissaoPeca').value = cfg('comissao_peca') || '10';
+    if (el('cfgComissaoWarehouse')) el('cfgComissaoWarehouse').value = cfg('comissao_warehouse') || '50';
+    if (el('cfgValorPecaAtivacao')) el('cfgValorPecaAtivacao').value = cfg('valor_instalacao_peca') || '10';
+    if (el('cfgDadoDano')) el('cfgDadoDano').value = cfg('dado_dano') || '20';
+    if (el('cfgParticipacaoA')) el('cfgParticipacaoA').value = cfg('participacao_etapa_A') || '3000';
+    if (el('cfgParticipacaoB')) el('cfgParticipacaoB').value = cfg('participacao_etapa_B') || '2000';
+    if (el('cfgVitoriaA')) el('cfgVitoriaA').value = cfg('vitoria_batalha_A') || '1500';
+    if (el('cfgVitoriaB')) el('cfgVitoriaB').value = cfg('vitoria_batalha_B') || '1000';
+    if (el('cfgPremio1')) el('cfgPremio1').value = cfg('premio_campeonato_1') || '0';
+    if (el('cfgPremio2')) el('cfgPremio2').value = cfg('premio_campeonato_2') || '0';
+    if (el('cfgPremio3')) el('cfgPremio3').value = cfg('premio_campeonato_3') || '0';
+    if (el('cfgPremio4')) el('cfgPremio4').value = cfg('premio_campeonato_4') || '0';
+    if (el('cfgPremio5')) el('cfgPremio5').value = cfg('premio_campeonato_5') || '0';
   } catch (e) { console.error('Erro ao carregar configurações:', e); }
-  }
-  async function salvarConfiguracoes() {
+}
+
+async function salvarConfiguracoes() {
   const el = (id) => document.getElementById(id);
   const configs = [
-  { chave: 'preco_instalacao_warehouse', valor: parseFloat(el('cfgInstalacaoPeca')?.value) || 50, descricao: 'Preço para instalar peça do armazém' },
-  { chave: 'valor_ativacao_carro', valor: parseFloat(el('cfgTrocaCarro')?.value) || 30, descricao: 'Valor para troca/ativação de carro' },
-  { chave: 'valor_etapa', valor: parseFloat(el('cfgParticiparEtapa')?.value) || 1000, descricao: 'Valor para participar da etapa' },
-  { chave: 'valor_instalacao_peca', valor: parseFloat(el('cfgValorPecaAtivacao')?.value) || 10, descricao: 'Valor por peça na ativação de carro' },
-  { chave: 'dado_dano', valor: parseInt(el('cfgDadoDano')?.value, 10) || 20, descricao: 'Número de faces do dado de dano nas passadas' },
-  { chave: 'participacao_etapa_A', valor: parseInt(el('cfgParticipacaoA')?.value, 10) || 3000, descricao: 'Doricoins por participar etapa Série A' },
-  { chave: 'participacao_etapa_B', valor: parseInt(el('cfgParticipacaoB')?.value, 10) || 2000, descricao: 'Doricoins por participar etapa Série B' },
-  { chave: 'vitoria_batalha_A', valor: parseInt(el('cfgVitoriaA')?.value, 10) || 1500, descricao: 'Doricoins por vitória batalha fase 2+ Série A' },
-  { chave: 'vitoria_batalha_B', valor: parseInt(el('cfgVitoriaB')?.value, 10) || 1000, descricao: 'Doricoins por vitória batalha fase 2+ Série B' },
-  { chave: 'premio_campeonato_1', valor: parseInt(el('cfgPremio1')?.value, 10) || 0, descricao: 'Premiação 1º lugar campeonato' },
-  { chave: 'premio_campeonato_2', valor: parseInt(el('cfgPremio2')?.value, 10) || 0, descricao: 'Premiação 2º lugar campeonato' },
-  { chave: 'premio_campeonato_3', valor: parseInt(el('cfgPremio3')?.value, 10) || 0, descricao: 'Premiação 3º lugar campeonato' },
-  { chave: 'premio_campeonato_4', valor: parseInt(el('cfgPremio4')?.value, 10) || 0, descricao: 'Premiação 4º lugar campeonato' },
-  { chave: 'premio_campeonato_5', valor: parseInt(el('cfgPremio5')?.value, 10) || 0, descricao: 'Premiação 5º lugar campeonato' }
+    { chave: 'comissao_carro', valor: parseFloat(el('cfgComissaoCarro')?.value) || 10, descricao: 'Comissão por carro (R$)' },
+    { chave: 'comissao_peca', valor: parseFloat(el('cfgComissaoPeca')?.value) || 10, descricao: 'Comissão por peça (R$)' },
+    { chave: 'comissao_warehouse', valor: parseFloat(el('cfgComissaoWarehouse')?.value) || 50, descricao: 'Comissão warehouse (R$)' },
+    { chave: 'preco_instalacao_warehouse', valor: parseFloat(el('cfgInstalacaoPeca')?.value) || 50, descricao: 'Preço para instalar peça do armazém' },
+    { chave: 'valor_ativacao_carro', valor: parseFloat(el('cfgTrocaCarro')?.value) || 30, descricao: 'Valor para troca/ativação de carro' },
+    { chave: 'valor_etapa', valor: parseFloat(el('cfgParticiparEtapa')?.value) || 1000, descricao: 'Valor para participar da etapa' },
+    { chave: 'valor_instalacao_peca', valor: parseFloat(el('cfgValorPecaAtivacao')?.value) || 10, descricao: 'Valor por peça na ativação de carro' },
+    { chave: 'dado_dano', valor: parseInt(el('cfgDadoDano')?.value, 10) || 20, descricao: 'Número de faces do dado de dano nas passadas' },
+    { chave: 'participacao_etapa_A', valor: parseInt(el('cfgParticipacaoA')?.value, 10) || 3000, descricao: 'Doricoins por participar etapa Série A' },
+    { chave: 'participacao_etapa_B', valor: parseInt(el('cfgParticipacaoB')?.value, 10) || 2000, descricao: 'Doricoins por participar etapa Série B' },
+    { chave: 'vitoria_batalha_A', valor: parseInt(el('cfgVitoriaA')?.value, 10) || 1500, descricao: 'Doricoins por vitória batalha fase 2+ Série A' },
+    { chave: 'vitoria_batalha_B', valor: parseInt(el('cfgVitoriaB')?.value, 10) || 1000, descricao: 'Doricoins por vitória batalha fase 2+ Série B' },
+    { chave: 'premio_campeonato_1', valor: parseInt(el('cfgPremio1')?.value, 10) || 0, descricao: 'Premiação 1º lugar campeonato' },
+    { chave: 'premio_campeonato_2', valor: parseInt(el('cfgPremio2')?.value, 10) || 0, descricao: 'Premiação 2º lugar campeonato' },
+    { chave: 'premio_campeonato_3', valor: parseInt(el('cfgPremio3')?.value, 10) || 0, descricao: 'Premiação 3º lugar campeonato' },
+    { chave: 'premio_campeonato_4', valor: parseInt(el('cfgPremio4')?.value, 10) || 0, descricao: 'Premiação 4º lugar campeonato' },
+    { chave: 'premio_campeonato_5', valor: parseInt(el('cfgPremio5')?.value, 10) || 0, descricao: 'Premiação 5º lugar campeonato' }
   ];
   try {
-  for (const c of configs) {
-  const r = await fetch('/api/admin/configuracoes', {
-  method: 'PUT',
-  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrf_token') || '' },
-  body: JSON.stringify({ chave: c.chave, valor: String(c.valor), descricao: c.descricao }),
-  credentials: 'include'
-  });
-  if (!r.ok) throw new Error('Falha ao salvar ' + c.chave);
-  }
-  if (typeof mostrarToast === 'function') mostrarToast('Configurações salvas com sucesso!', 'success'); else alert('Configurações salvas!');
+    for (const c of configs) {
+      const r = await fetch('/api/admin/configuracoes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrf_token') || '' },
+        body: JSON.stringify({ chave: c.chave, valor: String(c.valor), descricao: c.descricao }),
+        credentials: 'include'
+      });
+      if (!r.ok) throw new Error('Falha ao salvar ' + c.chave);
+    }
+    if (typeof mostrarToast === 'function') mostrarToast('Configurações salvas com sucesso!', 'success'); else alert('Configurações salvas!');
   } catch (e) {
-  if (typeof mostrarToast === 'function') mostrarToast('Erro: ' + e.message, 'error'); else alert('Erro: ' + e.message);
+    if (typeof mostrarToast === 'function') mostrarToast('Erro: ' + e.message, 'error'); else alert('Erro: ' + e.message);
   }
-  }
-  async function atualizarChallongeStatus() {
+}
+
+async function atualizarChallongeStatus() {
   try {
-  const r = await fetch('/api/admin/challonge/status', { credentials: 'include' });
-  const data = await r.json();
-  const el = document.getElementById('challongeStatus');
-  if (!el) return;
-  if (data.conectado) {
-  el.textContent = 'Conectado (API v1)';
-  el.className = 'small text-success';
-  } else {
-  el.textContent = 'Não configurado';
-  el.className = 'small text-warning';
-  }
+    const r = await fetch('/api/admin/challonge/status', { credentials: 'include' });
+    const data = await r.json();
+    const el = document.getElementById('challongeStatus');
+    if (!el) return;
+    if (data.conectado) { el.textContent = 'Conectado (API v1)'; el.className = 'small text-success'; }
+    else { el.textContent = 'Não configurado'; el.className = 'small text-warning'; }
   } catch (e) { console.error('Challonge status:', e); }
-  }
-  window.addEventListener('load', function() {
+}
+
+window.addEventListener('load', function() {
   atualizarStatusAdmin();
-  atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
+  atualizarContadoresSolicitacoes && atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
   carregarConfiguracoes();
   atualizarChallongeStatus();
   document.getElementById('btnSalvarConfiguracoes').addEventListener('click', salvarConfiguracoes);
   const params = new URLSearchParams(window.location.search);
   if (params.get('challonge')) window.history.replaceState({}, '', '/admin/configuracoes');
-  });
-  async function atualizarStatusAdmin() {
-  try {
-  console.log('Atualizando status admin...');
-  const resp = await fetch('/api/admin/status');
-  const status = await resp.json();
-  console.log('Status recebido:', status);
-  document.getElementById('totalEquipes').textContent = status.total_equipes || 0;
-  } catch (e) {
-  console.log('Erro ao atualizar status');
-  }
-  }
-  async function atualizarContadoresSolicitacoes() {
+});
+
+async function atualizarStatusAdmin() {
+  try { const resp = await fetch('/api/admin/status'); const status = await resp.json(); document.getElementById('totalEquipes').textContent = status.total_equipes || 0; } catch (e) {}
+}
+
+async function atualizarContadoresSolicitacoes() {
   if (typeof window.atualizarContadoresSolicitacoesAdmin === 'function') return window.atualizarContadoresSolicitacoesAdmin();
   try {
-  const respPecas = await fetch('/api/admin/solicitacoes-pecas');
-  const pecas = await respPecas.json();
-  const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
-  const elemPecas = document.getElementById('solicitacoesPecasPendentes');
-  if (elemPecas) elemPecas.textContent = pecasPendentes;
-  const respCarros = await fetch('/api/admin/solicitacoes-carros');
-  const carros = await respCarros.json();
-  const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
-  const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
-  if (elemCarros) elemCarros.textContent = carrosPendentes;
+    const respPecas = await fetch('/api/admin/solicitacoes-pecas');
+    const pecas = await respPecas.json();
+    const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
+    const elemPecas = document.getElementById('solicitacoesPecasPendentes');
+    if (elemPecas) elemPecas.textContent = pecasPendentes;
+    const respCarros = await fetch('/api/admin/solicitacoes-carros');
+    const carros = await respCarros.json();
+    const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
+    const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
+    if (elemCarros) elemCarros.textContent = carrosPendentes;
   } catch (e) { console.error('Erro ao atualizar contadores:', e); }
-  }
-  </script>
-</body>
-</html>
+}
+</script>
+{% endblock %}

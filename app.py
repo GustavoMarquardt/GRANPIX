@@ -221,8 +221,7 @@ def dashboard():
 
 @app.route('/admin')
 def admin():
-    # Renderiza a página admin, JS verificará autenticação
-    return render_template('admin.html')
+    return redirect(url_for('admin_etapas'))
 
 @app.route('/admin/carros')
 def admin_carros():
@@ -512,55 +511,31 @@ def get_garagem(equipe_id):
         import traceback
         traceback.print_exc()
         return jsonify({'erro': f'Erro ao carregar garagem'}), 500
+
+
+@app.route('/api/garagem/recuperar-peca', methods=['POST'])
+@requer_login_api
+def recuperar_peca_garagem():
+    """Recupera vida de uma peça para 100%. Custo = metade do preço na loja (doricoins)."""
     try:
-        # Verificar autenticação
-        auth_equipe_id = obter_equipe_id_request()
-        if not auth_equipe_id:
+        equipe_id = obter_equipe_id_request()
+        if not equipe_id:
             return jsonify({'erro': 'Não autenticado'}), 401
-        
-        # Se for uma equipe (não admin), só pode acessar seus próprios dados
-        if request.headers.get('X-Equipe-ID'):
-            if str(auth_equipe_id) != str(equipe_id):
-                return jsonify({'erro': 'Acesso negado'}), 403
-            # Usar o equipe_id da header/session
-            equipe_id_buscar = str(auth_equipe_id)
-        else:
-            # Admin pode acessar qualquer equipe
-            equipe_id_buscar = str(equipe_id)
-        
-        print(f"[ARMAZÉM] Buscando peças para equipe: {equipe_id_buscar}")
-        
-        # Buscar todas as solicitações com status 'guardada' desta equipe do banco
-        pecas_guardadas = []
-        try:
-            solicitacoes_db = api.db.carregar_solicitacoes_pecas(equipe_id_buscar)
-            for sol in solicitacoes_db:
-                if sol['status'] == 'guardada':
-                    pecas_guardadas.append({
-                        'solicitacao_id': sol['id'],
-                        'nome': sol.get('peca_nome', ''),
-                        'tipo': sol.get('tipo_peca', ''),
-                        'preco': sol.get('preco', 0),
-                        'data_compra': sol.get('data_solicitacao', ''),
-                        'processado_em': sol.get('processado_em', '')
-                    })
-        except Exception as e:
-            print(f"[ERRO ARMAZÉM] Erro ao carregar solicitações: {str(e)}")
-        
-        # Ordenar por data (mais recentes primeiro)
-        pecas_guardadas.sort(key=lambda x: x.get('data_compra', ''), reverse=True)
-        
-        print(f"[ARMAZÉM] Encontradas {len(pecas_guardadas)} peças para equipe {equipe_id_buscar}")
-        
-        return jsonify({
-            'pecas_guardadas': pecas_guardadas,
-            'total': len(pecas_guardadas)
-        })
+        dados = request.json or {}
+        peca_id = dados.get('peca_id')
+        if not peca_id:
+            return jsonify({'erro': 'peca_id obrigatório'}), 400
+        ok, resultado = api.db.recuperar_peca_vida(str(peca_id), str(equipe_id))
+        if ok:
+            return jsonify({'sucesso': True, 'custo': float(resultado), 'mensagem': 'Peça recuperada para 100%'})
+        return jsonify({'sucesso': False, 'erro': resultado}), 400
     except Exception as e:
-        print(f"[ERRO ARMAZÉM] {str(e)}")
+        print(f"[ERRO] recuperar-peca: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'erro': str(e)}), 500
+
+
 
 @app.route('/api/garagem/solicitar-instalacao-armazem', methods=['POST'])
 @requer_login_api
@@ -2645,19 +2620,42 @@ def challonge_match_report(etapa_id):
         if r.status_code not in (200, 201):
             err = r.text[:200] if r.text else str(r.status_code)
             return jsonify({'sucesso': False, 'erro': f'Challonge: {r.status_code} - {err}'}), 400
+        part_map, matches_raw = _buscar_bracket_challonge(slug)
         round_num = data.get('round')
-        if round_num is not None and int(round_num) >= 2:
-            part_map, _ = _buscar_bracket_challonge(slug)
-            if part_map and winner_id:
-                winner_name = (part_map.get(str(winner_id)) or {}).get('name', '')
-                if winner_name:
-                    equipe_id = api.db.obter_equipe_id_por_nome_na_etapa(etapa_id, winner_name)
-                    if equipe_id:
-                        serie = api.db.obter_serie_equipe(equipe_id)
-                        chave = f'vitoria_batalha_{serie}' if serie in ('A', 'B') else 'vitoria_batalha_A'
-                        valor = float(api.db.obter_configuracao(chave) or 1500)
-                        if valor > 0 and api.db.creditar_doricoins_equipe(equipe_id, valor):
-                            print(f"[DORICOINS] +{valor} para {winner_name} (vitória fase {round_num})")
+        if round_num is not None and int(round_num) >= 2 and part_map and winner_id:
+            winner_name = (part_map.get(str(winner_id)) or {}).get('name', '')
+            if winner_name:
+                winner_equipe_id = api.db.obter_equipe_id_por_nome_na_etapa(etapa_id, winner_name)
+                if winner_equipe_id:
+                    serie = api.db.obter_serie_equipe(winner_equipe_id)
+                    chave = f'vitoria_batalha_{serie}' if serie in ('A', 'B') else 'vitoria_batalha_A'
+                    valor = float(api.db.obter_configuracao(chave) or 1500)
+                    if valor > 0 and api.db.creditar_doricoins_equipe(winner_equipe_id, valor):
+                        print(f"[DORICOINS] +{valor} para {winner_name} (vitória fase {round_num})")
+        # Se vencedor venceu com carro quebrado (alguma peça em 0), marca By run para próxima batalha
+        if part_map and winner_id:
+            winner_name = (part_map.get(str(winner_id)) or {}).get('name', '')
+            if winner_name:
+                winner_equipe_id = api.db.obter_equipe_id_por_nome_na_etapa(etapa_id, winner_name)
+                if winner_equipe_id and api.db.carro_equipe_quebrado_etapa(etapa_id, winner_equipe_id):
+                    api.db.adicionar_equipe_by_run(etapa_id, winner_equipe_id)
+                    print(f"[BY-RUN] {winner_name} venceu com carro quebrado → próxima batalha adversário faz By run")
+        # Se era partida By run (adversário não podia andar), remove da lista após reportar
+        by_run_ids = api.db.obter_equipes_by_run(etapa_id)
+        if by_run_ids and part_map and matches_raw:
+            for m in matches_raw:
+                mo = m.get('match', m) if isinstance(m, dict) else m
+                if str(mo.get('id')) == str(match_id):
+                    p1_id, p2_id = mo.get('player1_id'), mo.get('player2_id')
+                    loser_id = p2_id if str(winner_id) == str(p1_id) else p1_id
+                    if loser_id:
+                        loser_name = (part_map.get(str(loser_id)) or {}).get('name', '')
+                        if loser_name:
+                            loser_equipe_id = api.db.obter_equipe_id_por_nome_na_etapa(etapa_id, loser_name)
+                            if loser_equipe_id and loser_equipe_id in by_run_ids:
+                                api.db.remover_equipe_by_run(etapa_id, loser_equipe_id)
+                                print(f"[BY-RUN] Partida By run concluída → removido {loser_name} da lista")
+                    break
         return jsonify({'sucesso': True})
     except Exception as e:
         return jsonify({'sucesso': False, 'erro': str(e)}), 500
@@ -2685,6 +2683,38 @@ def challonge_match_reopen(etapa_id):
         return jsonify({'sucesso': True})
     except Exception as e:
         return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
+@app.route('/api/etapas/<etapa_id>/equipes-by-run', methods=['GET'])
+@requer_admin
+def obter_equipes_by_run(etapa_id):
+    """Retorna lista de equipe_ids que venceram com carro quebrado (próxima batalha = By run para adversário)."""
+    try:
+        ids = api.db.obter_equipes_by_run(etapa_id)
+        return jsonify({'sucesso': True, 'equipe_ids': ids})
+    except Exception as e:
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
+def _requer_login_ou_admin():
+    """Permite admin, equipe ou piloto logado."""
+    if session.get('admin'):
+        return True
+    if 'equipe_id' in session or 'piloto_id' in session or request.headers.get('X-Equipe-ID'):
+        return True
+    return False
+
+@app.route('/api/etapas/<etapa_id>/batalhas-recentes', methods=['GET'])
+def batalhas_recentes(etapa_id):
+    """Retorna passadas recentes da etapa para exibir cards de vida/dano para pilotos e equipes."""
+    if not _requer_login_ou_admin():
+        return jsonify({'erro': 'Não autenticado'}), 401
+    try:
+        limit = min(int(request.args.get('limit', 20)), 50)
+        passadas = api.db.listar_passadas_batalha(etapa_id, limit)
+        return jsonify({'sucesso': True, 'passadas': passadas})
+    except Exception as e:
+        return jsonify({'sucesso': False, 'erro': str(e), 'passadas': []}), 500
 
 
 @app.route('/api/etapas/<etapa_id>/pecas-batalha', methods=['GET'])
@@ -2722,8 +2752,10 @@ def obter_pecas_batalha(etapa_id):
             pecas_rows = cursor.fetchall()
             pecas = []
             for p in pecas_rows:
-                dur_max = float(p.get('durabilidade_maxima') or 100)
-                dur_atual = float(p.get('durabilidade_atual') or 100)
+                v_max = p.get('durabilidade_maxima')
+                v_atual = p.get('durabilidade_atual')
+                dur_max = float(v_max) if v_max is not None and v_max != '' else 100.0
+                dur_atual = float(v_atual) if v_atual is not None and v_atual != '' else 100.0
                 pct = int((dur_atual / dur_max * 100) if dur_max > 0 else 0)
                 pecas.append({
                     'tipo': p.get('tipo', ''),
@@ -2745,14 +2777,16 @@ def obter_pecas_batalha(etapa_id):
 @app.route('/api/etapas/<etapa_id>/executar-passada', methods=['POST'])
 @requer_admin
 def executar_passada(etapa_id):
-    """Executa uma passada: rola dados de dano para as peças dos carros das duas equipes da partida."""
+    """Executa uma passada: rola dados de dano para as peças dos carros. Se by_run=True, apenas equipe_que_corre_id."""
     try:
         data = request.json or {}
         eq1_id = (data.get('equipe1_id') or '').strip()
         eq2_id = (data.get('equipe2_id') or '').strip()
         eq1_nome = (data.get('equipe1_nome') or '').strip()
         eq2_nome = (data.get('equipe2_nome') or '').strip()
-        if not eq1_id and not eq2_id and not eq1_nome and not eq2_nome:
+        by_run = data.get('by_run') is True
+        equipe_que_corre_id = (data.get('equipe_que_corre_id') or '').strip()
+        if not eq1_id and not eq2_id and not eq1_nome and not eq2_nome and not equipe_que_corre_id:
             return jsonify({'sucesso': False, 'erro': 'Informe os IDs ou nomes das equipes'}), 400
         dado_faces = int(api.db.obter_configuracao('dado_dano') or '20')
         if dado_faces < 2:
@@ -2760,25 +2794,33 @@ def executar_passada(etapa_id):
         conn = api.db._get_conn()
         cursor = conn.cursor(dictionary=True)
         carro_ids = []
-        # Buscar por equipe_id (preferido) ou por nome
-        for equipe_id, nome in [(eq1_id, eq1_nome), (eq2_id, eq2_nome)]:
-            if equipe_id:
-                cursor.execute(
-                    'SELECT carro_id FROM participacoes_etapas WHERE etapa_id = %s AND equipe_id = %s LIMIT 1',
-                    (etapa_id, equipe_id)
-                )
-            elif nome:
-                cursor.execute('''
-                    SELECT pe.carro_id FROM participacoes_etapas pe
-                    JOIN equipes e ON pe.equipe_id = e.id
-                    WHERE pe.etapa_id = %s AND (e.nome = %s OR e.nome LIKE %s)
-                    LIMIT 1
-                ''', (etapa_id, nome, f'%{nome}%'))
-            else:
-                continue
+        if by_run and equipe_que_corre_id:
+            cursor.execute(
+                'SELECT carro_id FROM participacoes_etapas WHERE etapa_id = %s AND equipe_id = %s LIMIT 1',
+                (etapa_id, equipe_que_corre_id)
+            )
             row = cursor.fetchone()
             if row and row.get('carro_id'):
                 carro_ids.append(row['carro_id'])
+        else:
+            for equipe_id, nome in [(eq1_id, eq1_nome), (eq2_id, eq2_nome)]:
+                if equipe_id:
+                    cursor.execute(
+                        'SELECT carro_id FROM participacoes_etapas WHERE etapa_id = %s AND equipe_id = %s LIMIT 1',
+                        (etapa_id, equipe_id)
+                    )
+                elif nome:
+                    cursor.execute('''
+                        SELECT pe.carro_id FROM participacoes_etapas pe
+                        JOIN equipes e ON pe.equipe_id = e.id
+                        WHERE pe.etapa_id = %s AND (e.nome = %s OR e.nome LIKE %s)
+                        LIMIT 1
+                    ''', (etapa_id, nome, f'%{nome}%'))
+                else:
+                    continue
+                row = cursor.fetchone()
+                if row and row.get('carro_id'):
+                    carro_ids.append(row['carro_id'])
         cursor.close()
         conn.close()
         if not carro_ids:
@@ -2789,6 +2831,47 @@ def executar_passada(etapa_id):
         resumo = resultado.get('resumo', [])
         lancamentos = resultado.get('lancamentos', [])
         total_danos = sum(r.get('dano', 0) for r in resumo)
+        
+        # Registrar passada para cards de batalha (vida/dano) para pilotos e equipes
+        eq1_nome_f = eq1_nome or ''
+        eq2_nome_f = eq2_nome or ''
+        if not eq1_nome_f or not eq2_nome_f:
+            conn_n = api.db._get_conn()
+            cursor_n = conn_n.cursor(dictionary=True)
+            if eq1_id:
+                cursor_n.execute('SELECT nome FROM equipes WHERE id = %s', (eq1_id,))
+                r1 = cursor_n.fetchone()
+                eq1_nome_f = (r1 or {}).get('nome', '') or eq1_nome_f
+            if eq2_id:
+                cursor_n.execute('SELECT nome FROM equipes WHERE id = %s', (eq2_id,))
+                r2 = cursor_n.fetchone()
+                eq2_nome_f = (r2 or {}).get('nome', '') or eq2_nome_f
+            cursor_n.close()
+            conn_n.close()
+        carros_vida = api.db.obter_pecas_batalha_interno(etapa_id, eq1_id or '', eq2_id or '')
+        vida_p1 = ''
+        vida_p2 = ''
+        dano_p1 = 0.0
+        dano_p2 = 0.0
+        if carros_vida and len(carros_vida) >= 2:
+            def fmt_vida(c):
+                if not c.get('pecas'):
+                    return 'N/A'
+                return ' | '.join(f"{p.get('tipo','?')}:{p.get('percentual',0)}%" for p in c['pecas'])
+            vida_p1 = fmt_vida(carros_vida[0])
+            vida_p2 = fmt_vida(carros_vida[1])
+        for lm in lancamentos:
+            cid = lm.get('carro_id')
+            d = lm.get('dano', 0)
+            if cid and carro_ids:
+                if len(carro_ids) >= 2 and cid == carro_ids[0]:
+                    dano_p1 += d
+                elif len(carro_ids) >= 2 and cid == carro_ids[1]:
+                    dano_p2 += d
+                elif len(carro_ids) == 1:
+                    dano_p1 += d
+        api.db.registrar_passada_batalha(etapa_id, eq1_id or '', eq2_id or '', eq1_nome_f, eq2_nome_f, vida_p1, vida_p2, dano_p1, dano_p2)
+        
         return jsonify({
             'sucesso': True,
             'resumo': f'Dano aplicado em {len(resumo)} peça(s), total {total_danos:.1f}',
@@ -3525,6 +3608,25 @@ def inscrever_com_debito():
         
         if not all([etapa_id, equipe_id, carro_id, valor_inscricao, tipo_participacao]):
             return jsonify({'sucesso': False, 'erro': 'Parâmetros obrigatórios faltando'}), 400
+        
+        # 0. Validar: carro deve pertencer à equipe, estar ativo e ter todas as peças
+        conn_val = api.db._get_conn()
+        cur_val = conn_val.cursor(dictionary=True)
+        cur_val.execute('SELECT id, equipe_id, status FROM carros WHERE id = %s', (carro_id,))
+        cr = cur_val.fetchone()
+        cur_val.close()
+        conn_val.close()
+        if not cr:
+            return jsonify({'sucesso': False, 'erro': 'Carro não encontrado'}), 400
+        if str(cr.get('equipe_id', '')) != str(equipe_id):
+            return jsonify({'sucesso': False, 'erro': 'Este carro não pertence à sua equipe'}), 400
+        if (cr.get('status') or 'repouso').lower() != 'ativo':
+            return jsonify({'sucesso': False, 'erro': 'Sua equipe precisa ter um carro ATIVO para participar. Ative um carro na Garagem.'}), 400
+        validacao = api.db.validar_pecas_carro(carro_id, equipe_id)
+        if not validacao.get('valido'):
+            pecas_faltando = validacao.get('pecas_faltando', [])
+            nomes = [p.upper().replace('_', '-') for p in pecas_faltando]
+            return jsonify({'sucesso': False, 'erro': f'O carro precisa ter todas as peças instaladas. Faltando: {", ".join(nomes)}'}), 400
         
         # 1. Deduzir valor do saldo_pix (vai ficar negativo)
         resultado_saldo = api.db.atualizar_saldo_pix(equipe_id, -valor_inscricao)
@@ -7510,6 +7612,45 @@ def test_salvar_notas_etapa():
         return jsonify({'sucesso': False, 'erro': str(e)}), 500
 
 
+@app.route('/api/test/quebrar-carro-equipe-etapa', methods=['POST'])
+def test_quebrar_carro_equipe_etapa():
+    """[E2E] Zera durabilidade das peças do carro da equipe na etapa (para testar By run). Só com TEST_E2E=1."""
+    if os.environ.get('TEST_E2E') != '1':
+        return jsonify({'erro': 'Não disponível'}), 404
+    try:
+        dados = request.json or {}
+        etapa_id = dados.get('etapa_id')
+        equipe_id = dados.get('equipe_id')
+        if not etapa_id or not equipe_id:
+            return jsonify({'erro': 'etapa_id e equipe_id obrigatórios'}), 400
+        conn = api.db._get_conn()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            'SELECT carro_id FROM participacoes_etapas WHERE etapa_id = %s AND equipe_id = %s LIMIT 1',
+            (etapa_id, equipe_id)
+        )
+        row = cursor.fetchone()
+        if not row or not row.get('carro_id'):
+            conn.close()
+            return jsonify({'erro': 'Carro não encontrado'}), 404
+        carro_id = row['carro_id']
+        cursor.execute('''
+            UPDATE pecas SET durabilidade_atual = 0
+            WHERE carro_id = %s AND instalado = 1 AND tipo = 'motor' LIMIT 1
+        ''', (carro_id,))
+        n = cursor.rowcount
+        if n == 0:
+            cursor.execute('''
+                UPDATE pecas SET durabilidade_atual = 0
+                WHERE carro_id = %s AND instalado = 1 LIMIT 1
+            ''', (carro_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'sucesso': True, 'mensagem': f'1 peça do carro da equipe {equipe_id} quebrada (carro inoperante)'})
+    except Exception as e:
+        return jsonify({'sucesso': False, 'erro': str(e)}), 500
+
+
 @app.route('/api/test-pecas')
 def test_pecas():
     return jsonify({'status': 'ok', 'test': 'pecas endpoint works'})
@@ -7552,69 +7693,66 @@ def atualizar_configuracoes():
         return jsonify({'erro': str(e)}), 400
 
 @app.route('/api/admin/transacoes-pix', methods=['GET'])
+@requer_admin
 def listar_transacoes_pix():
-    """Lista todas as transações PIX (comissões de instalação de warehouse)"""
+    """Lista todas as transações PIX realizadas pelos pilotos (histórico de pagamentos)"""
     try:
-        tipo = request.args.get('tipo')  # 'instalacao_armazem' ou vazio para todos
+        tipo = request.args.get('tipo')  # filtro por tipo_item
         filtro_mes = request.args.get('mes')  # 'este_mes' ou vazio para todos
+        filtro_status = request.args.get('status')  # aprovado, pendente, recusado, cancelado
+        limit = min(int(request.args.get('limit', 200)), 500)
         
         # Buscar transações PIX do banco
         conn = api.db._get_conn()
         cursor = conn.cursor()
         
-        query = "SELECT id, mercado_pago_id, equipe_nome, tipo_item, item_nome, valor_item, valor_taxa, status, data_criacao FROM transacoes_pix WHERE 1=1"
+        query = """SELECT id, mercado_pago_id, equipe_nome, tipo_item, item_nome, valor_item, valor_taxa, valor_total, status, data_criacao
+                   FROM transacoes_pix WHERE 1=1"""
         params = []
         
-        # Filtrar por tipo
         if tipo:
             query += " AND tipo_item = %s"
             params.append(tipo)
         
-        # Filtrar por mês atual
         if filtro_mes == 'este_mes':
             query += " AND MONTH(data_criacao) = MONTH(NOW()) AND YEAR(data_criacao) = YEAR(NOW())"
         
-        query += " ORDER BY data_criacao DESC"
+        if filtro_status:
+            query += " AND status = %s"
+            params.append(filtro_status)
+        
+        query += " ORDER BY data_criacao DESC LIMIT %s"
+        params.append(limit)
         
         cursor.execute(query, params)
-        transacoes = cursor.fetchall()
-        
-        # Converter para dicts
-        comissoes = []
-        total_valor_item = 0
-        resumo = {}
-        
-        if transacoes:
-            for trans in transacoes:
-                tipo_item = trans[3]
-                valor_item = float(trans[5])
-                
-                comissoes.append({
-                    'id': trans[0],
-                    'mercado_pago_id': trans[1],
-                    'equipe_nome': trans[2],
-                    'tipo': tipo_item,
-                    'item_nome': trans[4],
-                    'valor_item': valor_item,
-                    'valor_taxa': float(trans[6]),
-                    'status': trans[7],
-                    'data_transacao': trans[8],
-                    'descricao': f"Instalação de {trans[4]} do warehouse",
-                    'valor_comissao': valor_item
-                })
-                
-                # Somar valor_item
-                total_valor_item += valor_item
-                
-                # Resumo por tipo
-                resumo[tipo_item] = resumo.get(tipo_item, 0) + valor_item
-        
+        rows = cursor.fetchall()
         conn.close()
         
+        transacoes = []
+        for r in rows:
+            valor_item = float(r[5] or 0)
+            valor_taxa = float(r[6] or 0)
+            valor_total = float(r[7]) if r[7] is not None else valor_item + valor_taxa
+            data_criacao = r[9]
+            transacoes.append({
+                'id': r[0],
+                'mercado_pago_id': r[1],
+                'equipe_nome': r[2],
+                'tipo': r[3],
+                'tipo_item': r[3],
+                'item_nome': r[4],
+                'valor_item': valor_item,
+                'valor_taxa': valor_taxa,
+                'valor_total': valor_total,
+                'status': r[8] or 'pendente',
+                'data_transacao': data_criacao.isoformat() if hasattr(data_criacao, 'isoformat') else str(data_criacao),
+                'data_criacao': data_criacao.isoformat() if hasattr(data_criacao, 'isoformat') else str(data_criacao),
+            })
+        
         return jsonify({
-            'comissoes': comissoes,
-            'resumo': resumo,
-            'total': total_valor_item
+            'transacoes': transacoes,
+            'comissoes': transacoes,
+            'total': sum(t['valor_total'] for t in transacoes)
         })
     except Exception as e:
         print(f"[ERRO] Erro ao listar comissões: {e}")
@@ -7628,6 +7766,7 @@ def inicializar_configuracoes_padrao():
     configs_padrao = {
         'comissao_carro': ('10', 'Comissão para cada carro comprado (em reais)'),
         'comissao_peca': ('10', 'Comissão para cada peça comprada (em reais)'),
+        'comissao_warehouse': ('50', 'Comissão warehouse (em reais)'),
         'preco_instalacao_warehouse': ('50', 'Preço para instalar peça do armazém (em reais)'),
         'valor_instalacao_peca': ('10', 'Valor por peça ao ativar carro (peças não pagas)'),
         'valor_ativacao_carro': ('30', 'Valor para troca/ativação de carro (em reais)'),

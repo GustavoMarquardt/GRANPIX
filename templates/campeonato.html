@@ -1007,13 +1007,16 @@
         window.addEventListener('load', () => {
             const nomePiloto = localStorage.getItem('piloto_nome');
             const pilotoId = localStorage.getItem('piloto_id');
+            const equipeId = localStorage.getItem('equipe_id');
+            const equipeNome = localStorage.getItem('equipe_nome');
 
-            if (!nomePiloto || !pilotoId) {
+            // Permitir acesso como piloto ou como equipe
+            if ((!nomePiloto || !pilotoId) && (!equipeId || !equipeNome)) {
                 window.location.href = '/login';
                 return;
             }
 
-            document.getElementById('nomePiloto').textContent = nomePiloto;
+            document.getElementById('nomePiloto').textContent = nomePiloto || (equipeNome ? `Equipe: ${equipeNome}` : 'Usuário');
             atualizarDataHoje();
             carregarEquipesCampeonato();
             carregarEtapas();
@@ -1133,9 +1136,9 @@
                     return;
                 }
 
-                // Verificar inscrições do piloto
+                // Verificar inscrições do piloto (se logado como piloto)
                 const pilotoId = localStorage.getItem('piloto_id');
-                await verificarInscricoes(pilotoId);
+                if (pilotoId) await verificarInscricoes(pilotoId);
                 
                 // Verificar confirmações necessárias
                 const confirmacoesPendentes = await obterConfirmacoesPendentes();
@@ -1179,8 +1182,12 @@
                             </div>
                             ${hintAgendada}
                             ${etapa.status === 'qualificacao' ? `
-                                <button class="btn btn-warning w-100 mt-2" onclick="entrarQualificacao('${etapa.id}', this)" style="font-weight: bold;">
+                                <button class="btn btn-warning w-100 mt-2" onclick="event.stopPropagation(); entrarQualificacao('${etapa.id}', this)" style="font-weight: bold;">
                                     Entrar na Qualificacao
+                                </button>
+                            ` : etapa.status === 'em_andamento' ? `
+                                <button class="btn btn-warning w-100 mt-2" onclick="event.stopPropagation(); mostrarPitsEtapa('${etapa.id}')" style="font-weight: bold;">
+                                    📋 Ver tabela de qualificação
                                 </button>
                             ` : etapa.status === 'batalhas' ? `
                                 <button class="btn btn-danger w-100 mt-2" onclick="entrarBatalhas('${etapa.id}', this)" style="font-weight: bold;">

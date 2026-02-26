@@ -1,751 +1,466 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GRANPIX - Cadastrar Peças</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/imask/6.4.0/imask.min.js"></script>
-  <style>
-    .sidebar {
-      position: fixed;
-      top: 56px;
-      left: 0;
-      width: 250px;
-      height: calc(100vh - 56px);
-      background-color: #343a40;
-      padding-top: 20px;
-      overflow-y: auto;
-      z-index: 1000;
-    }
-    
-    .sidebar .nav-link {
-      color: #adb5bd;
-      padding: 10px 20px;
-      margin: 5px 10px;
-      border-radius: 5px;
-      transition: all 0.3s;
-    }
-    
-    .sidebar .nav-link:hover {
-      color: #fff;
-      background-color: #495057;
-    }
-    
-    .sidebar .nav-link.active {
-      color: #fff;
-      background-color: #dc143c;
-    }
-    
-    .main-content {
-      margin-left: 250px;
-      padding: 20px;
-    }
-    
-    @media (max-width: 768px) {
-      .sidebar {
-        width: 100%;
-        height: auto;
-        position: relative;
-        top: 0;
-      }
-      .main-content {
-        margin-left: 0;
-      }
-    }
-
-    #modalDesignarPiloto {
-      pointer-events: auto !important;
-      z-index: 9999 !important;
-    }
-    
-    #modalDesignarPiloto * {
-      pointer-events: auto !important;
-    }
-    
-    #modalDesignarPiloto .modal-dialog {
-      pointer-events: auto !important;
-    }
-    
-    #modalDesignarPiloto .modal-content {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao {
-      pointer-events: auto !important;
-      z-index: 9999 !important;
-      display: none !important;
-    }
-
-    #modalConfirmacaoAlocacao.show {
-      display: block !important;
-    }
-
-    #modalConfirmacaoAlocacao * {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .modal-dialog {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .modal-content {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .btn {
-      pointer-events: auto !important;
-    }
-    
-    .modal-backdrop {
-      pointer-events: auto !important;
-      z-index: 9998 !important;
-    }
-  </style>
-  <!-- Carregar script.js primeiro para definir funções globais -->
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
-  <!-- Depois carregar qualificacao.js que usa funções de script.js -->
-  <script src="{{ url_for('static', filename='qualificacao.js') }}"></script>
-  <!-- Por fim, sistema_notificacao que usa funções de qualificacao.js -->
-  <script src="{{ url_for('static', filename='sistema_notificacao.js') }}"></script>
-</head>
-<body>
-  <nav class="navbar navbar-dark" style="background-color: #1a1a1a; border-bottom: 3px solid #dc143c;">
-  <div class="container-fluid">
-  <span class="navbar-brand mb-0 h1" style="color: #dc143c; font-weight: bold;">GRANPIX - Painel Administrativo</span>
-  <a href="/" class="btn btn-sm btn-outline-light">Voltar ao Site</a>
-  </div>
-  </nav>
-
-  <!-- Sidebar -->
-  <div class="sidebar">
-  <nav class="nav flex-column">
-  <a class="nav-link" href="/admin/carros">
-  <i class="fas fa-car"></i> Cadastrar Carros
-  </a>
-  <a class="nav-link active" href="/admin/pecas">
-  <i class="fas fa-cogs"></i> Cadastrar Peças
-  </a>
-  <a class="nav-link" href="/admin/variacoes">
-  <i class="fas fa-tools"></i> Cadastrar Variações
-  </a>
-  <a class="nav-link" href="/admin/equipes">
-  <i class="fas fa-users"></i> Cadastrar Equipes
-  </a>
-  <a class="nav-link" href="/admin/etapas">
-  <i class="fas fa-calendar"></i> Gerenciar Etapas
-  </a>
-  <a class="nav-link" href="/admin/solicitacoes-pecas">
-  <i class="fas fa-clipboard-list"></i> Solicitações de Peças
-  </a>
-  <a class="nav-link" href="/admin/solicitacoes-carros">
-  <i class="fas fa-clipboard-check"></i> Solicitações de Carros
-  </a>
-  <a class="nav-link" href="/admin/fazer-etapa">
-  <i class="fas fa-play"></i> Fazer Etapa
-  </a>
-  <a class="nav-link" href="/admin/alocar-pilotos">
-  <i class="fas fa-user-check"></i> Alocar Pilotos
-  </a>
-  <a class="nav-link" href="/admin/comissoes">
-  <i class="fas fa-money-bill"></i> Comissões
-  </a>
-  <a class="nav-link" href="/admin/configuracoes">
-  <i class="fas fa-cog"></i> Configurações
-  </a>
-  <a class="nav-link" href="/admin/equipes-list">
-  <i class="fas fa-list"></i> Lista de Equipes
-  </a>
-  </nav>
-  </div>
-
-  <!-- Main Content -->
-  <div class="main-content">
-  <div class="container-fluid mt-4">
+{% extends "admin_base.html" %}
+{% block title %}GRANPIX - Cadastrar Peças{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
   <div class="row mb-4">
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Total de Equipes</div>
-  <div class="stat-value" id="totalEquipes">-</div>
-  </div>
-  </div>
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Solicitações de Peça</div>
-  <div class="stat-value" id="solicitacoesPecasPendentes">0</div>
-  </div>
-  </div>
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Solicitações de Carro</div>
-  <div class="stat-value" id="solicitacoesCarrosPendentes">0</div>
-  </div>
-  </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Total de Equipes</div>
+        <div class="stat-value" id="totalEquipes">-</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Solicitações de Peça</div>
+        <div class="stat-value" id="solicitacoesPecasPendentes">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Solicitações de Carro</div>
+        <div class="stat-value" id="solicitacoesCarrosPendentes">0</div>
+      </div>
+    </div>
   </div>
   <div class="row">
-  <div class="col-md-6">
-  <div class="card">
-  <div class="card-header bg-dark text-white">
-  <h5 class="mb-0">Nova Peça</h5>
-  </div>
-  <div class="card-body">
-  <div class="form-group">
-  <label>Nome</label>
-  <input type="text" class="form-control" id="pecaNome" placeholder="Ex: Turbo">
-  </div>
-  <div class="form-group">
-  <label>Tipo</label>
-  <select class="form-control" id="pecaTipo">
-  <option value="motor">Motor</option>
-  <option value="cambio">Câmbio</option>
-  <option value="suspensao">Suspensão</option>
-  <option value="kit_angulo">Kit ângulo</option>
-  <option value="diferencial">Diferencial</option>
-  </select>
-  </div>
-  <div class="form-group">
-  <label>Preço</label>
-  <input type="number" class="form-control" id="pecaPreco" placeholder="Ex: 5000"
-  step="0.01">
-  </div>
-  <div class="form-group">
-  <label>Durabilidade Máxima</label>
-  <input type="number" class="form-control" id="pecaDurabilidade"
-  placeholder="Ex: 100" value="100" step="0.1">
-  </div>
-  <div class="form-group">
-  <label>Coeficiente de Quebra (1.0 = normal)</label>
-  <input type="number" class="form-control" id="pecaCoeficiente" placeholder="Ex: 1.0"
-  value="1.0" step="0.1">
-  </div>
-  <div class="form-group">
-  <label>Compatibilidade com Carros <small class="text-muted">(Clique para adicionar)</small></label>
-  <div class="position-relative">
-  <input type="text" class="form-control" id="pecaCompatibilidadeInput"
-  placeholder="Clique para selecionar modelos de carros..."
-  readonly style="cursor: pointer; background-color: #f8f9fa;">
-  <div class="dropdown-menu w-100" id="pecaCompatibilidadeDropdown"
-  style="position: absolute; top: 100%; left: 0; display: none; max-height: 250px; overflow-y: auto; z-index: 1000;">
-  </div>
-  </div>
-  <div id="pecaCompatibilidadeTags" class="mt-2" style="display: flex; flex-wrap: wrap; gap: 8px;">
-  </div>
-  <small class="text-muted d-block mt-2">
-  Clique no campo para ver opções. Use <strong>Universal</strong> para a peça servir em qualquer carro, ou selecione modelos específicos.
-  </small>
-  </div>
-  <div class="form-group">
-  <label>Imagem (opcional)</label>
-  <input type="file" class="form-control" id="pecaImagem" accept="image/*">
-  <small class="text-muted d-block mt-2">Selecione uma imagem para a peça (PNG, JPG, etc)</small>
-  <div id="pecaImagemPreview" style="margin-top: 10px;">
-  <img id="pecaImagemPreviewImg" style="max-width: 100%; max-height: 150px; display: none;">
-  </div>
-  </div>
-  <button class="btn btn-primary w-100" type="button" onclick="window.cadastrarPeca()">
-  Cadastrar Peça
-  </button>
-  </div>
-  </div>
-  </div>
-  <div class="col-md-6">
-  <div class="card">
-  <div class="card-header bg-dark text-white">
-  <h5 class="mb-0">Peças Cadastradas</h5>
-  </div>
-  <div class="card-body" id="listaPecas" style="max-height: 500px; overflow-y: auto;">
-  <p class="text-muted">Carregando...</p>
-  </div>
-  </div>
-  </div>
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header bg-dark text-white">
+          <h5 class="mb-0">Nova Peça</h5>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label>Nome</label>
+            <input type="text" class="form-control" id="pecaNome" placeholder="Ex: Turbo">
+          </div>
+          <div class="form-group">
+            <label>Tipo</label>
+            <select class="form-control" id="pecaTipo">
+              <option value="motor">Motor</option>
+              <option value="cambio">Câmbio</option>
+              <option value="suspensao">Suspensão</option>
+              <option value="kit_angulo">Kit ângulo</option>
+              <option value="diferencial">Diferencial</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Preço</label>
+            <input type="number" class="form-control" id="pecaPreco" placeholder="Ex: 5000" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Durabilidade Máxima</label>
+            <input type="number" class="form-control" id="pecaDurabilidade" placeholder="Ex: 100" value="100" step="0.1">
+          </div>
+          <div class="form-group">
+            <label>Coeficiente de Quebra (1.0 = normal)</label>
+            <input type="number" class="form-control" id="pecaCoeficiente" placeholder="Ex: 1.0" value="1.0" step="0.1">
+          </div>
+          <div class="form-group">
+            <label>Compatibilidade com Carros <small class="text-muted">(Clique para adicionar)</small></label>
+            <div class="position-relative">
+              <input type="text" class="form-control" id="pecaCompatibilidadeInput" placeholder="Clique para selecionar modelos de carros..." readonly style="cursor: pointer; background-color: #f8f9fa;">
+              <div class="dropdown-menu w-100" id="pecaCompatibilidadeDropdown" style="position: absolute; top: 100%; left: 0; display: none; max-height: 250px; overflow-y: auto; z-index: 1000;"></div>
+            </div>
+            <div id="pecaCompatibilidadeTags" class="mt-2" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+            <small class="text-muted d-block mt-2">Clique no campo para ver opções. Use <strong>Universal</strong> para a peça servir em qualquer carro, ou selecione modelos específicos.</small>
+          </div>
+          <div class="form-group">
+            <label>Imagem (opcional)</label>
+            <input type="file" class="form-control" id="pecaImagem" accept="image/*">
+            <small class="text-muted d-block mt-2">Selecione uma imagem para a peça (PNG, JPG, etc)</small>
+            <div id="pecaImagemPreview" style="margin-top: 10px;">
+              <img id="pecaImagemPreviewImg" style="max-width: 100%; max-height: 150px; display: none;">
+            </div>
+          </div>
+          <button class="btn btn-primary w-100" type="button" onclick="window.cadastrarPeca()">Cadastrar Peça</button>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header bg-dark text-white">
+          <h5 class="mb-0">Peças Cadastradas</h5>
+        </div>
+        <div class="card-body" id="listaPecas" style="max-height: 500px; overflow-y: auto;">
+          <p class="text-muted">Carregando...</p>
+        </div>
+      </div>
+    </div>
   </div>
   <!-- Modal Editar Peça -->
   <div class="modal fade" id="modalEditarPeca" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-  <div class="modal-content">
-  <div class="modal-header bg-dark text-white">
-  <h5 class="modal-title">Editar Peça</h5>
-  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-  </div>
-  <div class="modal-body">
-  <input type="hidden" id="editPecaId">
-  <div class="form-group">
-  <label>Nome</label>
-  <input type="text" class="form-control" id="editPecaNome">
-  </div>
-  <div class="form-group">
-  <label>Tipo</label>
-  <select class="form-control" id="editPecaTipo">
-  <option value="motor">Motor</option>
-  <option value="cambio">Câmbio</option>
-  <option value="suspensao">Suspensão</option>
-  <option value="kit_angulo">Kit ângulo</option>
-  <option value="diferencial">Diferencial</option>
-  </select>
-  </div>
-  <div class="form-group">
-  <label>Preço</label>
-  <input type="number" class="form-control" id="editPecaPreco" step="0.01">
-  </div>
-  <div class="form-group">
-  <label>Durabilidade Máxima</label>
-  <input type="number" class="form-control" id="editPecaDurabilidade" step="0.1">
-  </div>
-  <div class="form-group">
-  <label>Coeficiente de Quebra (1.0 = normal)</label>
-  <input type="number" class="form-control" id="editPecaCoeficiente" step="0.1">
-  </div>
-  <div class="form-group">
-  <label>Compatibilidade com Carros <small class="text-muted">(Clique para adicionar)</small></label>
-  <div class="position-relative">
-  <input type="text" class="form-control" id="editPecaCompatibilidadeInput"
-  placeholder="Clique para selecionar modelos de carros..."
-  readonly style="cursor: pointer; background-color: #f8f9fa;">
-  <div class="dropdown-menu w-100" id="editPecaCompatibilidadeDropdown"
-  style="position: absolute; top: 100%; left: 0; display: none; max-height: 250px; overflow-y: auto; z-index: 1000;">
-  </div>
-  </div>
-  <div id="editPecaCompatibilidadeTags" class="mt-2" style="display: flex; flex-wrap: wrap; gap: 8px;">
-  </div>
-  <small class="text-muted d-block mt-2">
-  Clique no campo para ver opções. Use <strong>Universal</strong> para a peça servir em qualquer carro, ou selecione modelos específicos.
-  </small>
-  </div>
-  <div class="form-group">
-  <label>Imagem</label>
-  <div id="editPecaImagemAtual" style="margin-bottom: 10px;">
-  <img id="editPecaImagemAtualImg" style="max-width: 100%; max-height: 150px; display: none;" alt="Imagem atual">
-  </div>
-  <input type="file" class="form-control" id="editPecaImagem" accept="image/*">
-  <small class="text-muted d-block mt-2">Selecione uma nova imagem para substituir (opcional)</small>
-  <button type="button" class="btn btn-sm btn-danger mt-2" id="editPecaDeletarImagemBtn" style="display: none;" onclick="window.deletarImagemPeca()">
-   Deletar Imagem
-  </button>
-  </div>
-  </div>
-  <div class="modal-footer">
-  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-  <button type="button" class="btn btn-danger" onclick="window.deletarPeca()">Deletar Peça</button>
-  <button type="button" class="btn btn-primary" onclick="window.salvarEdicaoPeca()">Salvar</button>
-  </div>
-  </div>
-  </div>
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-dark text-white">
+          <h5 class="modal-title">Editar Peça</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editPecaId">
+          <div class="form-group">
+            <label>Nome</label>
+            <input type="text" class="form-control" id="editPecaNome">
+          </div>
+          <div class="form-group">
+            <label>Tipo</label>
+            <select class="form-control" id="editPecaTipo">
+              <option value="motor">Motor</option>
+              <option value="cambio">Câmbio</option>
+              <option value="suspensao">Suspensão</option>
+              <option value="kit_angulo">Kit ângulo</option>
+              <option value="diferencial">Diferencial</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Preço</label>
+            <input type="number" class="form-control" id="editPecaPreco" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Durabilidade Máxima</label>
+            <input type="number" class="form-control" id="editPecaDurabilidade" step="0.1">
+          </div>
+          <div class="form-group">
+            <label>Coeficiente de Quebra (1.0 = normal)</label>
+            <input type="number" class="form-control" id="editPecaCoeficiente" step="0.1">
+          </div>
+          <div class="form-group">
+            <label>Compatibilidade com Carros <small class="text-muted">(Clique para adicionar)</small></label>
+            <div class="position-relative">
+              <input type="text" class="form-control" id="editPecaCompatibilidadeInput" placeholder="Clique para selecionar modelos de carros..." readonly style="cursor: pointer; background-color: #f8f9fa;">
+              <div class="dropdown-menu w-100" id="editPecaCompatibilidadeDropdown" style="position: absolute; top: 100%; left: 0; display: none; max-height: 250px; overflow-y: auto; z-index: 1000;"></div>
+            </div>
+            <div id="editPecaCompatibilidadeTags" class="mt-2" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+            <small class="text-muted d-block mt-2">Clique no campo para ver opções. Use <strong>Universal</strong> para a peça servir em qualquer carro, ou selecione modelos específicos.</small>
+          </div>
+          <div class="form-group">
+            <label>Imagem</label>
+            <div id="editPecaImagemAtual" style="margin-bottom: 10px;">
+              <img id="editPecaImagemAtualImg" style="max-width: 100%; max-height: 150px; display: none;" alt="Imagem atual">
+            </div>
+            <input type="file" class="form-control" id="editPecaImagem" accept="image/*">
+            <small class="text-muted d-block mt-2">Selecione uma nova imagem para substituir (opcional)</small>
+            <button type="button" class="btn btn-sm btn-danger mt-2" id="editPecaDeletarImagemBtn" style="display: none;" onclick="window.deletarImagemPeca()">Deletar Imagem</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-danger" onclick="window.deletarPeca()">Deletar Peça</button>
+          <button type="button" class="btn btn-primary" onclick="window.salvarEdicaoPeca()">Salvar</button>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="toast-container"></div>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script>
-  // Verificar autenticação de admin
-  if (!sessionStorage.getItem('admin_logado')) {
-  // Se não tem sessão de admin, redireciona para login
-  // Mas permite carregar para testar
-  }
-  // Variáveis globais para controlar auto-refresh
-  let intervaloSolicitacoesPecas = null;
-  let intervaloSolicitacoesCarros = null;
-  let intervaloContadores = null;
-  let abaSolicitacoesPecasAtiva = true;
-  let abaSolicitacoesCarrosAtiva = false;
-  // Função auxiliar para ler arquivo como Base64
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+(function() {
+  let intervaloSolicitacoesPecas = null, intervaloSolicitacoesCarros = null, intervaloContadores = null;
+  let abaSolicitacoesPecasAtiva = true, abaSolicitacoesCarrosAtiva = false;
+
   function lerArquivoComoBase64(arquivo) {
-  return new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(reader.result);
-  reader.onerror = reject;
-  reader.readAsDataURL(arquivo);
-  });
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(arquivo);
+    });
   }
-  // Cadastrar peça: definido em window para o onclick do botão sempre resolver
+
   window.cadastrarPeca = async function() {
-  var nome = (document.getElementById('pecaNome') && document.getElementById('pecaNome').value) ? document.getElementById('pecaNome').value.trim() : '';
-  var tipo = (document.getElementById('pecaTipo') && document.getElementById('pecaTipo').value) ? document.getElementById('pecaTipo').value : 'motor';
-  var preco = (document.getElementById('pecaPreco') && document.getElementById('pecaPreco').value) ? document.getElementById('pecaPreco').value.trim() : '';
-  var durabilidade = (document.getElementById('pecaDurabilidade') && document.getElementById('pecaDurabilidade').value) ? document.getElementById('pecaDurabilidade').value.trim() : '100';
-  var coeficiente = (document.getElementById('pecaCoeficiente') && document.getElementById('pecaCoeficiente').value) ? document.getElementById('pecaCoeficiente').value.trim() : '1.0';
-  if (!nome) { alert('Preencha o Nome da peça.'); return; }
-  if (!preco || isNaN(parseFloat(preco))) { alert('Preencha um Preço válido.'); return; }
-  var compatibilidade = ['universal'];
-  var tagsContainer = document.getElementById('pecaCompatibilidadeTags');
-  if (tagsContainer) {
-  var spans = tagsContainer.querySelectorAll('[data-model-id]');
-  if (spans && spans.length) {
-  compatibilidade = Array.from(spans).map(function(s) { return s.getAttribute('data-model-id'); }).filter(Boolean);
-  }
-  }
-  var payload = { nome: nome, tipo: tipo, preco: preco, durabilidade: durabilidade, coeficiente_quebra: coeficiente, compatibilidade: compatibilidade };
-  var inputImagem = document.getElementById('pecaImagem');
-  if (inputImagem && inputImagem.files && inputImagem.files.length) {
-  try { payload.imagem = (await lerArquivoComoBase64(inputImagem.files[0])).split(',')[1] || ''; } catch (e) { console.warn('Imagem ignorada:', e); }
-  }
-  try {
-  var r = await fetch('/api/admin/cadastrar-peca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  var data = await r.json();
-  if (data.sucesso) {
-  document.getElementById('pecaNome').value = ''; document.getElementById('pecaPreco').value = ''; if (document.getElementById('pecaDurabilidade')) document.getElementById('pecaDurabilidade').value = '100'; if (document.getElementById('pecaCoeficiente')) document.getElementById('pecaCoeficiente').value = '1.0';
-  if (inputImagem) inputImagem.value = ''; if (tagsContainer) tagsContainer.innerHTML = '';
-  if (typeof carregarPecas === 'function') carregarPecas();
-  alert('Peça cadastrada com sucesso.');
-  } else { alert('Erro: ' + (data.erro || 'Erro ao cadastrar')); }
-  } catch (e) { alert('Erro ao cadastrar: ' + e.message); }
+    var nome = (document.getElementById('pecaNome') && document.getElementById('pecaNome').value) ? document.getElementById('pecaNome').value.trim() : '';
+    var tipo = (document.getElementById('pecaTipo') && document.getElementById('pecaTipo').value) ? document.getElementById('pecaTipo').value : 'motor';
+    var preco = (document.getElementById('pecaPreco') && document.getElementById('pecaPreco').value) ? document.getElementById('pecaPreco').value.trim() : '';
+    var durabilidade = (document.getElementById('pecaDurabilidade') && document.getElementById('pecaDurabilidade').value) ? document.getElementById('pecaDurabilidade').value.trim() : '100';
+    var coeficiente = (document.getElementById('pecaCoeficiente') && document.getElementById('pecaCoeficiente').value) ? document.getElementById('pecaCoeficiente').value.trim() : '1.0';
+    if (!nome) { alert('Preencha o Nome da peça.'); return; }
+    if (!preco || isNaN(parseFloat(preco))) { alert('Preencha um Preço válido.'); return; }
+    var compatibilidade = ['universal'];
+    var tagsContainer = document.getElementById('pecaCompatibilidadeTags');
+    if (tagsContainer) {
+      var spans = tagsContainer.querySelectorAll('[data-model-id]');
+      if (spans && spans.length) compatibilidade = Array.from(spans).map(function(s) { return s.getAttribute('data-model-id'); }).filter(Boolean);
+    }
+    var payload = { nome: nome, tipo: tipo, preco: preco, durabilidade: durabilidade, coeficiente_quebra: coeficiente, compatibilidade: compatibilidade };
+    var inputImagem = document.getElementById('pecaImagem');
+    if (inputImagem && inputImagem.files && inputImagem.files.length) {
+      try { payload.imagem = (await lerArquivoComoBase64(inputImagem.files[0])).split(',')[1] || ''; } catch (e) { console.warn('Imagem ignorada:', e); }
+    }
+    try {
+      var r = await fetch('/api/admin/cadastrar-peca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      var data = await r.json();
+      if (data.sucesso) {
+        document.getElementById('pecaNome').value = ''; document.getElementById('pecaPreco').value = '';
+        if (document.getElementById('pecaDurabilidade')) document.getElementById('pecaDurabilidade').value = '100';
+        if (document.getElementById('pecaCoeficiente')) document.getElementById('pecaCoeficiente').value = '1.0';
+        if (inputImagem) inputImagem.value = ''; if (tagsContainer) tagsContainer.innerHTML = '';
+        if (typeof carregarPecas === 'function') carregarPecas();
+        alert('Peça cadastrada com sucesso.');
+      } else { alert('Erro: ' + (data.erro || 'Erro ao cadastrar')); }
+    } catch (e) { alert('Erro ao cadastrar: ' + e.message); }
   };
-  // Dropdown de compatibilidade: ao clicar no campo, busca carros e mostra opções
+
   function setupCompatibilidadeDropdown(inputId, dropdownId, tagsId) {
-  var input = document.getElementById(inputId);
-  var dropdown = document.getElementById(dropdownId);
-  var tagsContainer = document.getElementById(tagsId);
-  if (!input || !dropdown || !tagsContainer) return;
-  input.addEventListener('click', async function() {
-  if (dropdown.style.display === 'block') { dropdown.style.display = 'none'; return; }
-  try {
-  var r = await fetch('/api/admin/carros');
-  var carros = await r.json();
-  if (!Array.isArray(carros)) { dropdown.innerHTML = '<div class="dropdown-item text-muted">Nenhum carro cadastrado</div>'; dropdown.style.display = 'block'; return; }
-  var opcoes = '<a class="dropdown-item" href="#" data-id="universal"><i class="fas fa-globe me-1"></i> Universal</a>';
-  opcoes += carros.map(function(c) {
-  var id = (c.id != null) ? String(c.id) : '';
-  var label = ((c.marca || '') + ' ' + (c.modelo || '')).trim();
-  return '<a class="dropdown-item" href="#" data-id="' + id.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;') + '">' + (label || id) + '</a>';
-  }).join('');
-  dropdown.innerHTML = opcoes;
-  dropdown.style.display = 'block';
-  } catch (e) { dropdown.innerHTML = '<div class="dropdown-item text-danger">Erro ao carregar carros</div>'; dropdown.style.display = 'block'; }
-  });
-  dropdown.addEventListener('click', function(e) {
-  var a = e.target.closest('a[data-id]');
-  if (!a) return;
-  e.preventDefault();
-  var id = a.getAttribute('data-id');
-  var label = (id === 'universal') ? 'Universal' : (a.textContent || '').trim().replace(/^\s*Universal\s*$/, 'Universal');
-  if (id === 'universal') label = 'Universal';
-  else if (!label) label = id;
-  var already = Array.from(tagsContainer.querySelectorAll('[data-model-id]')).some(function(s) { return s.getAttribute('data-model-id') === id; });
-  if (already) return;
-  if (id === 'universal') {
-  Array.from(tagsContainer.querySelectorAll('[data-model-id]')).forEach(function(s) { s.remove(); });
-  } else {
-  Array.from(tagsContainer.querySelectorAll('[data-model-id]')).forEach(function(s) { if (s.getAttribute('data-model-id') === 'universal') s.remove(); });
+    var input = document.getElementById(inputId);
+    var dropdown = document.getElementById(dropdownId);
+    var tagsContainer = document.getElementById(tagsId);
+    if (!input || !dropdown || !tagsContainer) return;
+    input.addEventListener('click', async function() {
+      if (dropdown.style.display === 'block') { dropdown.style.display = 'none'; return; }
+      try {
+        var r = await fetch('/api/admin/carros');
+        var carros = await r.json();
+        if (!Array.isArray(carros)) { dropdown.innerHTML = '<div class="dropdown-item text-muted">Nenhum carro cadastrado</div>'; dropdown.style.display = 'block'; return; }
+        var opcoes = '<a class="dropdown-item" href="#" data-id="universal"><i class="fas fa-globe me-1"></i> Universal</a>';
+        opcoes += carros.map(function(c) {
+          var id = (c.id != null) ? String(c.id) : '';
+          var label = ((c.marca || '') + ' ' + (c.modelo || '')).trim();
+          return '<a class="dropdown-item" href="#" data-id="' + id.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;') + '">' + (label || id) + '</a>';
+        }).join('');
+        dropdown.innerHTML = opcoes;
+        dropdown.style.display = 'block';
+      } catch (e) { dropdown.innerHTML = '<div class="dropdown-item text-danger">Erro ao carregar carros</div>'; dropdown.style.display = 'block'; }
+    });
+    dropdown.addEventListener('click', function(e) {
+      var a = e.target.closest('a[data-id]');
+      if (!a) return;
+      e.preventDefault();
+      var id = a.getAttribute('data-id');
+      var label = (id === 'universal') ? 'Universal' : (a.textContent || '').trim().replace(/^\s*Universal\s*$/, 'Universal');
+      if (id === 'universal') label = 'Universal';
+      else if (!label) label = id;
+      var already = Array.from(tagsContainer.querySelectorAll('[data-model-id]')).some(function(s) { return s.getAttribute('data-model-id') === id; });
+      if (already) return;
+      if (id === 'universal') {
+        Array.from(tagsContainer.querySelectorAll('[data-model-id]')).forEach(function(s) { s.remove(); });
+      } else {
+        Array.from(tagsContainer.querySelectorAll('[data-model-id]')).forEach(function(s) { if (s.getAttribute('data-model-id') === 'universal') s.remove(); });
+      }
+      var span = document.createElement('span');
+      span.className = 'badge ' + (id === 'universal' ? 'bg-primary' : 'bg-secondary') + ' me-1';
+      span.setAttribute('data-model-id', id);
+      span.textContent = label;
+      tagsContainer.appendChild(span);
+      dropdown.style.display = 'none';
+    });
+    document.addEventListener('click', function(e) {
+      if (!input.contains(e.target) && !dropdown.contains(e.target)) dropdown.style.display = 'none';
+    });
   }
-  var span = document.createElement('span');
-  span.className = 'badge ' + (id === 'universal' ? 'bg-primary' : 'bg-secondary') + ' me-1';
-  span.setAttribute('data-model-id', id);
-  span.textContent = label;
-  tagsContainer.appendChild(span);
-  dropdown.style.display = 'none';
-  });
-  document.addEventListener('click', function(e) {
-  if (!input.contains(e.target) && !dropdown.contains(e.target)) dropdown.style.display = 'none';
-  });
-  }
-  // Função para verificar se existe modal aberto
-  function temModalAbertoAdmin() {
-  return document.querySelectorAll('.modal.show').length > 0;
-  }
-  // Função para iniciar auto-refresh
+
+  function temModalAbertoAdmin() { return document.querySelectorAll('.modal.show').length > 0; }
   function iniciarAutoRefreshAdmin() {
-  // Auto-refresh das solicitações de Peças
-  intervaloSolicitacoesPecas = setInterval(() => {
-  if (abaSolicitacoesPecasAtiva && !document.hidden && !temModalAbertoAdmin()) {
-  carregarSolicitacoes();
+    intervaloSolicitacoesPecas = setInterval(() => { if (abaSolicitacoesPecasAtiva && !document.hidden && !temModalAbertoAdmin()) carregarSolicitacoes && carregarSolicitacoes(); }, 3000);
+    intervaloSolicitacoesCarros = setInterval(() => { if (abaSolicitacoesCarrosAtiva && !document.hidden && !temModalAbertoAdmin()) carregarSolicitacoesCarros && carregarSolicitacoesCarros(); }, 3000);
+    intervaloContadores = setInterval(() => { if (!document.hidden && !temModalAbertoAdmin()) atualizarContadoresSolicitacoes && atualizarContadoresSolicitacoes().catch(()=>{}); }, 3000);
   }
-  }, 3000);
-  // Auto-refresh das solicitações de carros
-  intervaloSolicitacoesCarros = setInterval(() => {
-  if (abaSolicitacoesCarrosAtiva && !document.hidden && !temModalAbertoAdmin()) {
-  carregarSolicitacoesCarros();
-  }
-  }, 3000);
-  // Auto-refresh dos contadores de solicitações pendentes
-  intervaloContadores = setInterval(() => {
-  if (!document.hidden && !temModalAbertoAdmin()) {
-  atualizarContadoresSolicitacoes().catch(e => {
-  console.error('Erro no intervalo de contadores:', e);
-  });
-  }
-  }, 3000);
-  }
-  // Função para parar auto-refresh
-  function pararAutoRefreshAdmin() {
-  if (intervaloSolicitacoesPecas) clearInterval(intervaloSolicitacoesPecas);
-  if (intervaloSolicitacoesCarros) clearInterval(intervaloSolicitacoesCarros);
-  if (intervaloContadores) clearInterval(intervaloContadores);
-  }
-  // Inicializar painel
+
   window.addEventListener('load', () => {
-  atualizarStatusAdmin();
-  atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
-  carregarPecas();
-  setupCompatibilidadeDropdown('pecaCompatibilidadeInput', 'pecaCompatibilidadeDropdown', 'pecaCompatibilidadeTags');
-  setupCompatibilidadeDropdown('editPecaCompatibilidadeInput', 'editPecaCompatibilidadeDropdown', 'editPecaCompatibilidadeTags');
-  // Iniciar auto-refresh
-  iniciarAutoRefreshAdmin();
+    atualizarStatusAdmin();
+    atualizarContadoresSolicitacoes && atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
+    carregarPecas();
+    setupCompatibilidadeDropdown('pecaCompatibilidadeInput', 'pecaCompatibilidadeDropdown', 'pecaCompatibilidadeTags');
+    setupCompatibilidadeDropdown('editPecaCompatibilidadeInput', 'editPecaCompatibilidadeDropdown', 'editPecaCompatibilidadeTags');
+    iniciarAutoRefreshAdmin();
   });
+
   async function atualizarStatusAdmin() {
-  try {
-  console.log('Atualizando status admin...');
-  const resp = await fetch('/api/admin/status');
-  const status = await resp.json();
-  console.log('Status recebido:', status);
-  document.getElementById('totalEquipes').textContent = status.total_equipes || 0;
-  } catch (e) {
-  console.log('Erro ao atualizar status');
+    try {
+      const resp = await fetch('/api/admin/status');
+      const status = await resp.json();
+      document.getElementById('totalEquipes').textContent = status.total_equipes || 0;
+    } catch (e) {}
   }
-  }
+
   async function atualizarContadoresSolicitacoes() {
-  if (typeof window.atualizarContadoresSolicitacoesAdmin === 'function') return window.atualizarContadoresSolicitacoesAdmin();
-  try {
-  const respPecas = await fetch('/api/admin/solicitacoes-pecas');
-  const pecas = await respPecas.json();
-  const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
-  const elemPecas = document.getElementById('solicitacoesPecasPendentes');
-  if (elemPecas) elemPecas.textContent = pecasPendentes;
-  const respCarros = await fetch('/api/admin/solicitacoes-carros');
-  const carros = await respCarros.json();
-  const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
-  const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
-  if (elemCarros) elemCarros.textContent = carrosPendentes;
-  } catch (e) { console.error('Erro ao atualizar contadores:', e); }
+    if (typeof window.atualizarContadoresSolicitacoesAdmin === 'function') return window.atualizarContadoresSolicitacoesAdmin();
+    try {
+      const respPecas = await fetch('/api/admin/solicitacoes-pecas');
+      const pecas = await respPecas.json();
+      const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
+      const elemPecas = document.getElementById('solicitacoesPecasPendentes');
+      if (elemPecas) elemPecas.textContent = pecasPendentes;
+      const respCarros = await fetch('/api/admin/solicitacoes-carros');
+      const carros = await respCarros.json();
+      const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
+      const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
+      if (elemCarros) elemCarros.textContent = carrosPendentes;
+    } catch (e) { console.error('Erro ao atualizar contadores:', e); }
   }
+
   async function carregarPecas() {
-  try {
-  console.log('Carregando Peças...');
-  const resp = await fetch('/api/admin/pecas');
-  const data = await resp.json();
-  console.log('Peças recebidas:', data);
-  // Carregar carros para criar mapa de compatibilidade
-  const respCarros = await fetch('/api/admin/carros');
-  const carros = await respCarros.json();
-  const mapaCarros = {};
-  if (Array.isArray(carros)) {
-  carros.forEach(carro => {
-  mapaCarros[carro.id] = `${carro.marca} ${carro.modelo}`;
-  });
+    try {
+      const resp = await fetch('/api/admin/pecas');
+      const data = await resp.json();
+      const respCarros = await fetch('/api/admin/carros');
+      const carros = await respCarros.json();
+      const mapaCarros = {};
+      if (Array.isArray(carros)) carros.forEach(carro => { mapaCarros[carro.id] = `${carro.marca} ${carro.modelo}`; });
+      const mapaModelos = {};
+      try {
+        const respModelos = await fetch('/api/admin/carros');
+        const modelos = await respModelos.json();
+        if (Array.isArray(modelos)) modelos.forEach(modelo => { mapaModelos[modelo.id] = `${modelo.marca} ${modelo.modelo}`; });
+      } catch (e) {}
+      const lista = document.getElementById('listaPecas');
+      lista.innerHTML = '';
+      if (data.erro || !Array.isArray(data)) { lista.innerHTML = '<p class="text-muted">Nenhuma peça cadastrada</p>'; return; }
+      if (data.length === 0) { lista.innerHTML = '<p class="text-muted">Nenhuma peça cadastrada</p>'; return; }
+      const pecasPorTipo = {};
+      (Array.isArray(data) ? data : []).forEach(peca => {
+        if (!pecasPorTipo[peca.tipo]) pecasPorTipo[peca.tipo] = [];
+        pecasPorTipo[peca.tipo].push(peca);
+      });
+      const ordemTipos = ['motor', 'cambio', 'suspensao', 'kit_angulo', 'diferencial'];
+      const nomeTipos = { 'motor': 'motor', 'cambio': 'Câmbios', 'suspensao': 'Suspensões', 'kit_angulo': 'Kit Ângulo', 'diferencial': 'Diferenciais' };
+      ordemTipos.forEach(tipo => {
+        if (pecasPorTipo[tipo]) {
+          const tituloTipo = document.createElement('h6');
+          tituloTipo.className = 'mt-4 mb-2 text-primary fw-bold border-bottom pb-2';
+          tituloTipo.textContent = nomeTipos[tipo];
+          lista.appendChild(tituloTipo);
+          pecasPorTipo[tipo].forEach((peca, idx) => {
+            const div = document.createElement('div');
+            div.className = 'mb-3 p-2 border rounded bg-light d-flex justify-content-between align-items-start gap-3';
+            if (peca.imagem) {
+              const imgCol = document.createElement('div');
+              imgCol.style.flexShrink = '0';
+              imgCol.innerHTML = `<img src="${peca.imagem}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;" alt="${peca.nome}">`;
+              div.appendChild(imgCol);
+            }
+            const pecaInfo = document.createElement('div');
+            pecaInfo.style.flex = '1';
+            let idsCompatibilidade = [];
+            if (peca.compatibilidade) {
+              const c = peca.compatibilidade;
+              if (Array.isArray(c)) idsCompatibilidade = c;
+              else if (typeof c === 'object' && c.compatibilidades) idsCompatibilidade = c.compatibilidades || [];
+              else if (typeof c === 'string') {
+                if (c.trim().startsWith('{')) { try { idsCompatibilidade = (JSON.parse(c) || {}).compatibilidades || []; } catch (e) { idsCompatibilidade = []; } }
+                else if (c.toLowerCase() !== 'universal') idsCompatibilidade = c.split(',').map(s => s.trim()).filter(Boolean);
+              }
+            }
+            let nomeCompatibilidade = 'universal';
+            if (idsCompatibilidade.length > 0 && !(idsCompatibilidade.length === 1 && String(idsCompatibilidade[0]).toLowerCase() === 'universal')) {
+              const nomes = idsCompatibilidade.map(id => mapaModelos[id] || mapaCarros[id] || id).filter(nome => nome !== 'universal');
+              nomeCompatibilidade = nomes.length > 0 ? nomes.join(', ') : 'universal';
+            }
+            pecaInfo.innerHTML = `<strong>[${idx + 1}] ${peca.nome}</strong><small class="d-block text-muted">Compatibilidade: ${nomeCompatibilidade}</small><small class="d-block">Durabilidade: ${peca.durabilidade} | Quebra: ${(peca.coeficiente_quebra * 100).toFixed(0)}%</small><small class="d-block text-success fw-bold">${formatarMoeda(peca.preco)}</small>`;
+            const botao = document.createElement('button');
+            botao.className = 'btn btn-sm btn-warning ms-2';
+            botao.textContent = ' Editar';
+            botao.onclick = () => abrirEdicaoPeca(peca);
+            div.appendChild(pecaInfo);
+            div.appendChild(botao);
+            lista.appendChild(div);
+          });
+        }
+      });
+    } catch (e) { document.getElementById('listaPecas').innerHTML = '<p class="text-danger">Erro ao carregar: ' + e.message + '</p>'; }
   }
-  // Carregar modelos de carros para compatibilidades (IDs de modelos_carro_loja)
-  const mapaModelos = {};
-  try {
-  const respModelos = await fetch('/api/admin/carros'); // mesma endpoint retorna carros/modelos
-  const modelos = await respModelos.json();
-  if (Array.isArray(modelos)) {
-  modelos.forEach(modelo => {
-  // modelo.id pode ser ID do modelo ou do carro
-  mapaModelos[modelo.id] = `${modelo.marca} ${modelo.modelo}`;
-  });
+
+  async function abrirEdicaoPeca(peca) {
+    if (!peca) return;
+    document.getElementById('editPecaId').value = peca.id || '';
+    document.getElementById('editPecaNome').value = peca.nome || '';
+    document.getElementById('editPecaTipo').value = peca.tipo || 'motor';
+    document.getElementById('editPecaPreco').value = peca.preco ?? '';
+    document.getElementById('editPecaDurabilidade').value = peca.durabilidade ?? '100';
+    document.getElementById('editPecaCoeficiente').value = peca.coeficiente_quebra ?? '1.0';
+    var imgEl = document.getElementById('editPecaImagemAtualImg');
+    if (imgEl) {
+      if (peca.imagem) { imgEl.src = peca.imagem.startsWith('data:') ? peca.imagem : 'data:image/jpeg;base64,' + peca.imagem; imgEl.style.display = 'block'; }
+      else { imgEl.src = ''; imgEl.style.display = 'none'; }
+      var btnDel = document.getElementById('editPecaDeletarImagemBtn'); if (btnDel) btnDel.style.display = peca.imagem ? 'inline-block' : 'none';
+    }
+    document.getElementById('editPecaImagem').value = '';
+    var tagsEdit = document.getElementById('editPecaCompatibilidadeTags'); if (tagsEdit) tagsEdit.innerHTML = '';
+    var comp = [];
+    if (peca.compatibilidade) {
+      var c = peca.compatibilidade;
+      if (Array.isArray(c)) comp = c;
+      else if (typeof c === 'object' && c.compatibilidades) comp = c.compatibilidades || [];
+      else if (typeof c === 'string') {
+        if (c.trim().startsWith('{')) { try { comp = (JSON.parse(c) || {}).compatibilidades || []; } catch (e) {} }
+        else if (c.toLowerCase() !== 'universal') comp = c.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      }
+    }
+    var mapaNomes = {};
+    try { var rCarros = await fetch('/api/admin/carros'); var carrosResp = await rCarros.json(); if (Array.isArray(carrosResp)) carrosResp.forEach(function(c){ mapaNomes[c.id] = ((c.marca || '') + ' ' + (c.modelo || '')).trim() || c.id; }); } catch (e) {}
+    var isUniversal = comp.length === 0 || (comp.length === 1 && String(comp[0]).toLowerCase() === 'universal');
+    if (isUniversal) {
+      var spanU = document.createElement('span');
+      spanU.className = 'badge bg-primary me-1';
+      spanU.setAttribute('data-model-id', 'universal');
+      spanU.textContent = 'Universal';
+      if (tagsEdit) tagsEdit.appendChild(spanU);
+    } else {
+      comp.forEach(function(id) {
+        var span = document.createElement('span');
+        span.className = 'badge ' + (String(id).toLowerCase() === 'universal' ? 'bg-primary' : 'bg-secondary') + ' me-1';
+        span.setAttribute('data-model-id', id);
+        span.textContent = (String(id).toLowerCase() === 'universal') ? 'Universal' : (mapaNomes[id] || id);
+        if (tagsEdit) tagsEdit.appendChild(span);
+      });
+    }
+    new bootstrap.Modal(document.getElementById('modalEditarPeca')).show();
   }
-  } catch (e) {
-  console.log('[DEBUG] Erro ao carregar modelos:', e);
-  }
-  const lista = document.getElementById('listaPecas');
-  lista.innerHTML = '';
-  // Verificar se é um erro
-  if (data.erro || !Array.isArray(data)) {
-  lista.innerHTML = '<p class="text-muted">Nenhuma peça cadastrada</p>';
-  return;
-  }
-  if (data.length === 0) {
-  lista.innerHTML = '<p class="text-muted">Nenhuma peça cadastrada</p>';
-  return;
-  }
-  // Agrupar por tipo
-  const pecasPorTipo = {};
-  (Array.isArray(data) ? data : []).forEach(peca => {
-  if (!pecasPorTipo[peca.tipo]) {
-  pecasPorTipo[peca.tipo] = [];
-  }
-  pecasPorTipo[peca.tipo].push(peca);
-  });
-  // Ordem dos tipos
-  const ordemTipos = ['motor', 'cambio', 'suspensao', 'kit_angulo', 'diferencial'];
-  const nomeTipos = {
-  'motor': 'motor',
-  'cambio': 'Câmbios',
-  'suspensao': 'Suspensões',
-  'kit_angulo': 'Kit Ângulo',
-  'diferencial': 'Diferenciais'
-  };
-  // Renderizar por tipo
-  ordemTipos.forEach(tipo => {
-  if (pecasPorTipo[tipo]) {
-  const tituloTipo = document.createElement('h6');
-  tituloTipo.className = 'mt-4 mb-2 text-primary fw-bold border-bottom pb-2';
-  tituloTipo.textContent = nomeTipos[tipo];
-  lista.appendChild(tituloTipo);
-  pecasPorTipo[tipo].forEach((peca, idx) => {
-  const div = document.createElement('div');
-  div.className = 'mb-3 p-2 border rounded bg-light d-flex justify-content-between align-items-start gap-3';
-  // Coluna de imagem (se existir)
-  if (peca.imagem) {
-  const imgCol = document.createElement('div');
-  imgCol.style.flexShrink = '0';
-  imgCol.innerHTML = `<img src="${peca.imagem}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 4px;" alt="${peca.nome}">`;
-  div.appendChild(imgCol);
-  }
-  const pecaInfo = document.createElement('div');
-  pecaInfo.style.flex = '1';
-  // Converter compatibilidade para nome do carro
-  let nomeCompatibilidade = 'universal';
-  if (peca.compatibilidade) {
-  // Se é array, converter IDs para nomes
-  if (Array.isArray(peca.compatibilidade)) {
-  const nomes = peca.compatibilidade
-  .map(id => mapaModelos[id] || mapaCarros[id] || id)
-  .filter(nome => nome !== 'universal');
-  nomeCompatibilidade = nomes.length > 0 ? nomes.join(', ') : 'universal';
-  } else if (peca.compatibilidade !== 'universal') {
-  nomeCompatibilidade = mapaModelos[peca.compatibilidade] || mapaCarros[peca.compatibilidade] || peca.compatibilidade;
-  }
-  }
-  pecaInfo.innerHTML = `
-    <strong>[${idx + 1}] ${peca.nome}</strong>
-    <small class="d-block text-muted">Compatibilidade: ${nomeCompatibilidade}</small>
-    <small class="d-block">Durabilidade: ${peca.durabilidade} | Quebra: ${(peca.coeficiente_quebra * 100).toFixed(0)}%</small>
-    <small class="d-block text-success fw-bold">${formatarMoeda(peca.preco)}</small>
-  `;
-  const botao = document.createElement('button');
-  botao.className = 'btn btn-sm btn-warning ms-2';
-  botao.textContent = ' Editar';
-  botao.onclick = () => abrirEdicaoPeca(peca);
-  div.appendChild(pecaInfo);
-  div.appendChild(botao);
-  lista.appendChild(div);
-  });
-  }
-  });
-  } catch (e) {
-  document.getElementById('listaPecas').innerHTML = '<p class="text-danger">Erro ao carregar: ' + e.message + '</p>';
-  }
-  }
-  function abrirEdicaoPeca(peca) {
-  if (!peca) return;
-  document.getElementById('editPecaId').value = peca.id || '';
-  document.getElementById('editPecaNome').value = peca.nome || '';
-  document.getElementById('editPecaTipo').value = peca.tipo || 'motor';
-  document.getElementById('editPecaPreco').value = peca.preco ?? '';
-  document.getElementById('editPecaDurabilidade').value = peca.durabilidade ?? '100';
-  document.getElementById('editPecaCoeficiente').value = peca.coeficiente_quebra ?? '1.0';
-  var imgEl = document.getElementById('editPecaImagemAtualImg');
-  if (imgEl) {
-  if (peca.imagem) { imgEl.src = peca.imagem.startsWith('data:') ? peca.imagem : 'data:image/jpeg;base64,' + peca.imagem; imgEl.style.display = 'block'; }
-  else { imgEl.src = ''; imgEl.style.display = 'none'; }
-  var btnDel = document.getElementById('editPecaDeletarImagemBtn'); if (btnDel) btnDel.style.display = peca.imagem ? 'inline-block' : 'none';
-  }
-  document.getElementById('editPecaImagem').value = '';
-  var tagsEdit = document.getElementById('editPecaCompatibilidadeTags'); if (tagsEdit) tagsEdit.innerHTML = '';
-  var comp = peca.compatibilidade && Array.isArray(peca.compatibilidade) ? peca.compatibilidade : [];
-  var isUniversal = comp.length === 0 || (comp.length === 1 && String(comp[0]).toLowerCase() === 'universal');
-  if (isUniversal) {
-  var spanU = document.createElement('span');
-  spanU.className = 'badge bg-primary me-1';
-  spanU.setAttribute('data-model-id', 'universal');
-  spanU.textContent = 'Universal';
-  if (tagsEdit) tagsEdit.appendChild(spanU);
-  } else {
-  comp.forEach(function(id) {
-  var span = document.createElement('span');
-  span.className = 'badge bg-secondary me-1';
-  span.setAttribute('data-model-id', id);
-  span.textContent = (String(id).toLowerCase() === 'universal') ? 'Universal' : id;
-  if (tagsEdit) tagsEdit.appendChild(span);
-  });
-  }
-  var modal = new bootstrap.Modal(document.getElementById('modalEditarPeca'));
-  modal.show();
-  }
+
   async function salvarEdicaoPeca() {
-  var id = document.getElementById('editPecaId') && document.getElementById('editPecaId').value;
-  var nome = document.getElementById('editPecaNome') && document.getElementById('editPecaNome').value.trim();
-  var tipo = document.getElementById('editPecaTipo') && document.getElementById('editPecaTipo').value;
-  var preco = document.getElementById('editPecaPreco') && document.getElementById('editPecaPreco').value.trim();
-  var durabilidade = document.getElementById('editPecaDurabilidade') && document.getElementById('editPecaDurabilidade').value;
-  var coeficiente = document.getElementById('editPecaCoeficiente') && document.getElementById('editPecaCoeficiente').value;
-  if (!id) { alert('ID da peça não encontrado.'); return; }
-  if (!nome) { alert('Preencha o Nome.'); return; }
-  var compatibilidade = ['universal'];
-  var tagsEdit = document.getElementById('editPecaCompatibilidadeTags');
-  if (tagsEdit) {
-  var spans = tagsEdit.querySelectorAll('[data-model-id]');
-  if (spans && spans.length) compatibilidade = Array.from(spans).map(function(s) { return s.getAttribute('data-model-id'); }).filter(Boolean);
+    var id = document.getElementById('editPecaId') && document.getElementById('editPecaId').value;
+    var nome = document.getElementById('editPecaNome') && document.getElementById('editPecaNome').value.trim();
+    var tipo = document.getElementById('editPecaTipo') && document.getElementById('editPecaTipo').value;
+    var preco = document.getElementById('editPecaPreco') && document.getElementById('editPecaPreco').value.trim();
+    var durabilidade = document.getElementById('editPecaDurabilidade') && document.getElementById('editPecaDurabilidade').value;
+    var coeficiente = document.getElementById('editPecaCoeficiente') && document.getElementById('editPecaCoeficiente').value;
+    if (!id) { alert('ID da peça não encontrado.'); return; }
+    if (!nome) { alert('Preencha o Nome.'); return; }
+    var compatibilidade = ['universal'];
+    var tagsEdit = document.getElementById('editPecaCompatibilidadeTags');
+    if (tagsEdit) { var spans = tagsEdit.querySelectorAll('[data-model-id]'); if (spans && spans.length) compatibilidade = Array.from(spans).map(function(s) { return s.getAttribute('data-model-id'); }).filter(Boolean); }
+    var payload = { id: id, nome: nome, tipo: tipo, preco: preco, durabilidade: durabilidade, coeficiente_quebra: coeficiente, compatibilidade: compatibilidade };
+    var inputNovaImagem = document.getElementById('editPecaImagem');
+    if (inputNovaImagem && inputNovaImagem.files && inputNovaImagem.files.length) {
+      try { payload.imagem = (await lerArquivoComoBase64(inputNovaImagem.files[0])).split(',')[1] || ''; } catch (e) {}
+    }
+    try {
+      var r = await fetch('/api/admin/editar-peca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      var data = await r.json();
+      if (data.sucesso) {
+        bootstrap.Modal.getInstance(document.getElementById('modalEditarPeca')).hide();
+        if (typeof carregarPecas === 'function') carregarPecas();
+        alert('Peça atualizada.');
+      } else { alert('Erro: ' + (data.erro || 'Erro ao salvar')); }
+    } catch (e) { alert('Erro ao salvar: ' + e.message); }
   }
-  var payload = { id: id, nome: nome, tipo: tipo, preco: preco, durabilidade: durabilidade, coeficiente_quebra: coeficiente, compatibilidade: compatibilidade };
-  var inputNovaImagem = document.getElementById('editPecaImagem');
-  if (inputNovaImagem && inputNovaImagem.files && inputNovaImagem.files.length) {
-  try { payload.imagem = (await lerArquivoComoBase64(inputNovaImagem.files[0])).split(',')[1] || ''; } catch (e) { console.warn('Nova imagem ignorada:', e); }
-  }
-  try {
-  var r = await fetch('/api/admin/editar-peca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  var data = await r.json();
-  if (data.sucesso) {
-  bootstrap.Modal.getInstance(document.getElementById('modalEditarPeca')).hide();
-  if (typeof carregarPecas === 'function') carregarPecas();
-  alert('Peça atualizada.');
-  } else { alert('Erro: ' + (data.erro || 'Erro ao salvar')); }
-  } catch (e) { alert('Erro ao salvar: ' + e.message); }
-  }
+
   async function deletarPeca() {
-  var id = document.getElementById('editPecaId') && document.getElementById('editPecaId').value;
-  if (!id) return;
-  if (!confirm('Tem certeza que deseja deletar esta peça?')) return;
-  try {
-  var r = await fetch('/api/admin/deletar-peca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) });
-  var data = await r.json();
-  if (data.sucesso) {
-  bootstrap.Modal.getInstance(document.getElementById('modalEditarPeca')).hide();
-  if (typeof carregarPecas === 'function') carregarPecas();
-  alert('Peça deletada.');
-  } else { alert('Erro: ' + (data.erro || '')); }
-  } catch (e) { alert('Erro ao deletar: ' + e.message); }
+    var id = document.getElementById('editPecaId') && document.getElementById('editPecaId').value;
+    if (!id) return;
+    if (!confirm('Tem certeza que deseja deletar esta peça?')) return;
+    try {
+      var r = await fetch('/api/admin/deletar-peca', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) });
+      var data = await r.json();
+      if (data.sucesso) {
+        bootstrap.Modal.getInstance(document.getElementById('modalEditarPeca')).hide();
+        if (typeof carregarPecas === 'function') carregarPecas();
+        alert('Peça deletada.');
+      } else { alert('Erro: ' + (data.erro || '')); }
+    } catch (e) { alert('Erro ao deletar: ' + e.message); }
   }
+
   window.abrirEdicaoPeca = abrirEdicaoPeca;
   window.salvarEdicaoPeca = salvarEdicaoPeca;
   window.deletarPeca = deletarPeca;
-  </script>
-  <script>
-    function deletarImagemPeca() {
-      var imgEl = document.getElementById('editPecaImagemAtualImg');
-      if (imgEl) { imgEl.src = ''; imgEl.style.display = 'none'; }
-      var btn = document.getElementById('editPecaDeletarImagemBtn'); if (btn) btn.style.display = 'none';
-    }
-    window.deletarImagemPeca = deletarImagemPeca;
-  </script>
-  <!-- Verificar URL para abrir evento automaticamente após login (apenas para não-admins) -->
-  <script>
-    window.addEventListener('load', async () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const etapaId = urlParams.get('etapa');
-      
-      if (etapaId) {
-        // Verificar se é admin - admins não devem abrir evento automaticamente
-        try {
-          const adminResp = await fetch('/api/user/is-admin');
-          if (adminResp.ok) {
-            const adminData = await adminResp.json();
-            if (adminData.is_admin) {
-              console.log('[AUTO-EVENTO] Admin detectado - ignorando abertura automática de evento');
-              // Limpar URL para não reabrir o modal ao atualizar
-              window.history.replaceState({}, document.title, '/admin');
-              return;
-            }
-          }
-        } catch (e) {
-          console.log('[AUTO-EVENTO] Erro ao verificar admin:', e);
-        }
-        
-        console.log('[AUTO-EVENTO] Abrindo evento para etapa:', etapaId);
-        
-        // Aguardar um pouco para garantir que tudo está carregado
-        setTimeout(() => {
-          // Tentar chamar a função mostrarEventoAoVivo
-          if (typeof mostrarEventoAoVivo === 'function') {
-            console.log('[AUTO-EVENTO] Função disponível, abrindo modal...');
-            mostrarEventoAoVivo(etapaId);
-          } else {
-            console.warn('[AUTO-EVENTO] Função mostrarEventoAoVivo ainda não está disponível');
-          }
-        }, 500);
-        
-        // Limpar URL para não reabrir o modal ao atualizar
-        window.history.replaceState({}, document.title, '/admin');
-      }
-    });
-  </script>
-</body>
-</html>
+})();
+</script>
+<script>
+function deletarImagemPeca() {
+  var imgEl = document.getElementById('editPecaImagemAtualImg');
+  if (imgEl) { imgEl.src = ''; imgEl.style.display = 'none'; }
+  var btn = document.getElementById('editPecaDeletarImagemBtn'); if (btn) btn.style.display = 'none';
+}
+window.deletarImagemPeca = deletarImagemPeca;
+</script>
+{% endblock %}

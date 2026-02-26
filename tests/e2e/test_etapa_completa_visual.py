@@ -283,6 +283,180 @@ def test_etapa_qualify_finalizar_challonge_batalhas(page: Page, base_url: str):
 
 
 @pytest.mark.e2e
+def test_equipe_ve_qualify_e_chaveamento_somente_leitura(page: Page, base_url: str):
+    """
+    Equipes participantes veem a tabela de qualify e chaveamento em modo somente leitura.
+    Admin cria etapa, equipes, qualify, finaliza. Depois loga como equipe, vai ao campeonato,
+    abre a etapa e verifica: tabela de qualify visível (sem poder editar), chaveamento visível
+    (sem botões de vencedor/passada).
+    """
+    # 1. Login admin e setup completo (campeonato, etapa, 4 equipes, qualify, finalizar)
+    page.goto(f"{base_url}/login")
+    page.locator("#admin-tab").click()
+    page.locator("#senhaAdmin").fill("admin123")
+    page.locator("#btnLoginAdmin").click()
+    page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
+
+    suf = str(int(time.time() * 1000))
+    result_camp = page.evaluate(
+        "async (suf) => { const r = await fetch('/api/admin/criar-campeonato', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ nome: 'E2E Equipe Leitura ' + suf, serie: 'A', numero_etapas: 5 }) }); const d = await r.json(); return { ok: r.ok, campeonato_id: d.campeonato_id }; }",
+        suf,
+    )
+    assert result_camp.get("ok"), f"Erro criar campeonato: {result_camp}"
+    campeonato_id = result_camp.get("campeonato_id")
+    assert campeonato_id
+
+    result_etapa = page.evaluate(
+        """async (payload) => {
+            const r = await fetch('/api/admin/cadastrar-etapa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) });
+            const d = await r.json();
+            return { ok: r.ok, etapa_id: d.etapa_id };
+        }""",
+        {"campeonato_id": campeonato_id, "numero": 1, "nome": "Etapa Leitura Equipe", "data_etapa": "2026-08-15", "hora_etapa": "10:00:00", "serie": "A"},
+    )
+    assert result_etapa.get("ok"), f"Erro criar etapa: {result_etapa}"
+    etapa_id = result_etapa.get("etapa_id")
+    assert etapa_id
+
+    result_carro = page.evaluate(
+        """async () => {
+            const r = await fetch('/api/admin/cadastrar-carro', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ marca: 'E2E', modelo: 'Leitura', preco: 5000, classe: 'basico', descricao: '' }) });
+            const d = await r.json();
+            return { ok: r.ok, modelo_id: (d.carro || {}).id };
+        }"""
+    )
+    assert result_carro.get("ok"), f"Erro criar carro: {result_carro}"
+    modelo_id = result_carro.get("modelo_id")
+    assert modelo_id
+
+    equipe_primeira_id = None
+    for i in range(4):
+        idx = i + 1
+        r_eq = page.evaluate(
+            """async ([modelo_id, idx, suf]) => {
+                const r = await fetch('/api/admin/cadastrar-equipe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ nome: 'Equipe Leitura ' + idx + ' ' + suf, senha: 's1', doricoins: 50000, serie: 'A', carro_id: modelo_id }) });
+                const d = await r.json();
+                const eq = d.equipe || {};
+                return { ok: r.ok, equipe_id: eq.id, equipe_nome: eq.nome };
+            }""",
+            [str(modelo_id), idx, suf],
+        )
+        assert r_eq.get("ok"), f"Erro criar equipe {i+1}: {r_eq}"
+        if i == 0:
+            equipe_primeira_id = r_eq.get("equipe_id")
+
+        equipe_id = r_eq.get("equipe_id")
+        page.evaluate(
+            """async (p) => {
+                const r = await fetch('/api/etapas/participar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ etapa_id: p.etapa_id, equipe_id: p.equipe_id, tipo_participacao: 'tenho_piloto' }) });
+                return { ok: r.ok };
+            }""",
+            {"etapa_id": etapa_id, "equipe_id": equipe_id},
+        )
+        r_pil = page.evaluate("""async (n) => { const r = await fetch('/api/pilotos/cadastrar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: n, senha: 's123' }) }); const d = await r.json(); return { ok: r.ok, piloto_id: d.piloto_id, piloto_nome: d.nome }; }""", f"Piloto L{idx}")
+        assert r_pil.get("ok")
+        page.evaluate(
+            """async (p) => {
+                const r = await fetch('/api/test/inscrever-candidato-piloto', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ etapa_id: p.etapa_id, equipe_id: p.equipe_id, piloto_id: p.piloto_id, piloto_nome: p.piloto_nome }) });
+                if (r.status === 404) return { ok: false };
+                return { ok: r.ok };
+            }""",
+            {"etapa_id": etapa_id, "equipe_id": equipe_id, "piloto_id": r_pil.get("piloto_id"), "piloto_nome": r_pil.get("piloto_nome")},
+        )
+        page.evaluate("""async (p) => { await fetch('/api/admin/etapas/' + p.etapa_id + '/equipes/' + p.equipe_id + '/alocar-proximo-piloto', { method: 'POST', credentials: 'include' }); return {}; }""", {"etapa_id": etapa_id, "equipe_id": equipe_id})
+        page.wait_for_timeout(150)
+
+    page.evaluate("async (eid) => { const r = await fetch('/api/admin/fazer-etapa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ etapa: eid }) }); return r.ok; }", etapa_id)
+    r_notas = page.evaluate(
+        """async (eid) => {
+            const r = await fetch('/api/admin/etapas/' + eid + '/equipes-pilotos', { credentials: 'include' });
+            const d = await r.json();
+            if (!d.equipes || d.equipes.length === 0) return { ok: false };
+            const notas = d.equipes.map((eq, i) => ({ equipe_id: eq.equipe_id, nota_linha: 10 + i, nota_angulo: 8 + i, nota_estilo: 7 + i }));
+            const r2 = await fetch('/api/test/salvar-notas-etapa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ etapa_id: eid, notas }) });
+            if (r2.status === 404) return { ok: false, status: 404 };
+            return { ok: r2.ok };
+        }""",
+        etapa_id,
+    )
+    if r_notas.get("status") == 404:
+        pytest.skip("TEST_E2E=1 necessário para /api/test/salvar-notas-etapa")
+    page.on("dialog", lambda d: d.accept())
+    page.evaluate("""async (eid) => { const r = await fetch('/api/admin/finalizar-qualificacao/' + eid, { method: 'POST', credentials: 'include' }); return r.ok; }""", etapa_id)
+    page.wait_for_timeout(500)
+
+    # 2. Logout e login como equipe
+    page.goto(f"{base_url}/login")
+    page.wait_for_load_state("networkidle")
+    page.locator("#equipe-tab").click()
+    page.wait_for_timeout(1000)
+    page.locator("#equipeSelecionada").wait_for(state="visible", timeout=5000)
+    page.select_option("#equipeSelecionada", str(equipe_primeira_id))
+    page.locator("#senhaEquipe").fill("s1")
+    page.locator("#btnLoginEquipe").click()
+    page.wait_for_url(re.compile(r".*(dashboard|admin)"), timeout=15000)
+    page.wait_for_timeout(2000)
+
+    # 3. Ir para campeonato (permite equipe) e clicar no card da etapa
+    ls = page.evaluate("() => ({ equipe_id: localStorage.getItem('equipe_id'), equipe_nome: localStorage.getItem('equipe_nome'), url: window.location.href })")
+    assert ls.get("equipe_id") and ls.get("equipe_nome"), f"localStorage equipe não definido: {ls}"
+    page.goto(f"{base_url}/campeonato")
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(3500)
+    assert "login" not in page.url.lower(), f"Equipe redirecionada para login: {page.url}"
+    card_etapa = page.locator(f"[data-etapa-id='{etapa_id}']").first
+    card_etapa.wait_for(state="visible", timeout=10000)
+    card_etapa.click()
+    page.wait_for_timeout(2000)
+    page.wait_for_timeout(1500)
+
+    # 4. Aguardar modal do evento (qualify/chaveamento) ou pits
+    modal_evento = page.locator("#modalEventoAoVivo, #modalPitsEtapa").first
+    modal_evento.wait_for(state="visible", timeout=15000)
+    expect(modal_evento).to_be_visible()
+
+    # 5. Verificar tabela de qualify (containerEventoPits) - inputs devem estar disabled
+    container_pits = page.locator("#containerEventoPits")
+    expect(container_pits).to_be_visible()
+    expect(container_pits).to_contain_text("EQUIPE")
+
+    # Equipe não é admin: inputs de nota devem estar disabled
+    inputs_nota = page.locator("#containerEventoPits input[type='number']")
+    if inputs_nota.count() > 0:
+        expect(inputs_nota.first).to_be_disabled()
+
+    # 6. Clicar em "Ver Batalhas" (dentro do modal)
+    btn_batalhas = page.locator("#modalEventoAoVivo button:has-text('Ver Batalhas')").first
+    btn_batalhas.click()
+    page.wait_for_timeout(800)
+
+    # 7. Modal de chaveamento não deve ter "Enviar para Challonge" (só admin)
+    modal_chave = page.locator("#modalChaveamentoBatalhas")
+    modal_chave.wait_for(state="visible", timeout=8000)
+    expect(modal_chave).to_be_visible()
+    expect(modal_chave).not_to_contain_text("Enviar para Challonge")
+
+    # 8. Se houver cards de partida, clicar e verificar modal somente leitura
+    page.wait_for_timeout(2000)
+    cards_batalha = page.locator(".batalha-card-clickable")
+    if cards_batalha.count() > 0:
+        cards_batalha.first.click()
+        page.wait_for_timeout(500)
+        modal_partida = page.locator("#modalPartidaBatalha")
+        modal_partida.wait_for(state="visible", timeout=5000)
+        expect(modal_partida).to_be_visible()
+        expect(modal_partida).to_contain_text("Modo somente leitura")
+        expect(modal_partida.locator("button:has-text('Executar passada')")).to_have_count(0)
+    # Se não houver cards (ex.: Challonge não configurado), o teste ainda passou nas verificações anteriores
+
+    # Para inspeção visual: pytest ... --headed -s e descomente abaixo
+    # page.pause()
+
+
+@pytest.mark.e2e
 def test_etapa_batalhas_ate_final(page: Page, base_url: str):
     """
     Fluxo completo: qualificação + reportar todas as batalhas até a final.
@@ -1466,4 +1640,330 @@ def test_etapa_cenario_20_equipes_qualify_challonge(page: Page, base_url: str):
     expect(page.locator("#secaoResultadoQualificacao")).to_contain_text("ggdrift")
 
     # Pausar na tela das batalhas para análise
+    page.pause()
+
+
+@pytest.mark.e2e
+def test_by_run_visivel(page: Page, base_url: str):
+    """
+    E2E visual do By run: piloto vence com carro quebrado -> próxima batalha adversário faz 1 passada e vence.
+
+    Fluxo: 4 equipes -> semifinal 1: 2 passadas, quebra carro do vencedor, reporta ->
+    semifinal 2: reporta -> final: abre modal e mostra BY RUN (1 passada, 1 botão vence).
+
+    Rodar: pytest tests/e2e/test_etapa_completa_visual.py::test_by_run_visivel -v -s --headed
+    Requer: app com TEST_E2E=1, Challonge configurado.
+    """
+    page.set_viewport_size({"width": 1920, "height": 1080})
+    page.goto(f"{base_url}/login")
+    page.locator("#admin-tab").click()
+    page.locator("#senhaAdmin").fill("admin123")
+    page.locator("#btnLoginAdmin").click()
+    page.wait_for_url(re.compile(r".*/admin.*"), timeout=25000)
+
+    suf = str(int(time.time() * 1000))
+    result_camp = page.evaluate(
+        """
+        async (suf) => {
+            const r = await fetch('/api/admin/criar-campeonato', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({ nome: 'E2E By Run ' + suf, serie: 'A', numero_etapas: 1 })
+            });
+            const d = await r.json();
+            return { ok: r.ok, campeonato_id: d.campeonato_id };
+        }
+        """,
+        suf,
+    )
+    assert result_camp.get("ok"), f"Erro criar campeonato: {result_camp}"
+    campeonato_id = result_camp.get("campeonato_id")
+    result_etapa = page.evaluate(
+        """
+        async (payload) => {
+            const r = await fetch('/api/admin/cadastrar-etapa', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify(payload)
+            });
+            const d = await r.json();
+            return { ok: r.ok, etapa_id: d.etapa_id };
+        }
+        """,
+        {"campeonato_id": campeonato_id, "numero": 1, "nome": "Etapa By Run", "data_etapa": "2026-08-20", "hora_etapa": "10:00:00", "serie": "A"},
+    )
+    assert result_etapa.get("ok"), f"Erro criar etapa: {result_etapa}"
+    etapa_id = result_etapa.get("etapa_id")
+
+    result_carro = page.evaluate(
+        """
+        async () => {
+            const r = await fetch('/api/admin/cadastrar-carro', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({ marca: 'E2E', modelo: 'ByRun', preco: 5000, classe: 'basico', descricao: '' })
+            });
+            const d = await r.json();
+            return { ok: r.ok, modelo_id: (d.carro || {}).id };
+        }
+        """
+    )
+    assert result_carro.get("ok"), f"Erro criar carro: {result_carro}"
+    modelo_id = result_carro.get("modelo_id")
+    equipes_data = []
+    for i in range(4):
+        idx = i + 1
+        r_eq = page.evaluate(
+            """
+            async ([modelo_id, idx]) => {
+                const r = await fetch('/api/admin/cadastrar-equipe', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ nome: 'Equipe BR' + idx, senha: 's1', doricoins: 50000, serie: 'A', carro_id: modelo_id })
+                });
+                const d = await r.json();
+                const eq = d.equipe || {};
+                return { ok: r.ok, equipe_id: eq.id, carro_id: eq.carro_instancia_id || eq.carro_id };
+            }
+            """,
+            [str(modelo_id), idx],
+        )
+        assert r_eq.get("ok"), f"Erro criar equipe: {r_eq}"
+        equipe_id, carro_id = r_eq.get("equipe_id"), r_eq.get("carro_id")
+        equipes_data.append({"equipe_id": equipe_id, "carro_id": carro_id, "nome": f"Equipe BR{idx}"})
+        page.evaluate(
+            """
+            async (p) => {
+                const r = await fetch('/api/etapas/equipe/participar', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ etapa_id: p.etapa_id, equipe_id: p.equipe_id, carro_id: p.carro_id, tipo_participacao: 'precisa_piloto' })
+                });
+                return { ok: r.ok };
+            }
+            """,
+            {"etapa_id": etapa_id, "equipe_id": equipe_id, "carro_id": carro_id},
+        )
+        r_pil = page.evaluate(
+            "async (n) => { const r = await fetch('/api/pilotos/cadastrar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: n, senha: 's123' }) }); const d = await r.json(); return { ok: r.ok, piloto_id: d.piloto_id, piloto_nome: d.nome || n }; }",
+            f"Piloto BR{idx} {suf[:6]}",
+        )
+        assert r_pil.get("ok"), f"Erro criar piloto: {r_pil}"
+        r_cand = page.evaluate(
+            """
+            async (p) => {
+                const r = await fetch('/api/test/inscrever-candidato-piloto', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ etapa_id: p.etapa_id, equipe_id: p.equipe_id, piloto_id: p.piloto_id, piloto_nome: p.piloto_nome })
+                });
+                return { ok: r.ok, status: r.status };
+            }
+            """,
+            {"etapa_id": etapa_id, "equipe_id": equipe_id, "piloto_id": r_pil.get("piloto_id"), "piloto_nome": r_pil.get("piloto_nome", f"Piloto BR{idx}")},
+        )
+        if r_cand.get("status") == 404:
+            pytest.skip("TEST_E2E=1 necessário para inscrever-candidato-piloto")
+        page.evaluate(
+            """
+            async (p) => {
+                const r = await fetch(`/api/admin/etapas/${p.etapa_id}/equipes/${p.equipe_id}/alocar-proximo-piloto`, { method: 'POST', credentials: 'include' });
+                return { ok: r.ok };
+            }
+            """,
+            {"etapa_id": etapa_id, "equipe_id": equipe_id},
+        )
+        page.evaluate(
+            "async (id) => { const r = await fetch('/api/test/atualizar-saldo-pix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ equipe_id: id, valor: 5000 }) }); return { ok: r.ok }; }",
+            equipe_id,
+        )
+        page.wait_for_timeout(80)
+
+    r_fazer = page.evaluate("async (id) => { const r = await fetch('/api/admin/fazer-etapa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ etapa: id }) }); const d = await r.json(); return { ok: r.ok, sucesso: d.sucesso }; }", etapa_id)
+    assert r_fazer.get("ok") and r_fazer.get("sucesso"), f"Erro fazer-etapa: {r_fazer}"
+
+    notas = [{"equipe_id": ed["equipe_id"], "nota_linha": 15 - i, "nota_angulo": 12 - i, "nota_estilo": 10 - i} for i, ed in enumerate(equipes_data)]
+    r_notas = page.evaluate(
+        """
+        async (payload) => {
+            const r = await fetch('/api/test/salvar-notas-etapa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) });
+            if (r.status == 404) return { ok: false, status: 404 };
+            const d = await r.json();
+            return { ok: r.ok, sucesso: d.sucesso, status: r.status };
+        }
+        """,
+        {"etapa_id": etapa_id, "notas": notas},
+    )
+    if r_notas.get("status") == 404:
+        pytest.skip("TEST_E2E=1 necessário para salvar-notas-etapa")
+    assert r_notas.get("ok") and r_notas.get("sucesso"), f"Erro salvar notas: {r_notas}"
+
+    r_pecas = page.evaluate(
+        """
+        async (etapa_id) => {
+            const r = await fetch('/api/test/garantir-pecas-etapa', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({ etapa_id })
+            });
+            if (r.status == 404) return { ok: false, status: 404 };
+            const d = await r.json();
+            return { ok: d.sucesso, status: r.status };
+        }
+        """,
+        etapa_id,
+    )
+    if r_pecas.get("status") == 404:
+        pytest.skip("TEST_E2E=1 necessário para garantir-pecas-etapa")
+    assert r_pecas.get("ok"), f"Erro garantir peças: {r_pecas}"
+
+    page.evaluate(
+        """async () => {
+            const put = await fetch('/api/admin/configuracoes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ chave: 'dado_dano', valor: '20', descricao: 'Dado de dano' }) });
+            return { ok: put.ok };
+        }
+        """
+    )
+
+    r_env = page.evaluate(
+        """
+        async (etapa_id) => {
+            const r = await fetch('/api/etapas/' + etapa_id + '/enviar-challonge', { method: 'POST', credentials: 'include' });
+            const d = await r.json();
+            return { ok: r.ok, sucesso: d.sucesso !== false, erro: d.erro };
+        }
+        """,
+        etapa_id,
+    )
+    if not r_env.get("ok") or (r_env.get("erro") and "Challonge" in str(r_env.get("erro", ""))):
+        pytest.skip("Challonge não configurado - pulando teste By run")
+
+    page.goto(f"{base_url}/admin/fazer-etapa?etapa_id={etapa_id}")
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(1500)
+    if page.locator("#botaoIniciarQualificacao").is_visible():
+        page.locator("#botaoIniciarQualificacao").click()
+        page.wait_for_timeout(1500)
+    page.locator("#containerVoltasAdmin").wait_for(state="visible", timeout=10000)
+    page.on("dialog", lambda d: d.accept())
+    page.locator("#botaoFinalizarQualificacao").click()
+    page.locator("#secaoChaveamentoBatalhas").wait_for(state="visible", timeout=15000)
+
+    cards = page.locator(".batalha-card-clickable")
+    expect(cards.first).to_be_visible(timeout=5000)
+    n_cards = cards.count()
+    assert n_cards >= 2, "Deveria haver pelo menos 2 partidas (semifinais)"
+
+    def executar_passada_via_api(equipe_ids):
+        return page.evaluate(
+            """
+            async (payload) => {
+                const r = await fetch('/api/etapas/' + payload.etapa_id + '/executar-passada', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ equipe1_id: payload.eq1, equipe2_id: payload.eq2 })
+                });
+                const d = await r.json();
+                return { ok: d.sucesso };
+            }
+            """,
+            {"etapa_id": etapa_id, "eq1": equipe_ids[0], "eq2": equipe_ids[1]},
+        )
+
+    def obter_equipe_id_por_nome(nome):
+        for ed in equipes_data:
+            if (ed.get("nome") or "").strip() == (nome or "").strip():
+                return ed.get("equipe_id")
+        return None
+
+    def reportar_vencedor(match_id, winner_id, round_num=1):
+        return page.evaluate(
+            """
+            async (p) => {
+                const r = await fetch('/api/etapas/' + p.etapa_id + '/challonge-match-report', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ match_id: p.match_id, winner_id: p.winner_id, scores_csv: '1-0', round: p.round })
+                });
+                const d = await r.json();
+                return { ok: d.sucesso };
+            }
+            """,
+            {"etapa_id": etapa_id, "match_id": match_id, "winner_id": winner_id, "round": round_num},
+        )
+
+    def quebrar_carro_equipe(eq_id):
+        return page.evaluate(
+            """
+            async (p) => {
+                const r = await fetch('/api/test/quebrar-carro-equipe-etapa', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                    body: JSON.stringify({ etapa_id: p.etapa_id, equipe_id: p.equipe_id })
+                });
+                if (r.status == 404) return { ok: false, status: 404 };
+                const d = await r.json();
+                return { ok: d.sucesso, status: r.status };
+            }
+            """,
+            {"etapa_id": etapa_id, "equipe_id": eq_id},
+        )
+
+    bracket = page.evaluate(
+        """
+        async (etapa_id) => {
+            const r = await fetch('/api/etapas/' + etapa_id + '/bracket-challonge', { credentials: 'include' });
+            const d = await r.json();
+            return d.bracket || [];
+        }
+        """,
+        etapa_id,
+    )
+
+    fase0 = bracket[0] if bracket else {}
+    matches0 = fase0.get("matches") or []
+    assert len(matches0) >= 2, "Deveria haver 2 semifinais"
+
+    m1 = matches0[0]
+    p1_nome = (m1.get("player1") or {}).get("name") or ""
+    p2_nome = (m1.get("player2") or {}).get("name") or ""
+    eq1_id = obter_equipe_id_por_nome(p1_nome)
+    eq2_id = obter_equipe_id_por_nome(p2_nome)
+    if not eq1_id or not eq2_id:
+        pytest.skip("Não foi possível mapear nomes das equipes (verifique Challonge)")
+    for _ in range(2):
+        executar_passada_via_api([eq1_id, eq2_id])
+    quebrar_carro_equipe(eq1_id)
+    reportar_vencedor(m1["match_id"], m1.get("player1_id"), 1)
+    page.wait_for_timeout(500)
+
+    m2 = matches0[1]
+    p3_nome = (m2.get("player1") or {}).get("name") or ""
+    p4_nome = (m2.get("player2") or {}).get("name") or ""
+    eq3_id = obter_equipe_id_por_nome(p3_nome)
+    eq4_id = obter_equipe_id_por_nome(p4_nome)
+    if eq3_id and eq4_id:
+        for _ in range(2):
+            executar_passada_via_api([eq3_id, eq4_id])
+    reportar_vencedor(m2["match_id"], m2.get("player1_id") or m2.get("player2_id"), 1)
+    page.wait_for_timeout(800)
+
+    page.evaluate(
+        """
+        async (etapaId) => {
+            if (typeof recarregarBracketChallonge === 'function') {
+                await recarregarBracketChallonge(etapaId);
+            } else if (typeof carregarChaveamentoBatalhasInline === 'function') {
+                await carregarChaveamentoBatalhasInline(etapaId);
+            }
+            return {};
+        }
+        """,
+        etapa_id,
+    )
+    page.wait_for_timeout(1500)
+
+    cards_pos_reload = page.locator(".batalha-card-clickable")
+    n_cards_now = cards_pos_reload.count()
+    card_final = cards_pos_reload.nth(n_cards_now - 1) if n_cards_now >= 3 else cards_pos_reload.first
+    card_final.click()
+    page.wait_for_timeout(1500)
+
+    expect(page.locator("#modalPartidaBatalha")).to_be_visible()
+    expect(page.locator("#modalByRunBadge")).to_be_visible()
+    expect(page.locator("#modalByRunBadge")).to_contain_text("BY RUN")
+    expect(page.locator("#passadaCount")).to_contain_text("1)")
+    print("\n" + "=" * 60)
+    print("BY RUN VISÍVEL: O adversário da equipe com carro quebrado faz 1 passada e vence.")
+    print("=" * 60)
     page.pause()

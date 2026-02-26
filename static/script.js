@@ -1843,11 +1843,12 @@ function gerarHtmlPecas(carro) {
             if (diferenciais.length > 0) {
                 // Renderizar cada diferencial
                 diferenciais.forEach((peca, idx) => {
-                    const durabilidade = peca.durabilidade_atual || 0;
+                    const durabilidade = (peca.durabilidade_atual != null && peca.durabilidade_atual !== '') ? peca.durabilidade_atual : 100;
                     const durabilidadeMax = peca.durabilidade_maxima || 100;
                     const percentual = durabilidadeMax > 0 ? (durabilidade / durabilidadeMax * 100) : 0;
                     const corDesgaste = percentual > 75 ? 'success' : percentual > 50 ? 'warning' : percentual > 25 ? 'danger' : 'danger';
-                    
+                    const custoRecuperar = ((peca.preco_loja || 0) / 2).toFixed(2);
+                    const btnRecuperar = percentual < 100 ? `<button class="btn btn-sm btn-outline-success ms-1" onclick="recuperarPecaVida('${peca.id}', ${peca.preco_loja || 0})" title="Recuperar para 100% (${custoRecuperar} doricoins)">🔧 Recuperar</button>` : '';
                     htmlPecas += `
                         <div class="peca-item mb-3">
                             <div class="d-flex justify-content-between align-items-center mb-2">
@@ -1855,8 +1856,8 @@ function gerarHtmlPecas(carro) {
                                     <strong>${peca.nome}</strong>
                                 </div>
                                 <div>
-                                    <span class="badge bg-${corDesgaste} me-2">${percentual.toFixed(1)}%</span>
-                                    <button class="btn btn-sm btn-outline-danger" onclick="abrirModalRemoverPeca('${carro.id}', '${peca.tipo}', '${peca.nome}')">✕</button>
+                                    <span class="badge bg-${corDesgaste} me-2">${percentual.toFixed(1)}%</span>${btnRecuperar}
+                                    <button class="btn btn-sm btn-outline-danger ms-1" onclick="abrirModalRemoverPeca('${carro.id}', '${peca.tipo}', '${peca.nome}')">✕</button>
                                 </div>
                             </div>
                             <div class="progress" style="height: 10px;">
@@ -1887,11 +1888,12 @@ function gerarHtmlPecas(carro) {
             
             if (peca) {
                 // Peça instalada
-                const durabilidade = peca.durabilidade_atual || 0;
+                const durabilidade = (peca.durabilidade_atual != null && peca.durabilidade_atual !== '') ? peca.durabilidade_atual : 100;
                 const durabilidadeMax = peca.durabilidade_maxima || 100;
                 const percentual = durabilidadeMax > 0 ? (durabilidade / durabilidadeMax * 100) : 0;
                 const corDesgaste = percentual > 75 ? 'success' : percentual > 50 ? 'warning' : percentual > 25 ? 'danger' : 'danger';
-                
+                const custoRecuperar = ((peca.preco_loja || 0) / 2).toFixed(2);
+                const btnRecuperar = percentual < 100 ? `<button class="btn btn-sm btn-outline-success ms-1" onclick="recuperarPecaVida('${peca.id}', ${peca.preco_loja || 0})" title="Recuperar para 100% (${custoRecuperar} doricoins)">🔧 Recuperar</button>` : '';
                 htmlPecas += `
                     <div class="peca-item mb-3">
                         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -1899,8 +1901,8 @@ function gerarHtmlPecas(carro) {
                                 <strong>${peca.nome}</strong>
                             </div>
                             <div>
-                                <span class="badge bg-${corDesgaste} me-2">${percentual.toFixed(1)}%</span>
-                                <button class="btn btn-sm btn-outline-danger" onclick="abrirModalRemoverPeca('${carro.id}', '${peca.tipo}', '${peca.nome}')">✕</button>
+                                <span class="badge bg-${corDesgaste} me-2">${percentual.toFixed(1)}%</span>${btnRecuperar}
+                                <button class="btn btn-sm btn-outline-danger ms-1" onclick="abrirModalRemoverPeca('${carro.id}', '${peca.tipo}', '${peca.nome}')">✕</button>
                             </div>
                         </div>
                         <div class="progress" style="height: 10px;">
@@ -4804,6 +4806,34 @@ function confirmarEditarApelido() {
             console.error('Erro ao salvar apelido:', error);
             mostrarToast('❌ Erro ao salvar apelido: ' + error.message, 'error');
         });
+}
+
+// ====== RECUPERAR VIDA DA PEÇA (GARAGEM) ======
+async function recuperarPecaVida(pecaId, precoLoja) {
+    const custo = (precoLoja || 0) / 2;
+    if (custo <= 0) {
+        mostrarToast('Preço da peça não definido', 'error');
+        return;
+    }
+    if (!confirm(`Recuperar peça para 100%?\n\nCusto: ${custo.toFixed(2)} doricoins`)) return;
+    try {
+        const resp = await fetch('/api/garagem/recuperar-peca', {
+            method: 'POST',
+            headers: { ...obterHeaders(), 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ peca_id: pecaId })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.sucesso) {
+            mostrarToast('Peça recuperada para 100%!', 'success');
+            if (typeof carregarGaragem === 'function') carregarGaragem();
+        } else {
+            mostrarToast(data.erro || 'Erro ao recuperar peça', 'error');
+        }
+    } catch (e) {
+        console.error('Erro:', e);
+        mostrarToast('Erro ao recuperar peça', 'error');
+    }
 }
 
 // ====== REMOVER PEÇA DO CARRO ======

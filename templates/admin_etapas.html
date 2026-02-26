@@ -1,276 +1,153 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GRANPIX - Gerenciar Etapas</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/imask/6.4.0/imask.min.js"></script>
-  <style>
-    #modalDesignarPiloto {
-      pointer-events: auto !important;
-      z-index: 9999 !important;
-    }
-    
-    #modalDesignarPiloto * {
-      pointer-events: auto !important;
-    }
-    
-    #modalDesignarPiloto .modal-dialog {
-      pointer-events: auto !important;
-    }
-    
-    #modalDesignarPiloto .modal-content {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao {
-      pointer-events: auto !important;
-      z-index: 9999 !important;
-      display: none !important;
-    }
-
-    #modalConfirmacaoAlocacao.show {
-      display: block !important;
-    }
-
-    #modalConfirmacaoAlocacao * {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .modal-dialog {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .modal-content {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .btn {
-      pointer-events: auto !important;
-    }
-    
-    .modal-backdrop {
-      pointer-events: auto !important;
-      z-index: 9998 !important;
-    }
-
-    /* Sidebar Styles */
-    .sidebar {
-      position: fixed;
-      top: 76px; /* Height of navbar */
-      left: 0;
-      width: 250px;
-      height: calc(100vh - 76px);
-      background-color: #343a40;
-      padding: 20px 0;
-      overflow-y: auto;
-      z-index: 1000;
-      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-    }
-
-    .sidebar .nav-link {
-      color: #adb5bd;
-      padding: 12px 20px;
-      text-decoration: none;
-      display: flex;
-      align-items: center;
-      transition: all 0.3s ease;
-      border: none;
-      background: none;
-      width: 100%;
-      text-align: left;
-    }
-
-    .sidebar .nav-link:hover {
-      color: #ffffff;
-      background-color: #495057;
-      text-decoration: none;
-    }
-
-    .sidebar .nav-link.active {
-      color: #dc143c;
-      background-color: #495057;
-      font-weight: bold;
-    }
-
-    .sidebar .nav-link i {
-      margin-right: 10px;
-      width: 20px;
-      text-align: center;
-    }
-
-    .main-content {
-      margin-left: 250px;
-      padding: 20px;
-      min-height: calc(100vh - 76px);
-    }
-
-    /* Responsive adjustments */
-    @media (max-width: 768px) {
-      .sidebar {
-        width: 200px;
-      }
-      .main-content {
-        margin-left: 200px;
-      }
-    }
-
-    @media (max-width: 576px) {
-      .sidebar {
-        width: 100%;
-        height: auto;
-        position: relative;
-        top: 0;
-      }
-      .main-content {
-        margin-left: 0;
-      }
-    }
-  </style>
-  <!-- Carregar script.js primeiro para definir funções globais -->
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
-  <!-- Depois carregar qualificacao.js que usa funções de script.js -->
-  <script src="{{ url_for('static', filename='qualificacao.js') }}"></script>
-  <!-- Por fim, sistema_notificacao que usa funções de qualificacao.js -->
-  <script src="{{ url_for('static', filename='sistema_notificacao.js') }}"></script>
-</head>
-<body>
-  <nav class="navbar navbar-dark" style="background-color: #1a1a1a; border-bottom: 3px solid #dc143c;">
-  <div class="container-fluid">
-  <span class="navbar-brand mb-0 h1" style="color: #dc143c; font-weight: bold;">GRANPIX - Painel Administrativo</span>
-  <a href="/" class="btn btn-sm btn-outline-light">Voltar ao Site</a>
-  </div>
-  </nav>
-
-  <!-- Sidebar -->
-  <div class="sidebar">
-  <nav class="nav flex-column">
-  <a class="nav-link" href="/admin/carros">
-  <i class="fas fa-car"></i> Cadastrar Carros
-  </a>
-  <a class="nav-link" href="/admin/pecas">
-  <i class="fas fa-cogs"></i> Cadastrar Peças
-  </a>
-  <a class="nav-link" href="/admin/variacoes">
-  <i class="fas fa-tools"></i> Cadastrar Variações
-  </a>
-  <a class="nav-link" href="/admin/equipes">
-  <i class="fas fa-users"></i> Cadastrar Equipes
-  </a>
-  <a class="nav-link active" href="/admin/etapas">
-  <i class="fas fa-calendar"></i> Gerenciar Etapas
-  </a>
-  <a class="nav-link" href="/admin/solicitacoes-pecas">
-  <i class="fas fa-clipboard-list"></i> Solicitações de Peças
-  </a>
-  <a class="nav-link" href="/admin/solicitacoes-carros">
-  <i class="fas fa-clipboard-check"></i> Solicitações de Carros
-  </a>
-  <a class="nav-link" href="/admin/fazer-etapa">
-  <i class="fas fa-play"></i> Fazer Etapa
-  </a>
-  <a class="nav-link" href="/admin/alocar-pilotos">
-  <i class="fas fa-user-check"></i> Alocar Pilotos
-  </a>
-  <a class="nav-link" href="/admin/comissoes">
-  <i class="fas fa-money-bill"></i> Comissões
-  </a>
-  <a class="nav-link" href="/admin/configuracoes">
-  <i class="fas fa-cog"></i> Configurações
-  </a>
-  <a class="nav-link" href="/admin/equipes-list">
-  <i class="fas fa-list"></i> Lista de Equipes
-  </a>
-  </nav>
-  </div>
-
-  <!-- Main Content -->
-  <div class="main-content">
-  <div class="container-fluid mt-4">
+{% extends "admin_base.html" %}
+{% block title %}GRANPIX - Gerenciar Etapas{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
   <div class="row mb-4">
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Total de Equipes</div>
-  <div class="stat-value" id="totalEquipes">-</div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Total de Equipes</div>
+        <div class="stat-value" id="totalEquipes">-</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Solicitações de Peça</div>
+        <div class="stat-value" id="solicitacoesPecasPendentes">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Solicitações de Carro</div>
+        <div class="stat-value" id="solicitacoesCarrosPendentes">0</div>
+      </div>
+    </div>
   </div>
-  </div>
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Solicitações de Peça</div>
-  <div class="stat-value" id="solicitacoesPecasPendentes">0</div>
-  </div>
-  </div>
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Solicitações de Carro</div>
-  <div class="stat-value" id="solicitacoesCarrosPendentes">0</div>
-  </div>
-  </div>
-  </div>
+
   <div class="row">
-  <div class="col-12">
-  <div class="card">
-  <div class="card-header bg-dark text-white">
-  <h5 class="mb-0">Gerenciar Etapas - Em Desenvolvimento</h5>
+    <div class="col-md-6 mb-4">
+      <div class="card">
+        <div class="card-header bg-dark text-white">
+          <h5 class="mb-0">Cadastrar Campeonato</h5>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label">Nome</label>
+            <input type="text" class="form-control" id="campeonatoNome" placeholder="Ex: Temporada 2025">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Descrição</label>
+            <textarea class="form-control" id="campeonatoDescricao" rows="2" placeholder="Opcional"></textarea>
+          </div>
+          <div class="row mb-3">
+            <div class="col-6">
+              <label class="form-label">Série</label>
+              <select class="form-select" id="campeonatoSerie">
+                <option value="">-- Selecione --</option>
+                <option value="A">Série A</option>
+                <option value="B">Série B</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Nº de Etapas</label>
+              <input type="number" class="form-control" id="campeonatoNumeroEtapas" value="5" min="1" max="20">
+            </div>
+          </div>
+          <button type="button" class="btn btn-primary" onclick="criarCampeonato()">
+            <i class="fas fa-plus"></i> Criar Campeonato
+          </button>
+          <hr>
+          <h6 class="text-muted">Campeonatos</h6>
+          <div id="listaCampeonatos" style="max-height: 200px; overflow-y: auto;">
+            <p class="text-muted small">Carregando...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6 mb-4">
+      <div class="card">
+        <div class="card-header bg-dark text-white">
+          <h5 class="mb-0">Cadastrar Etapa</h5>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label">Campeonato</label>
+            <select class="form-select" id="etapaCampeonato" onchange="atualizarSerieEtapa()">
+              <option value="">Selecione um campeonato...</option>
+            </select>
+          </div>
+          <div class="row mb-3">
+            <div class="col-4">
+              <label class="form-label">Nº</label>
+              <input type="number" class="form-control" id="etapaNumero" value="1" min="1">
+            </div>
+            <div class="col-8">
+              <label class="form-label">Nome</label>
+              <input type="text" class="form-control" id="etapaNome" placeholder="Ex: Interlagos">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Descrição</label>
+            <input type="text" class="form-control" id="etapaDescricao" placeholder="Opcional">
+          </div>
+          <div class="row mb-3">
+            <div class="col-6">
+              <label class="form-label">Data</label>
+              <input type="date" class="form-control" id="etapaData">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Hora</label>
+              <input type="time" class="form-control" id="etapaHora" value="10:00">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Série</label>
+            <input type="text" class="form-control" id="etapaSerie" placeholder="A ou B (preenchido automaticamente)" maxlength="1">
+          </div>
+          <button type="button" class="btn btn-success" onclick="cadastrarEtapa()">
+            <i class="fas fa-plus"></i> Cadastrar Etapa
+          </button>
+          <hr>
+          <h6 class="text-muted">Etapas Cadastradas</h6>
+          <div id="listaEtapasCadastro" style="max-height: 200px; overflow-y: auto;">
+            <p class="text-muted small">Carregando...</p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-  <div class="card-body">
-  <p class="text-muted">Esta seção está sendo desenvolvida. Volte em breve!</p>
-  </div>
-  </div>
-  </div>
-  </div>
+
   <div class="toast-container"></div>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script>
-  // Verificar autenticação de admin
-  if (!sessionStorage.getItem('admin_logado')) {
-  // Se não tem sessão de admin, redireciona para login
-  // Mas permite carregar para testar
-  }
-  // Inicializar painel
-  window.addEventListener('load', () => {
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+window.addEventListener('load', () => {
   atualizarStatusAdmin();
-  atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
-  });
-  async function atualizarStatusAdmin() {
+  atualizarContadoresSolicitacoes && atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
+  // Carregar campeonatos e etapas (funções do script.js)
+  if (typeof carregarCampeonatos === 'function') carregarCampeonatos();
+  if (typeof carregarEtapasCadastro === 'function') carregarEtapasCadastro();
+});
+
+async function atualizarStatusAdmin() {
+  try { const resp = await fetch('/api/admin/status'); const status = await resp.json(); document.getElementById('totalEquipes').textContent = status.total_equipes || 0; } catch (e) {}
+}
+
+async function atualizarContadoresSolicitacoes() {
+  if (typeof window.atualizarContadoresSolicitacoesAdmin === 'function') return window.atualizarContadoresSolicitacoesAdmin();
   try {
-  console.log('Atualizando status admin...');
-  const resp = await fetch('/api/admin/status');
-  const status = await resp.json();
-  console.log('Status recebido:', status);
-  document.getElementById('totalEquipes').textContent = status.total_equipes || 0;
-  } catch (e) {
-  console.log('Erro ao atualizar status');
-  }
-  }
-  async function atualizarContadoresSolicitacoes() {
-  try {
-  // Contar solicitações de peça pendentes
-  const respPecas = await fetch('/api/admin/solicitacoes-pecas');
-  const pecas = await respPecas.json();
-  const pecasPendentes = Array.isArray(pecas)
-  ? pecas.filter(s => s.status === 'pendente').length
-  : 0;
-  const elemPecas = document.getElementById('solicitacoesPecasPendentes');
-  if (elemPecas) {
-  elemPecas.textContent = pecasPendentes;
-  }
-  // Contar solicitações de carro pendentes
-  const respCarros = await fetch('/api/admin/solicitacoes-carros');
-  const carros = await respCarros.json();
-  const carrosPendentes = Array.isArray(carros)
-  ? carros.filter(s => s.status === 'pendente').length
-  : 0;
-  const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
-  if (elemCarros) {
-  elemCarros.textContent = carrosPendentes;
-  }
-  } catch (e) {
-  console.error('Erro ao atualizar contadores de solicitações:', e);
-  }
-  }
-  </script>
-</body>
-</html>
+    const respPecas = await fetch('/api/admin/solicitacoes-pecas');
+    const pecas = await respPecas.json();
+    const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
+    const elemPecas = document.getElementById('solicitacoesPecasPendentes');
+    if (elemPecas) elemPecas.textContent = pecasPendentes;
+    const respCarros = await fetch('/api/admin/solicitacoes-carros');
+    const carros = await respCarros.json();
+    const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
+    const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
+    if (elemCarros) elemCarros.textContent = carrosPendentes;
+  } catch (e) { console.error('Erro ao atualizar contadores de solicitações:', e); }
+}
+</script>
+{% endblock %}

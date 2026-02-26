@@ -134,12 +134,7 @@ class Carro:
             if peca.durabilidade_atual <= 0:
                 pecas_quebradas.append(peca.nome)
         
-        # Remover peças instaladas que quebraram
-        self.pecas_instaladas = [
-            p for p in self.pecas_instaladas 
-            if p.get('nome', '') not in pecas_quebradas
-        ]
-        
+        # Peças quebradas permanecem no carro (0%) - o piloto pode recuperar na garagem pela metade do preço
         self.batidas_totais += 1
         return pecas_quebradas, resultados_d20
 

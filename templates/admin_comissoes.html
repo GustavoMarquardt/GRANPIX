@@ -1,414 +1,144 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GRANPIX - Comissões</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/imask/6.4.0/imask.min.js"></script>
-  <style>
-    #modalDesignarPiloto {
-      pointer-events: auto !important;
-      z-index: 9999 !important;
-    }
-    
-    #modalDesignarPiloto * {
-      pointer-events: auto !important;
-    }
-    
-    #modalDesignarPiloto .modal-dialog {
-      pointer-events: auto !important;
-    }
-    
-    #modalDesignarPiloto .modal-content {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao {
-      pointer-events: auto !important;
-      z-index: 9999 !important;
-      display: none !important;
-    }
-
-    #modalConfirmacaoAlocacao.show {
-      display: block !important;
-    }
-
-    #modalConfirmacaoAlocacao * {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .modal-dialog {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .modal-content {
-      pointer-events: auto !important;
-    }
-
-    #modalConfirmacaoAlocacao .btn {
-      pointer-events: auto !important;
-    }
-    
-    .modal-backdrop {
-      pointer-events: auto !important;
-      z-index: 9998 !important;
-    }
-
-    /* Sidebar Styles */
-    .sidebar {
-      position: fixed;
-      top: 76px; /* Height of navbar */
-      left: 0;
-      width: 250px;
-      height: calc(100vh - 76px);
-      background-color: #343a40;
-      padding: 20px 0;
-      overflow-y: auto;
-      z-index: 1000;
-      box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-    }
-
-    .sidebar .nav-link {
-      color: #adb5bd;
-      padding: 12px 20px;
-      text-decoration: none;
-      display: flex;
-      align-items: center;
-      transition: all 0.3s ease;
-      border: none;
-      background: none;
-      width: 100%;
-      text-align: left;
-    }
-
-    .sidebar .nav-link:hover {
-      color: #ffffff;
-      background-color: #495057;
-      text-decoration: none;
-    }
-
-    .sidebar .nav-link.active {
-      color: #dc143c;
-      background-color: #495057;
-      font-weight: bold;
-    }
-
-    .sidebar .nav-link i {
-      margin-right: 10px;
-      width: 20px;
-      text-align: center;
-    }
-
-    .main-content {
-      margin-left: 250px;
-      padding: 20px;
-      min-height: calc(100vh - 76px);
-    }
-
-    /* Responsive adjustments */
-    @media (max-width: 768px) {
-      .sidebar {
-        width: 200px;
-      }
-      .main-content {
-        margin-left: 200px;
-      }
-    }
-
-    @media (max-width: 576px) {
-      .sidebar {
-        width: 100%;
-        height: auto;
-        position: relative;
-        top: 0;
-      }
-      .main-content {
-        margin-left: 0;
-      }
-    }
-  </style>
-  <!-- Carregar script.js primeiro para definir funções globais -->
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
-  <!-- Depois carregar qualificacao.js que usa funções de script.js -->
-  <script src="{{ url_for('static', filename='qualificacao.js') }}"></script>
-  <!-- Por fim, sistema_notificacao que usa funções de qualificacao.js -->
-  <script src="{{ url_for('static', filename='sistema_notificacao.js') }}"></script>
-</head>
-<body>
-  <nav class="navbar navbar-dark" style="background-color: #1a1a1a; border-bottom: 3px solid #dc143c;">
-  <div class="container-fluid">
-  <span class="navbar-brand mb-0 h1" style="color: #dc143c; font-weight: bold;">GRANPIX - Painel Administrativo</span>
-  <a href="/" class="btn btn-sm btn-outline-light">Voltar ao Site</a>
-  </div>
-  </nav>
-
-  <!-- Sidebar -->
-  <div class="sidebar">
-  <nav class="nav flex-column">
-  <a class="nav-link" href="/admin/carros">
-  <i class="fas fa-car"></i> Cadastrar Carros
-  </a>
-  <a class="nav-link" href="/admin/pecas">
-  <i class="fas fa-cogs"></i> Cadastrar Peças
-  </a>
-  <a class="nav-link" href="/admin/variacoes">
-  <i class="fas fa-tools"></i> Cadastrar Variações
-  </a>
-  <a class="nav-link" href="/admin/equipes">
-  <i class="fas fa-users"></i> Cadastrar Equipes
-  </a>
-  <a class="nav-link" href="/admin/etapas">
-  <i class="fas fa-calendar"></i> Gerenciar Etapas
-  </a>
-  <a class="nav-link" href="/admin/solicitacoes-pecas">
-  <i class="fas fa-clipboard-list"></i> Solicitações de Peças
-  </a>
-  <a class="nav-link" href="/admin/solicitacoes-carros">
-  <i class="fas fa-clipboard-check"></i> Solicitações de Carros
-  </a>
-  <a class="nav-link" href="/admin/fazer-etapa">
-  <i class="fas fa-play"></i> Fazer Etapa
-  </a>
-  <a class="nav-link" href="/admin/alocar-pilotos">
-  <i class="fas fa-user-check"></i> Alocar Pilotos
-  </a>
-  <a class="nav-link active" href="/admin/comissoes">
-  <i class="fas fa-money-bill"></i> Comissões
-  </a>
-  <a class="nav-link" href="/admin/configuracoes">
-  <i class="fas fa-cog"></i> Configurações
-  </a>
-  <a class="nav-link" href="/admin/equipes-list">
-  <i class="fas fa-list"></i> Lista de Equipes
-  </a>
-  </nav>
-  </div>
-
-  <!-- Main Content -->
-  <div class="main-content">
-  <div class="container-fluid mt-4">
+{% extends "admin_base.html" %}
+{% block title %}GRANPIX - Histórico PIX{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
   <div class="row mb-4">
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Total de Equipes</div>
-  <div class="stat-value" id="totalEquipes">-</div>
-  </div>
-  </div>
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Solicitações de Peça</div>
-  <div class="stat-value" id="solicitacoesPecasPendentes">0</div>
-  </div>
-  </div>
-  <div class="col-md-3">
-  <div class="stat-card">
-  <div class="stat-label">Solicitações de Carro</div>
-  <div class="stat-value" id="solicitacoesCarrosPendentes">0</div>
-  </div>
-  </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Total de Equipes</div>
+        <div class="stat-value" id="totalEquipes">-</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Solicitações de Peça</div>
+        <div class="stat-value" id="solicitacoesPecasPendentes">0</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Solicitações de Carro</div>
+        <div class="stat-value" id="solicitacoesCarrosPendentes">0</div>
+      </div>
+    </div>
   </div>
   <div class="row">
-  <div class="col-12">
-  <div class="card">
-  <div class="card-header bg-dark text-white">
-  <h5 class="mb-0">Gerenciamento de Comissões</h5>
-  </div>
-  <div class="card-body">
-  <div class="row mb-4">
-  <div class="col-md-4">
-  <div class="card bg-primary text-white">
-  <div class="card-body text-center">
-  <h6>Total de Comissões</h6>
-  <h3 id="totalComissoes">R$ 0,00</h3>
-  </div>
-  </div>
-  </div>
-  <div class="col-md-4">
-  <div class="card bg-success text-white">
-  <div class="card-body text-center">
-  <h6>Comissões Carros</h6>
-  <h3 id="comissoesCarros">R$ 0,00</h3>
-  </div>
-  </div>
-  </div>
-  <div class="col-md-4">
-  <div class="card bg-warning text-white">
-  <div class="card-body text-center">
-  <h6>Comissões Peças</h6>
-  <h3 id="comissoesPecas">R$ 0,00</h3>
-  </div>
-  </div>
-  </div>
-  </div>
-
-  <div class="row mb-4">
-  <div class="col-md-6">
-  <h5>Configurar Taxas de Comissão</h5>
-  <div class="form-group mb-3">
-  <label>Comissão por Carro (R$)</label>
-  <input type="number" class="form-control" id="comissaoCarro" step="0.01" min="0">
-  </div>
-  <div class="form-group mb-3">
-  <label>Comissão por Peça (R$)</label>
-  <input type="number" class="form-control" id="comissaoPeca" step="0.01" min="0">
-  </div>
-  <div class="form-group mb-3">
-  <label>Comissão Warehouse (R$)</label>
-  <input type="number" class="form-control" id="comissaoWarehouse" step="0.01" min="0">
-  </div>
-  <button class="btn btn-primary" type="button" onclick="window.salvarConfiguracoes()">Salvar Configurações</button>
-  </div>
-  <div class="col-md-6">
-  <h5>Últimas Comissões</h5>
-  <div id="listaComissoes" style="max-height: 300px; overflow-y: auto;">
-  <p class="text-muted">Carregando...</p>
-  </div>
-  </div>
-  </div>
-  </div>
-  </div>
-  </div>
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h5 class="mb-0"><i class="fas fa-qrcode me-2"></i>Histórico de PIX dos Pilotos</h5>
+          <div class="d-flex gap-2">
+            <select class="form-select form-select-sm" id="filtroStatus" style="width: auto;">
+              <option value="">Todos os status</option>
+              <option value="aprovado">Aprovado</option>
+              <option value="pendente">Pendente</option>
+              <option value="recusado">Recusado</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+            <select class="form-select form-select-sm" id="filtroMes" style="width: auto;">
+              <option value="">Todos os períodos</option>
+              <option value="este_mes">Este mês</option>
+            </select>
+            <button type="button" class="btn btn-sm btn-outline-light" id="btnAtualizar"><i class="fas fa-sync-alt"></i> Atualizar</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="listaPix" class="table-responsive">
+            <p class="text-muted">Carregando histórico...</p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="toast-container"></div>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script>
-  // Verificar autenticação de admin
-  if (!sessionStorage.getItem('admin_logado')) {
-  // Se não tem sessão de admin, redireciona para login
-  // Mas permite carregar para testar
-  }
-  // Inicializar painel
-  window.addEventListener('load', () => {
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+window.addEventListener('load', () => {
   atualizarStatusAdmin();
-  atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
-  carregarComissoes();
-  carregarConfiguracoes();
-  });
+  atualizarContadoresSolicitacoes && atualizarContadoresSolicitacoes().catch(e => console.error('Erro ao atualizar contadores:', e));
+  carregarHistoricoPix();
+});
 
-  async function carregarComissoes() {
-  try {
-  const resp = await fetch('/api/admin/comissoes');
-  const data = await resp.json();
-  if (data.sucesso) {
-  atualizarResumoComissoes(data.resumo);
-  renderizarListaComissoes(data.comissoes);
-  } else {
-  mostrarToast('Erro ao carregar comissões', 'error');
-  }
-  } catch (e) {
-  console.error('Erro ao carregar comissões:', e);
-  mostrarToast('Erro de conexão', 'error');
-  }
-  }
+document.getElementById('btnAtualizar')?.addEventListener('click', carregarHistoricoPix);
+document.getElementById('filtroStatus')?.addEventListener('change', carregarHistoricoPix);
+document.getElementById('filtroMes')?.addEventListener('change', carregarHistoricoPix);
 
-  function atualizarResumoComissoes(resumo) {
-  document.getElementById('totalComissoes').textContent = `R$ ${(resumo.total || 0).toFixed(2)}`;
-  document.getElementById('comissoesCarros').textContent = `R$ ${(resumo.carros || 0).toFixed(2)}`;
-  document.getElementById('comissoesPecas').textContent = `R$ ${(resumo.pecas || 0).toFixed(2)}`;
-  }
-
-  function renderizarListaComissoes(comissoes) {
-  const container = document.getElementById('listaComissoes');
-  if (!comissoes || comissoes.length === 0) {
-  container.innerHTML = '<p class="text-muted">Nenhuma comissão registrada ainda.</p>';
-  return;
-  }
-
-  let html = '<div class="list-group">';
-  comissoes.slice(0, 10).forEach(comissao => {
-  html += `
-  <div class="list-group-item">
-  <div class="d-flex w-100 justify-content-between">
-  <h6 class="mb-1">${comissao.tipo} - ${comissao.equipe_nome || 'Sistema'}</h6>
-  <small>R$ ${comissao.valor_comissao.toFixed(2)}</small>
-  </div>
-  <p class="mb-1">${comissao.descricao || ''}</p>
-  <small class="text-muted">${new Date(comissao.data_transacao).toLocaleString()}</small>
-  </div>
-  `;
-  });
-  html += '</div>';
-  container.innerHTML = html;
-  }
-
-  async function carregarConfiguracoes() {
-  try {
-  const configs = ['comissao_carro', 'comissao_peca', 'comissao_warehouse'];
-  for (const config of configs) {
-  const resp = await fetch(`/api/admin/configuracao/${config}`);
-  const data = await resp.json();
-  if (data.sucesso) {
-  const elementId = config.replace('comissao_', 'comissao');
-  document.getElementById(elementId).value = data.valor || 0;
-  }
-  }
-  } catch (e) {
-  console.error('Erro ao carregar configurações:', e);
-  }
-  }
-
-  async function salvarConfiguracoes() {
-  const configs = {
-  'comissao_carro': parseFloat(document.getElementById('comissaoCarro').value) || 0,
-  'comissao_peca': parseFloat(document.getElementById('comissaoPeca').value) || 0,
-  'comissao_warehouse': parseFloat(document.getElementById('comissaoWarehouse').value) || 0
+function descricaoTipo(tipo) {
+  const map = {
+    'instalacao_armazem': 'Instalação peça (armazém)',
+    'warehouse': 'Armazém',
+    'peca': 'Peça',
+    'carro': 'Carro',
+    'carro_ativacao': 'Ativação de carro',
+    'participacao_etapa': 'Participação etapa',
+    'regularizacao': 'Regularização de saldo',
+    'inscricao_etapa': 'Inscrição etapa',
+    'instalar_peca': 'Instalação peça',
+    'compra_carro': 'Compra de carro',
+    'compra_peca': 'Compra de peça'
   };
+  return map[tipo] || (tipo || 'PIX');
+}
 
-  try {
-  for (const [key, value] of Object.entries(configs)) {
-  await fetch(`/api/admin/configuracao/${key}`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ valor: value.toString() })
-  });
-  }
-  mostrarToast('Configurações salvas com sucesso!', 'success');
-  } catch (e) {
-  console.error('Erro ao salvar configurações:', e);
-  mostrarToast('Erro ao salvar configurações', 'error');
-  }
-  }
-  window.salvarConfiguracoes = salvarConfiguracoes;
+function badgeStatus(status) {
+  const classes = { aprovado: 'bg-success', pendente: 'bg-warning', recusado: 'bg-danger', cancelado: 'bg-secondary' };
+  return classes[status] || 'bg-secondary';
+}
 
-  async function atualizarStatusAdmin() {
+async function carregarHistoricoPix() {
+  const container = document.getElementById('listaPix');
+  const status = document.getElementById('filtroStatus')?.value || '';
+  const mes = document.getElementById('filtroMes')?.value || '';
   try {
-  console.log('Atualizando status admin...');
-  const resp = await fetch('/api/admin/status');
-  const status = await resp.json();
-  console.log('Status recebido:', status);
-  document.getElementById('totalEquipes').textContent = status.total_equipes || 0;
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (mes) params.set('mes', mes);
+    const resp = await fetch('/api/admin/transacoes-pix?' + params.toString());
+    const data = await resp.json();
+    if (data.erro) {
+      container.innerHTML = '<p class="text-danger">Erro: ' + (data.erro || 'Erro ao carregar') + '</p>';
+      return;
+    }
+    const transacoes = data.transacoes || data.comissoes || [];
+    if (!transacoes.length) {
+      container.innerHTML = '<p class="text-muted">Nenhum PIX registrado ainda.</p>';
+      return;
+    }
+    let html = '<table class="table table-hover table-striped mb-0"><thead><tr><th>Data</th><th>Equipe / Piloto</th><th>Tipo</th><th>Descrição</th><th class="text-end">Valor</th><th>Status</th></tr></thead><tbody>';
+    transacoes.forEach(t => {
+      const valorTotal = (t.valor_total != null ? parseFloat(t.valor_total) : (parseFloat(t.valor_item || 0) + parseFloat(t.valor_taxa || 0)));
+      const dataStr = t.data_transacao || t.data_criacao ? new Date(t.data_transacao || t.data_criacao).toLocaleString('pt-BR') : '-';
+      const descricao = t.item_nome ? t.item_nome : descricaoTipo(t.tipo || t.tipo_item);
+      html += `<tr><td>${dataStr}</td><td>${t.equipe_nome || '-'}</td><td>${descricaoTipo(t.tipo || t.tipo_item)}</td><td>${descricao}</td><td class="text-end">R$ ${valorTotal.toFixed(2)}</td><td><span class="badge ${badgeStatus(t.status)}">${(t.status || 'pendente')}</span></td></tr>`;
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
   } catch (e) {
-  console.log('Erro ao atualizar status');
+    console.error('Erro ao carregar histórico PIX:', e);
+    container.innerHTML = '<p class="text-danger">Erro de conexão ao carregar histórico.</p>';
   }
-  }
-  async function atualizarContadoresSolicitacoes() {
+}
+
+async function atualizarStatusAdmin() {
+  try { const resp = await fetch('/api/admin/status'); const status = await resp.json(); document.getElementById('totalEquipes').textContent = status.total_equipes || 0; } catch (e) {}
+}
+
+async function atualizarContadoresSolicitacoes() {
+  if (typeof window.atualizarContadoresSolicitacoesAdmin === 'function') return window.atualizarContadoresSolicitacoesAdmin();
   try {
-  // Contar solicitações de peça pendentes
-  const respPecas = await fetch('/api/admin/solicitacoes-pecas');
-  const pecas = await respPecas.json();
-  const pecasPendentes = Array.isArray(pecas)
-  ? pecas.filter(s => s.status === 'pendente').length
-  : 0;
-  const elemPecas = document.getElementById('solicitacoesPecasPendentes');
-  if (elemPecas) {
-  elemPecas.textContent = pecasPendentes;
-  }
-  // Contar solicitações de carro pendentes
-  const respCarros = await fetch('/api/admin/solicitacoes-carros');
-  const carros = await respCarros.json();
-  const carrosPendentes = Array.isArray(carros)
-  ? carros.filter(s => s.status === 'pendente').length
-  : 0;
-  const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
-  if (elemCarros) {
-  elemCarros.textContent = carrosPendentes;
-  }
-  } catch (e) {
-  console.error('Erro ao atualizar contadores de solicitações:', e);
-  }
-  }
-  </script>
-</body>
-</html>
+    const respPecas = await fetch('/api/admin/solicitacoes-pecas');
+    const pecas = await respPecas.json();
+    const pecasPendentes = Array.isArray(pecas) ? pecas.filter(s => s.status === 'pendente').length : 0;
+    const elemPecas = document.getElementById('solicitacoesPecasPendentes');
+    if (elemPecas) elemPecas.textContent = pecasPendentes;
+    const respCarros = await fetch('/api/admin/solicitacoes-carros');
+    const carros = await respCarros.json();
+    const carrosPendentes = Array.isArray(carros) ? carros.filter(s => s.status === 'pendente').length : 0;
+    const elemCarros = document.getElementById('solicitacoesCarrosPendentes');
+    if (elemCarros) elemCarros.textContent = carrosPendentes;
+  } catch (e) { console.error('Erro ao atualizar contadores de solicitações:', e); }
+}
+</script>
+{% endblock %}
