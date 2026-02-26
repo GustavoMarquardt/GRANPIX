@@ -989,14 +989,51 @@ function renderizarPecas() {
     if (!container) return; // Se não existe o container, sair silenciosamente
     container.innerHTML = '';
 
+    const filtroTipo = document.getElementById('filtroTipoPeca') ? document.getElementById('filtroTipoPeca').value : '';
+
+    // Filtro Upgrade: carregar e exibir upgrades da API
+    if (filtroTipo === 'upgrade') {
+        container.innerHTML = '<p class="text-muted">Carregando upgrades...</p>';
+        fetch('/api/loja/upgrades', { headers: obterHeaders() })
+            .then(r => r.json())
+            .then(upgrades => {
+                container.innerHTML = '';
+                if (!upgrades || upgrades.length === 0) {
+                    container.innerHTML = '<p class="text-muted">Nenhum upgrade disponível</p>';
+                    return;
+                }
+                upgrades.forEach(u => {
+                    const card = document.createElement('div');
+                    card.className = 'col-md-6 col-lg-4 mb-3';
+                    const nomeSeguro = String(u.nome || '').replace(/['"\\]/g, '');
+                    const preco = parseFloat(u.preco) || 0;
+                    card.innerHTML = `
+                        <div class="produto-card">
+                            <div class="produto-header">${u.nome}</div>
+                            <div class="produto-body">
+                                <p class="mb-2"><strong>Para peça:</strong> ${u.peca_nome || '-'}</p>
+                                <p class="mb-2"><strong>Descrição:</strong> ${u.descricao || '-'}</p>
+                                <div class="preco">${formatarMoeda(preco)}</div>
+                                <button class="btn-comprar w-100" data-id="upgrade_${u.id}" data-nome="${nomeSeguro}" data-preco="${preco}">🛒 Adicionar ao Carrinho</button>
+                            </div>
+                        </div>
+                    `;
+                    card.querySelector('button').addEventListener('click', () => adicionarAoCarrinho('upgrade_' + u.id, u.nome, preco, 'universal', 'upgrade'));
+                    container.appendChild(card);
+                });
+            })
+            .catch(e => {
+                container.innerHTML = '<p class="text-danger">Erro ao carregar upgrades.</p>';
+                console.error('[LOJA] Erro ao carregar upgrades:', e);
+            });
+        return;
+    }
+
     // Verificar se peças foram carregadas
     if (!pecas || pecas.length === 0) {
         container.innerHTML = '<p class="text-muted">Carregando peças...</p>';
         return;
     }
-
-    // Obter valor do filtro
-    const filtroTipo = document.getElementById('filtroTipoPeca') ? document.getElementById('filtroTipoPeca').value : '';
 
     // Filtrar peças
     let pecasFiltradas = pecas;

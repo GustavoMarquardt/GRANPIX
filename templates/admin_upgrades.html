@@ -1,0 +1,149 @@
+{% extends "admin_base.html" %}
+{% block title %}GRANPIX - Cadastrar Upgrades{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+  <div class="row">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header bg-dark text-white">
+          <h5 class="mb-0">Novo Upgrade</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted small">Upgrades são melhorias que podem ser instaladas em peças específicas. Ex: Kit Turbo para Motor AP.</p>
+          <div class="form-group mb-3">
+            <label>Peça base <span class="text-danger">*</span></label>
+            <select class="form-control" id="upgradePecaLojaId" required>
+              <option value="">Selecione a peça...</option>
+            </select>
+            <small class="text-muted">Peça na qual este upgrade pode ser instalado</small>
+          </div>
+          <div class="form-group mb-3">
+            <label>Nome do upgrade <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="upgradeNome" placeholder="Ex: Kit Turbo" required>
+          </div>
+          <div class="form-group mb-3">
+            <label>Preço</label>
+            <input type="number" class="form-control" id="upgradePreco" placeholder="Ex: 5000" step="0.01" value="0">
+          </div>
+          <div class="form-group mb-3">
+            <label>Descrição (opcional)</label>
+            <textarea class="form-control" id="upgradeDescricao" rows="2" placeholder="Ex: Aumenta potência do motor"></textarea>
+          </div>
+          <button class="btn btn-primary w-100" type="button" onclick="window.cadastrarUpgrade()">Cadastrar Upgrade</button>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header bg-dark text-white">
+          <h5 class="mb-0">Upgrades Cadastrados</h5>
+        </div>
+        <div class="card-body" id="listaUpgrades" style="max-height: 500px; overflow-y: auto;">
+          <p class="text-muted">Carregando...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+(function() {
+  function carregarPecas() {
+    fetch('/api/loja/pecas')
+      .then(r => r.json())
+      .then(pecas => {
+        const sel = document.getElementById('upgradePecaLojaId');
+        sel.innerHTML = '<option value="">Selecione a peça...</option>';
+        (pecas || []).forEach(p => {
+          sel.innerHTML += `<option value="${p.id}">${p.nome} (${p.tipo})</option>`;
+        });
+      })
+      .catch(e => console.error('Erro ao carregar peças:', e));
+  }
+
+  function carregarUpgrades() {
+    fetch('/api/admin/upgrades')
+      .then(r => r.json())
+      .then(data => {
+        const div = document.getElementById('listaUpgrades');
+        const upgrades = data.upgrades || [];
+        if (upgrades.length === 0) {
+          div.innerHTML = '<p class="text-muted">Nenhum upgrade cadastrado.</p>';
+          return;
+        }
+        div.innerHTML = upgrades.map(u => `
+          <div class="d-flex justify-content-between align-items-center border-bottom py-2 mb-2">
+            <div>
+              <strong>${u.nome}</strong> <small class="text-muted">→ ${u.peca_nome}</small>
+              <br><small>R$ ${parseFloat(u.preco || 0).toFixed(2)}</small>
+            </div>
+            <button class="btn btn-sm btn-danger" onclick="window.deletarUpgrade('${u.id}', '${(u.nome || '').replace(/'/g, "\\'")}')">Excluir</button>
+          </div>
+        `).join('');
+      })
+      .catch(e => {
+        document.getElementById('listaUpgrades').innerHTML = '<p class="text-danger">Erro ao carregar upgrades.</p>';
+        console.error(e);
+      });
+  }
+
+  window.cadastrarUpgrade = function() {
+    const pecaLojaId = document.getElementById('upgradePecaLojaId').value;
+    const nome = document.getElementById('upgradeNome').value.trim();
+    const preco = parseFloat(document.getElementById('upgradePreco').value) || 0;
+    const descricao = document.getElementById('upgradeDescricao').value.trim();
+    if (!pecaLojaId || !nome) {
+      alert('Preencha a peça base e o nome do upgrade.');
+      return;
+    }
+    fetch('/api/admin/cadastrar-upgrade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ peca_loja_id: pecaLojaId, nome, preco, descricao })
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.sucesso) {
+          document.getElementById('upgradeNome').value = '';
+          document.getElementById('upgradePreco').value = '0';
+          document.getElementById('upgradeDescricao').value = '';
+          carregarUpgrades();
+          alert('Upgrade cadastrado com sucesso!');
+        } else {
+          alert(data.erro || 'Erro ao cadastrar upgrade.');
+        }
+      })
+      .catch(e => {
+        alert('Erro ao cadastrar upgrade.');
+        console.error(e);
+      });
+  };
+
+  window.deletarUpgrade = function(id, nome) {
+    if (!confirm('Excluir o upgrade "' + nome + '"?')) return;
+    fetch('/api/admin/deletar-upgrade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.sucesso) {
+          carregarUpgrades();
+          alert('Upgrade excluído.');
+        } else {
+          alert(data.erro || 'Erro ao excluir.');
+        }
+      })
+      .catch(e => {
+        alert('Erro ao excluir upgrade.');
+        console.error(e);
+      });
+  };
+
+  carregarPecas();
+  carregarUpgrades();
+})();
+</script>
+{% endblock %}

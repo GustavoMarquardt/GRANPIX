@@ -231,6 +231,10 @@ def admin_carros():
 def admin_pecas():
     return render_template('admin_pecas.html')
 
+@app.route('/admin/upgrades')
+def admin_upgrades():
+    return render_template('admin_upgrades.html')
+
 @app.route('/admin/variacoes')
 def admin_variacoes():
     return render_template('admin_variacoes.html')
@@ -1391,6 +1395,16 @@ def get_pecas():
             pecas.append(peca_dict)
     print(f"[API] Total de peças retornadas: {len(pecas)}\n")
     return jsonify(pecas)
+
+@app.route('/api/loja/upgrades')
+def get_upgrades():
+    """Retorna upgrades disponíveis para compra (filtro Upgrade na loja)"""
+    try:
+        upgrades = api.db.carregar_upgrades()
+        return jsonify(upgrades)
+    except Exception as e:
+        print(f"[ERRO LOJA UPGRADES] {e}")
+        return jsonify([])
 
 @app.route('/api/aguardando-pecas', methods=['GET'])
 def get_aguardando_pecas():
@@ -5477,6 +5491,8 @@ def editar_carro():
                 for v in getattr(carro, 'variacoes', []):
                     v.valor = preco_novo
                 api.db.salvar_modelo_loja(carro, imagem_base64=imagem_base64)
+                # Propagar marca e modelo para carros que usam este modelo
+                api.db.propagar_modelo_para_carros(carro_id, marca, modelo)
                 # Recarregar do banco para garantir sincronização
                 modelos_db = api.db.carregar_modelos_loja()
                 if modelos_db:
@@ -5612,6 +5628,48 @@ def cadastrar_peca():
         print(f"[ERRO CADASTRO PEÇA] {str(e)}")
         import traceback
         traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)}), 400
+
+@app.route('/api/admin/upgrades')
+def get_admin_upgrades():
+    """Lista upgrades para o painel admin"""
+    try:
+        upgrades = api.db.carregar_upgrades()
+        return jsonify({'upgrades': upgrades})
+    except Exception as e:
+        return jsonify({'upgrades': [], 'erro': str(e)}), 500
+
+@app.route('/api/admin/cadastrar-upgrade', methods=['POST'])
+def cadastrar_upgrade():
+    """Cadastra um novo upgrade vinculado a uma peça"""
+    dados = request.json
+    try:
+        peca_loja_id = dados.get('peca_loja_id')
+        nome = dados.get('nome', '').strip()
+        preco = float(dados.get('preco', 0) or 0)
+        descricao = (dados.get('descricao') or '').strip()
+        if not peca_loja_id or not nome:
+            return jsonify({'sucesso': False, 'erro': 'Informe a peça base e o nome do upgrade'}), 400
+        import uuid
+        upgrade_id = str(uuid.uuid4())
+        if api.db.criar_upgrade(upgrade_id, peca_loja_id, nome, preco, descricao):
+            return jsonify({'sucesso': True, 'mensagem': f'Upgrade {nome} cadastrado', 'id': upgrade_id})
+        return jsonify({'sucesso': False, 'erro': 'Erro ao salvar upgrade'}), 500
+    except Exception as e:
+        return jsonify({'sucesso': False, 'erro': str(e)}), 400
+
+@app.route('/api/admin/deletar-upgrade', methods=['POST'])
+def deletar_upgrade():
+    """Remove um upgrade"""
+    dados = request.json
+    try:
+        upgrade_id = dados.get('id')
+        if not upgrade_id:
+            return jsonify({'sucesso': False, 'erro': 'ID do upgrade não fornecido'}), 400
+        if api.db.deletar_upgrade(upgrade_id):
+            return jsonify({'sucesso': True, 'mensagem': 'Upgrade excluído'})
+        return jsonify({'sucesso': False, 'erro': 'Erro ao excluir'}), 500
+    except Exception as e:
         return jsonify({'sucesso': False, 'erro': str(e)}), 400
 
 @app.route('/api/admin/editar-peca', methods=['POST'])

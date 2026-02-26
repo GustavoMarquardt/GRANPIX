@@ -692,6 +692,8 @@ class DatabaseManager:
         self._migrar_ordem_qualificacao()
         # Migração para cadastro de pilotos sem equipe (senha + equipe_id nullable)
         self._migrar_pilotos_cadastro()
+        # Tabela de upgrades (relacionamento peça -> upgrade)
+        self._criar_tabela_upgrades()
 
     def _migrar_pilotos_cadastro(self) -> None:
         """Migração: adiciona senha aos pilotos e permite equipe_id NULL (pilotos sem equipe)."""
@@ -717,6 +719,28 @@ class DatabaseManager:
         finally:
             cursor.close()
             conn.close()
+
+    def _criar_tabela_upgrades(self) -> None:
+        """Cria tabela upgrades (relacionamento peça -> upgrade: 1 peça pode ter vários upgrades)"""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS upgrades (
+                    id VARCHAR(64) PRIMARY KEY,
+                    peca_loja_id VARCHAR(64) NOT NULL,
+                    nome VARCHAR(255) NOT NULL,
+                    preco DOUBLE DEFAULT 0.0,
+                    descricao TEXT,
+                    data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (peca_loja_id) REFERENCES pecas_loja(id) ON DELETE CASCADE,
+                    INDEX idx_peca_loja (peca_loja_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ''')
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[DB] Erro ao criar tabela upgrades: {e}")
 
     def _migrar_etapas_temporada(self) -> None:
         """Migração: adiciona campos de temporada às etapas"""
@@ -2359,6 +2383,18 @@ class DatabaseManager:
             ''', values)
 
             conn.commit()
+            # Propagar alterações para peças existentes (armazém e instaladas) que usam esta peca_loja
+            try:
+                cursor.execute('''
+                    UPDATE pecas SET nome = %s, tipo = %s, preco = %s,
+                        durabilidade_maxima = %s, coeficiente_quebra = %s
+                    WHERE peca_loja_id = %s
+                ''', (peca.nome, peca.tipo, peca.preco,
+                      peca.durabilidade if hasattr(peca, 'durabilidade') and peca.durabilidade else 100.0,
+                      peca.coeficiente_quebra, peca.id))
+                conn.commit()
+            except Exception as prop_e:
+                print(f"[DB] Aviso ao propagar peca_loja->pecas: {prop_e}")
             conn.close()
             print(f"[DEBUG] Peca salva com sucesso: {peca.id}")
             return True
@@ -2439,6 +2475,71 @@ class DatabaseManager:
         except Exception as e:
             print(f"Erro ao carregar pecas: {e}")
             return []
+
+    # ============ UPGRADES ============
+
+    def carregar_upgrades(self):
+        """Carrega todos os upgrades com nome da peça vinculada"""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT u.id, u.peca_loja_id, u.nome, u.preco, u.descricao,
+                       pl.nome AS peca_nome, pl.tipo AS peca_tipo
+                FROM upgrades u
+                LEFT JOIN pecas_loja pl ON u.peca_loja_id = pl.id
+                ORDER BY pl.nome, u.nome
+            ''')
+            rows = cursor.fetchall()
+            conn.close()
+            return [{
+                'id': r[0], 'peca_loja_id': r[1], 'nome': r[2], 'preco': float(r[3] or 0),
+                'descricao': r[4] or '', 'peca_nome': r[5] or '-', 'peca_tipo': r[6] or ''
+            } for r in rows]
+        except Exception as e:
+            print(f"Erro ao carregar upgrades: {e}")
+            return []
+
+    def criar_upgrade(self, upgrade_id: str, peca_loja_id: str, nome: str, preco: float, descricao: str = '') -> bool:
+        """Cadastra um novo upgrade vinculado a uma peça"""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO upgrades (id, peca_loja_id, nome, preco, descricao)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (upgrade_id, peca_loja_id, nome, preco, descricao or ''))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Erro ao criar upgrade: {e}")
+            return False
+
+    def deletar_upgrade(self, upgrade_id: str) -> bool:
+        """Remove um upgrade"""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM upgrades WHERE id = %s', (upgrade_id,))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Erro ao deletar upgrade: {e}")
+            return False
+
+    def propagar_modelo_para_carros(self, modelo_id: str, marca: str, modelo: str) -> None:
+        """Propaga marca e modelo editados em modelos_carro_loja para carros que usam este modelo"""
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            cursor.execute('UPDATE carros SET marca = %s, modelo = %s WHERE modelo_id = %s',
+                           (marca, modelo, modelo_id))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[DB] Aviso ao propagar modelo->carros: {e}")
 
     def deletar_peca_loja(self, peca_id: str) -> bool:
         """Deleta uma peça da loja no banco de dados"""
